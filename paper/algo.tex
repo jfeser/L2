@@ -1,0 +1,75 @@
+\documentclass{article}
+
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+
+\begin{document}
+\begin{algorithm}
+\caption{Expression tree flattening}
+\begin{algorithmic}
+  \State Let $T$ be an expression tree.
+  \State Let $Assoc$ be the set of associative operators in $T$.
+  \Function{Flatten}{$T, Assoc$}
+  \If{$T.node \notin Assoc$}
+  \State $T.children \gets map(Flatten, T.children)$
+  \Else
+  \State $children \gets []$
+  \For{$child \in T.children$}
+  \If{$child.node = T.node$}
+  \State $children \gets children + map(Flatten, child.children)$
+  \Else
+  \State $children \gets children + [child]$
+  \EndIf
+  \EndFor
+  \State $T.children \gets children$
+  \State $T.node.arity \gets |children|$
+  \EndIf
+  \State \Return $T$
+  \EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+
+\begin{algorithm}
+  \caption{Distinct expression exploration}
+  \begin{algorithmic}
+    \State Let $S$ be a partial ordering created from a flattened expression tree.
+    \State Let $Commut$ be the set of commutative operators in $S$.
+    \State Begin by calling \Call{Explore}{$S, 0$}.
+    \Function{Explore}{$S, i$}
+    \State Let $n_i$ be the $i^{th}$ node in $S$.
+    \If {$parent(n_i) \notin Commut$}
+    \For {$c_{m,n} ~|~ c_{m,n} \in parent(n_i).children \land m >
+      i$} % \Comment{Note that children are actually node
+      % ranges. $c_{m,n}$ is a subtree consisting of nodes in the interval $[m,n]$.}
+    \State $S^\prime \gets c_{m,n} + concat([c_{q,r} ~|~ c_{q,r} \in
+    parent(n_i).children \land q \geq i \land c_{q,r} \neq c_{m,n}])$
+    \State $c_{s,t} \gets last(S^\prime)$
+    \State $S^\prime \gets S^\prime + [c_{x,y} ~|~ c_{x,y} \in S \land x > t]$
+    \State \Call{Explore}{$S^\prime, i + 1$}
+    \EndFor 
+    \EndIf
+    \State \Call{Explore}{$rest(S), i + 1$}
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+% \begin{algorithmic}
+%   \Function{Explore}{$T, n_i, Commut$}
+%   \If {$n_i = T.root$}
+%   \State \Call{Explore}{$T, first(T.root.children), Commut$}
+%   \Else
+%   \If {$parent(n_i) \notin Commut$}
+%   \State $C \gets parent(n_i).children$
+%   \For {$n_j \in [n_j ~|~ n_j \in C \land j > i]$}
+%   \State $C^\prime \gets C[0:i] + [n_j] + [n_k ~|~ n_k \in C \land k
+%   \geq i \land k \neq j]$
+%   \State Let $T^\prime$ be a copy of $T$ with the children of
+%   $parent(n_i)$ replaced with $C^\prime$.
+  
+%   \EndFor
+%   \Else
+%   \EndIf
+%   \EndIf
+%   \EndFunction
+% \end{algorithmic}
+\end{document}
