@@ -220,6 +220,34 @@ let test_specialize =
                 Num_t, Num_t, Num_t;
     ])
 
+let test_symb_solver = 
+  let exact_parse_from_string exp = 
+  (match (Util.parse exp) with
+  | hd::_ -> hd
+  | [] -> assert false) in
+  let rec list_to_string (in_list:value list)= (match in_list with
+  | `Num(hd)::tl -> String.concat ~sep:"" [string_of_int hd; " "; list_to_string tl]
+  | _ -> ""
+  ) in
+  let rec vals_to_string (res:(value list * value) list) = (match res with
+  | (hd1,`Num(hd2))::tl -> String.concat ~sep:"" ["(";String.strip (list_to_string hd1) ;") = "; string_of_int hd2;") "; vals_to_string tl]
+  | _ -> "") in
+  let w_vals_to_string (res:(value list * value) list) = String.concat ~sep:"" ["[";String.strip (vals_to_string res);"]"] in
+  "test_symb_solver" >:::
+      (List.map ~f:(fun (n, (m:(value list * value) list), p) ->
+                  let title = Printf.sprintf "%s %s -> %s" 
+                                             n
+                                             (w_vals_to_string m)
+                                             p
+                                             in
+                  title >:: (fun _ -> assert_equal (expr_to_string (SymbSolver.symb_solve (exact_parse_from_string n) m)) p))
+              [ "(lambda (x:num y:num) (+ (+ x y) z))" , [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)";
+                "(lambda (x:num y:num) (+ (+ x y) z))" , [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)";
+                "(lambda (x:num y:num) (+ (+ (+ x y) z1) z2))" , [([`Num 1;`Num 2],`Num 3)], "(+ (+ (+ x y) 0) 0)"
+                  
+            ])
+
+
 let test_eval_typeof_value _ = 
   assert_equal Num_t (Eval.typeof_value (`Num 1));
   assert_equal Bool_t (Eval.typeof_value (`Bool true));
@@ -257,5 +285,6 @@ let () = run_test_tt_main
                 test_specialize;
                 test_straight_solve;
                 test_catamorphic_solve;
+                test_symb_solver;
            ]);
 ;;

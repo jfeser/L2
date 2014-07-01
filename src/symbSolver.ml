@@ -110,7 +110,7 @@ let clean_pair ls =
   let index = String.index ls ' ' in
   let len = String.length(ls) in
   match index with
-  | Some ind -> [(substring ls 0 ind); (substring ls ind len)]
+  | Some ind -> ((String.strip (substring ls 0 ind)), (String.strip (substring ls ind len)))
   | None -> assert false (* every z3 pair should have a variable then a space and then a numeric value *)
 
 (*Parses output of Z3*)
@@ -122,13 +122,36 @@ match List.hd split_res with
 | Some "unsat" -> raise (RuntimeError "The probablem was unsatisfiable")
 | _ -> raise (RuntimeError "Z3 error, Z3 input was not valid")
 
+let lookup id vals = 
+  match List.filter ~f:(fun pair -> let (e, _) = pair in e = id) vals with
+  | [(_,v)] -> `Num((int_of_string v))
+  | [] -> `Id(id)
+  | _ -> assert false
+
+let rec find_and_replace vals (exp:expr) = 
+  match exp with 
+  | `Id id -> (lookup id vals)
+  | `Num x               -> `Num(x)
+  | `Bool x              -> `Bool(x)
+  | `Nil                 -> `Nil
+  | `Op (op, uneval_args) ->
+     (let args = List.map ~f:(find_and_replace vals) uneval_args in
+      match args with 
+                 | [x; y] -> `Op(op, [x;y])
+                 | _ -> raise (RuntimeError ("Bad argument to " ^ 
+                                           (Ast.operator_to_str op))))
+  | _ -> raise (RuntimeError "Invalid input expression (used an unsupported element of 'typ'.")
+
 (*Main method of this class, calls all Z3 generating functions then evaluates parses and returns*)
-let symb_solve (lambda:typed_id list * expr) (values:(value list * value) list)  = 
-  let raw_Z3 = generate_Z3 lambda values in
-  let file = "t_unprocessedZ3.smt2" in
-  let oc = open_out file in
-    Printf.fprintf oc "%s\n" raw_Z3;   
-    close_out_noerr oc; 
-    let z3_out = syscall (concat ["Z3 -smt2 ";file]) in
-    parse_z3_out (String.split ~on:'\n' z3_out)
+let symb_solve (lambda:expr) (values:(value list * value) list)  = 
+  match lambda with
+  | `Lambda(ids, exp) -> 
+    (let raw_Z3 = generate_Z3 (ids, exp) values in
+    let file = "t_unprocessedZ3.smt2" in
+    let oc = open_out file in
+      Printf.fprintf oc "%s\n" raw_Z3;   
+      close_out_noerr oc; 
+      let z3_out = syscall (concat ["Z3 -smt2 ";file]) in
+      find_and_replace (parse_z3_out (String.split ~on:'\n' z3_out)) exp)
+  | _ -> raise (RuntimeError "The value inputted into the Z3 solver was not a '`Lambda' expresssion")
 ;;
