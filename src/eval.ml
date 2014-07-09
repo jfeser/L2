@@ -38,8 +38,8 @@ let update ctx ~key:k ~data:v = ctx := String.Map.add !ctx ~key:k ~data:v
 
 (** Create an empty type or eval context. The type system complains
 unless these are separate functions. *)
-let empty_type_ctx : type_ctx = ref String.Map.empty
-let empty_eval_ctx : eval_ctx = ref String.Map.empty
+let empty_type_ctx = fun () -> ref String.Map.empty
+let empty_eval_ctx = fun () -> ref String.Map.empty
 
 (** Evaluate an expression in the provided context. *)
 let rec eval (env: eval_ctx) expr =
@@ -92,12 +92,12 @@ let rec eval (env: eval_ctx) expr =
                 | [`Num x; `Num y] -> `Num (x * y)
                 | _ -> arg_error op args)
       | Div -> (match eval_all args with
-                | [`Num x; `Num y] -> if y = 0 then 
-                                        raise (RuntimeError "Divide by zero.")
+                | [`Num x; `Num y] -> if y = 0 then raise (RuntimeError "Divide by zero.")
                                       else `Num (x / y)
                 | _ -> arg_error op args)
       | Mod -> (match eval_all args with
-                | [`Num x; `Num y] -> `Num (x mod y)
+                | [`Num x; `Num y] -> if y = 0 then raise (RuntimeError "Divide by zero.")
+                                      else `Num (x mod y)
                 | _ -> arg_error op args)
       | Eq -> (match eval_all args with
                | [x; y] -> `Bool (x = y)
@@ -133,15 +133,32 @@ let rec eval (env: eval_ctx) expr =
                                                else eval env uz
                                   | _ -> arg_error op args)
                | _ -> arg_error op args)
+      | Fold -> (match args with
+                 | [l; f; i] ->
+                    eval env
+                         (`Op (If, [`Op (Eq, [`Nil; l]); i;
+                                    `Apply (f, [`Op (Fold, [`Op (Cdr, [l]); f; i]); 
+                                                `Op (Car, [l])])]))
+                 | _ -> arg_error op args)
+      | Filter -> (match args with
+                   | [l; f] -> 
+                      eval env (`Op (If, [`Op (Eq, [`Nil; l]); 
+                                          `Nil;
+                                          `Op (If, [`Apply (f, [`Op (Car, [l])]);
+                                                    `Op (Cons, [`Op (Car, [l]);
+                                                                `Op (Filter, [`Op (Cdr, [l]); f])]);
+                                                    `Op (Filter, [`Op (Cdr, [l]); f])])]))
+                                                      
+                   | _ -> arg_error op args)
       | Foldl -> (match args with
-                  | [x; y; z] ->
+                  | [l; f; i] ->
                      eval env 
-                          (`Op (If, [`Op (Eq, [`Nil; x]); 
-                                     z; 
+                          (`Op (If, [`Op (Eq, [`Nil; l]); 
+                                     i; 
                                      `Op (Foldl, 
-                                          [`Op (Cdr, [x]);
-                                           y; 
-                                           `Apply (y, [z; `Op (Car, [x])]);])]))
+                                          [`Op (Cdr, [l]);
+                                           f; 
+                                           `Apply (f, [i; `Op (Car, [l])]);])]))
                   | _ -> arg_error op args)
      )
 ;;
@@ -151,11 +168,13 @@ eval context which contains bindings for each define in the
 program. It then evaluates the last non-define expression and returns
 the result. *)
 let prog_eval prog =
-  let env = prog |> List.fold_left ~init:empty_eval_ctx 
+  let env = prog |> List.fold_left ~init:(empty_eval_ctx ())
                                    ~f:(fun nv def ->
                                        match def with
                                        | `Define (id, ex) ->
-                                          bind ~key:id ~data:(eval nv ex) nv
+                                          let env' = bind nv ~key:id ~data:`Unit in
+                                          update env' ~key:id ~data:(eval env' ex);
+                                          env'
                                        | _ -> nv) in
   match (prog
          |> List.rev_filter ~f:(fun e -> match e with 
@@ -202,15 +221,20 @@ let rec typeof_expr (ctx: type_ctx) (expr: expr) : typ =
                   if type_equal t1 t2 then t1
                   else raise @@ TypeError "If branches have different types."
                | _ -> type_error op args)
+      | Fold 
       | Foldl -> (match args with
-                  | [Arrow_t ([at1; _], at2); Nil_t; at3] ->
-                     if Util.all_equal ~equal:type_equal [at1; at2; at3] 
+                  | [Nil_t; Arrow_t ([at1; _], at2); at3] ->
+                     if Util.all_equal ~eq:type_equal [at1; at2; at3]
                      then at2 else type_error op args
-                  | [Arrow_t ([at1; et1], at2); List_t et2; at3] ->
-                     if (Util.all_equal ~equal:type_equal [at1; at2; at3]) && 
-                          (type_equal et1 et2)
+                  | [List_t et2; Arrow_t ([at1; et1], at2); at3] ->
+                     if (Util.all_equal ~eq:type_equal [at1; at2; at3]) && (type_equal et1 et2)
                      then at2 else type_error op args
-                  | _ -> type_error op args))
+                  | _ -> type_error op args)
+      | Filter -> (match args with
+                   | [Nil_t; Arrow_t ([_], Bool_t)] -> Nil_t
+                   | [List_t et1; Arrow_t ([et2], Bool_t)] -> 
+                      if type_equal et1 et2 then List_t et1 else type_error op args
+                   | _ -> type_error op args))
   | `Id name -> lookup name ctx
   | `Let (name, e1, e2) ->
      let ctx' = bind ctx ~key:name ~data:(typeof_expr ctx e1) in

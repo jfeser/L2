@@ -23,6 +23,8 @@ open Ast
 %token EOF
 
 %start <Ast.expr list> prog
+%start <Ast.expr> expr
+%start <Ast.example> example
 %%
 
 prog:
@@ -36,13 +38,7 @@ expr:
  | LPAREN; f = expr; args = list(expr); RPAREN     { `Apply (f, args) }
  | LPAREN; op_str = OP; args = list(expr); RPAREN
    { match operator_from_str op_str with
-     | Some op -> if (List.length args) <> (operator_to_arity op)
-                  then begin
-                      printf "Parse error: Wrong # of arguments to: %s\n" 
-                             op_str;
-                      raise Parsing.Parse_error;
-                    end
-                  else `Op (op, args)
+     | Some op -> `Op (op, args)
      | None -> begin
                printf "Parse error: Bad operator: %s\n" op_str;
                raise Parsing.Parse_error;
@@ -53,6 +49,25 @@ expr:
  | x = BOOL                               { `Bool x }
  | x = NUM                                { `Num x }
  | x = ID                                 { `Id x }
+
+example:
+ | lhs = example_lhs; ARROW; rhs = const { (lhs, rhs) }
+
+example_lhs:
+ | LPAREN; f = ID; args = list(const_or_apply); RPAREN { `Apply (`Id f, args) }
+
+const_or_apply:
+ | LPAREN; f = ID; args = list(const_or_apply); RPAREN { `Apply (`Id f, args) }
+ | LBRACKET; items = list(const_or_apply); RBRACKET    { `List items }
+ | NIL                                                 { `Nil }
+ | x = BOOL                                            { `Bool x }
+ | x = NUM                                             { `Num x }
+
+const:
+ | LBRACKET; items = list(const); RBRACKET { `List items }
+ | NIL                                     { `Nil }
+ | x = BOOL                                { `Bool x }
+ | x = NUM                                 { `Num x }
 
 typed_id:
  | i = ID; COLON; t = typ; { (i, t) }

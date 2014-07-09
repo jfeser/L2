@@ -55,13 +55,29 @@ let uniq (l:'a list) : 'a list =
                        if List.mem acc e then acc else e::acc) 
                  ~init:[]
 
-let rec all_equal (l: 'a list) ~equal:eq = match l with
-  | x::xs -> (List.for_all xs ~f:(eq x)) && (all_equal ~equal:eq xs)
+let rec all_equal (l: 'a list) ~eq:eq = match l with
+  | x::xs -> (List.for_all xs ~f:(eq x)) && (all_equal ~eq:eq xs)
   | []    -> true
 
-let parse str =
+let parse_prog str = 
   let lexbuf = Lexing.from_string str in
   try Parser.prog Lexer.token lexbuf with
+  | Parser.Error -> raise Parser.Error
+  | Lexer.SyntaxError _ -> raise Parser.Error
+  | Parsing.Parse_error -> raise Parser.Error
+;;
+
+let parse_expr str =
+  let lexbuf = Lexing.from_string str in
+  try Parser.expr Lexer.token lexbuf with
+  | Parser.Error -> raise Parser.Error
+  | Lexer.SyntaxError _ -> raise Parser.Error
+  | Parsing.Parse_error -> raise Parser.Error
+;;
+
+let parse_example str =
+  let lexbuf = Lexing.from_string str in
+  try Parser.example Lexer.token lexbuf with
   | Parser.Error -> raise Parser.Error
   | Lexer.SyntaxError _ -> raise Parser.Error
   | Parsing.Parse_error -> raise Parser.Error

@@ -7,61 +7,82 @@ type typ =
   | Unit_t
   | List_t of typ
   | Nil_t
-  | Arrow_t of (typ list) * typ
+  | Arrow_t of (typ list) * typ with compare, sexp
 
- (** Represents identifiers. *)
- and id = string
+(** Represents identifiers and typed identifiers. *)
+type id = string with compare, sexp
+type typed_id = id * typ with compare, sexp
 
- (** Typed identifiers and typed expressions. *)
- and typed_id = id * typ
- and typed_expr = expr * typ
+(** Keys for each built in operator. Operator metadata is stored separately. *)
+type op =
+  | Plus
+  | Minus
+  | Mul
+  | Div
+  | Mod
+  | Eq
+  | Neq
+  | Lt
+  | Leq
+  | Gt
+  | Geq
+  | And
+  | Or
+  | Not
+  | Cons
+  | Car
+  | Cdr
+  | If
+  | Fold
+  | Foldl 
+  | Filter with compare, sexp
 
- (** Keys for each built in operator. Operator metadata is stored
- separately. *)
- and op =
-   | Plus
-   | Minus
-   | Mul
-   | Div
-   | Mod
-   | Eq
-   | Neq
-   | Lt
-   | Leq
-   | Gt
-   | Geq
-   | And
-   | Or
-   | Not
-   | Cons
-   | Car
-   | Cdr
-   | If
-   | Foldl
+(** Constants are a subset of expressions that does not allow names or
+lambdas. *)
+type const = [ `Num of int 
+             | `Bool of bool 
+             | `List of const list 
+             | `Nil ]
 
- (** Types for expressions and values. *)
- and expr = [ `Num of int 
+(** An example is the application of a function to some constants and
+the constant that should result. E.g. (f 1 2) -> 3 would be an example
+for the function f. The target function can be applied to constants or
+to recursive invocations of itself. (Invoking other functions cannot
+be disallowed by the type system, but is not allowed.) *)
+type const_app = [ `Num of int 
+                 | `Bool of bool 
+                 | `List of const_app list
+                 | `Nil 
+                 | `Apply of [`Id of id] * (const_app list) ]
+type example_lhs = [ `Apply of [ `Id of id ] * (const_app list) ]
+type example = example_lhs * const
+
+(** Types for expressions and values. *)
+type expr = [ `Num of int 
             | `Bool of bool 
             | `List of expr list 
             | `Nil 
-            | `Id of id 
+            | `Id of id
             | `Let of id * expr * expr 
             | `Define of id * expr 
-            | `Lambda of typed_id list * expr 
-            | `Apply of expr * (expr list) 
-            | `Op of op * (expr list) ]
- and value = [ `Num of int
+            | `Lambda of typed_id list * expr
+            | `Apply of expr * (expr list)
+            | `Op of op * (expr list) ] with compare, sexp
+
+type value = [ `Num of int
              | `Bool of bool 
              | `List of value list 
              | `Nil 
              | `Closure of expr * eval_ctx
              | `Unit ]
+and eval_ctx = value String.Map.t ref with compare, sexp
+
+type typed_expr = expr * typ with compare, sexp
 
  (** An evaluation context maps identifiers to values. *)
- and eval_ctx = value String.Map.t ref
- and type_ctx = typ String.Map.t ref
+type type_ctx = typ String.Map.t ref
 
- and type_pred = typ list -> typ -> bool
+type type_pred = typ list -> typ -> bool
 
 (** Type for storing operator metadata. *)
 type op_data = {
@@ -70,7 +91,7 @@ type op_data = {
   commut : bool;
   assoc  : bool;
   str    : string;
-  input_types : (typ list -> typ -> bool) list;
+  input_types : type_pred list;
 }
 
 (** Determine whether t1 and t2 are compatible types. *)
@@ -111,14 +132,19 @@ let match_cons prev t = match t with
   | _ -> false
 let match_prev prev t = (List.last_exn prev) = t
 
-let match_foldl_f prev t = match prev, t with
+let match_fold_f prev t = match prev, t with
   | [Nil_t], Arrow_t ([at1; _], at2) -> type_equal at1 at2
   | [List_t et1], Arrow_t ([at1; et2], at2) -> (type_equal at1 at2) &&
                                                  (type_equal et1 et2)
   | _ -> false
 
-let match_foldl_init prev t = match prev with
+let match_fold_init prev t = match prev with
   | [_; Arrow_t ([at1; _], at2)] -> (type_equal at1 at2) && (type_equal t at1)
+  | _ -> false
+
+let match_filter_f prev t = match prev, t with
+  | [Nil_t], Arrow_t ([_], Bool_t) -> true
+  | [List_t et1], Arrow_t ([et2], Bool_t) -> type_equal et1 et2
   | _ -> false
 
 let operators = [
@@ -158,8 +184,12 @@ let operators = [
     input_types = [match_list]; };
   { name = If;    arity = 3; commut = false; assoc = false; str = "if"; 
     input_types = [match_bool; match_any; match_prev]; };
+  { name = Fold;  arity = 3; commut = false; assoc = false; str = "fold";
+    input_types = [match_list; match_fold_f; match_fold_init]; };
   { name = Foldl; arity = 3; commut = false; assoc = false; str = "foldl";
-    input_types = [match_list; match_foldl_f; match_foldl_init]; };
+    input_types = [match_list; match_fold_f; match_fold_init]; };
+  { name = Filter; arity = 2; commut = false; assoc = false; str = "filter";
+    input_types = [match_list; match_filter_f]; };
 ]
 
 (** Get operator record from operator name. *)
@@ -216,7 +246,7 @@ let rec expr_to_string e =
   match e with
   | `Id x -> x
   | `Num x -> Int.to_string x
-  | `Bool x -> Bool.to_string x
+  | `Bool x -> if x then "#t" else "#f"
   | `Nil -> "nil"
   | `Op (op, args) -> sexp "(" ((operator_to_str op)::(str_all args)) ")"
   | `List l -> sexp "[" (str_all l) "]"
@@ -228,6 +258,8 @@ let rec expr_to_string e =
      sexp "(" ["lambda"; sexp "(" (arg_strs x) ")"; expr_to_string y] ")"
   | `Apply (x, y) -> sexp "(" ((expr_to_string x)::(str_all y)) ")"
 
+let prog_to_string p = List.map p ~f:expr_to_string |> String.concat ~sep:"\n"
+
 let rec value_to_string v = 
   let str_all l = List.map ~f:value_to_string l in
   match v with
@@ -238,3 +270,8 @@ let rec value_to_string v =
   | `Unit -> "unit"
   | `List l -> sexp "[" (str_all l) "]"
   | `Closure (e, _) -> expr_to_string e
+
+let example_to_string (ex: example) = 
+  let e1, e2 = ex in
+  (expr_to_string (e1 :> expr)) ^ " -> " ^ (expr_to_string (e2 :> expr))
+  

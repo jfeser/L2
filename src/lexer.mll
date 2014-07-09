@@ -8,7 +8,7 @@
 let white = [' ' '\t' '\n' '\r']+
 let id = ['a'-'z' 'A'-'Z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']* 
 let operator = "+" | "-" | "*" | "/" | "%" | "=" | "!=" | ">" | ">=" | "<" | 
-               "<=" | "&" | "|" | "~" | "cons" | "car" | "cdr" | "if" | "foldl"
+               "<=" | "&" | "|" | "~" | "cons" | "car" | "cdr" | "if" | "fold" | "foldl" | "filter"
 
 rule token = parse
        | white             { token lexbuf } (* Eat whitespace. *)
