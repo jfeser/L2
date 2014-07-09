@@ -1,0 +1,8 @@
+# Ocaml
+*.native
+_build/
+.depend
+.depend.input
+
+# Emacs
+.merlin
