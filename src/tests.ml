@@ -220,33 +220,58 @@ let test_specialize =
                 Num_t, Num_t, Num_t;
     ])
 
-let test_symb_solver = 
-  let exact_parse_from_string exp = 
+
+(*Helper methods for sat solver and symb solver test suites*)
+let exact_parse_from_string exp = 
   (match (Util.parse exp) with
   | hd::_ -> hd
-  | [] -> assert false) in
+  | [] -> assert false)
+  
+
+let vals_to_string (res:(value list * value) list) =
   let rec list_to_string (in_list:value list)= (match in_list with
   | `Num(hd)::tl -> String.concat ~sep:"" [string_of_int hd; " "; list_to_string tl]
-  | _ -> ""
-  ) in
-  let rec vals_to_string (res:(value list * value) list) = (match res with
-  | (hd1,`Num(hd2))::tl -> String.concat ~sep:"" ["(";String.strip (list_to_string hd1) ;") = "; string_of_int hd2;") "; vals_to_string tl]
-  | _ -> "") in
-  let w_vals_to_string (res:(value list * value) list) = String.concat ~sep:"" ["[";String.strip (vals_to_string res);"]"] in
-  "test_symb_solver" >:::
+  | _ -> "") in 
+  let rec vals_to_string_helper (res:(value list * value) list) = (match res with
+    | (hd1,`Num(hd2))::tl -> String.concat ~sep:"" ["(";String.strip (list_to_string hd1) ;") = "; string_of_int hd2;") "; vals_to_string_helper tl]
+    | _ -> "") in
+  String.concat ~sep:"" ["[";String.strip (vals_to_string_helper res);"]"]
+
+let test_sat_solver = 
+  "test_sat_solver" >:::
       (List.map ~f:(fun (n, (m:(value list * value) list), p) ->
                   let title = Printf.sprintf "%s %s -> %s" 
                                              n
-                                             (w_vals_to_string m)
+                                             (vals_to_string m)
                                              p
                                              in
-                  title >:: (fun _ -> assert_equal (expr_to_string (SymbSolver.symb_solve (exact_parse_from_string n) m)) p))
+                  title >:: (fun _ -> (assert_equal ~printer:(fun x -> x) p (expr_to_string (SymbSolver.sat_solve (exact_parse_from_string n) m)))))
               [ "(lambda (x:num y:num) (+ (+ x y) z))" , [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)";
-                "(lambda (x:num y:num) (+ (+ x y) z))" , [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)";
+                "(lambda (x:num y:num) (+ (+ x y) z))" , [([`Num 6;`Num 7],`Num 8)], "(+ (+ x y) -5)";
                 "(lambda (x:num y:num) (+ (+ (+ x y) z1) z2))" , [([`Num 1;`Num 2],`Num 3)], "(+ (+ (+ x y) 0) 0)"
                   
             ])
 
+let test_symb_solver = 
+  "test_symb_solver" >:::
+      (List.map ~f:(fun (n, c, (m:(value list * value) list), p) ->
+                  let title = Printf.sprintf "%s %s %s -> %s" 
+                                             n
+                                             (String.concat ~sep:"\n" c)
+                                             (vals_to_string m)
+                                             p
+                                             in
+                  title >:: (fun _ -> assert_equal ~printer:(fun x -> x) p (expr_to_string (SymbSolver.symb_solve (exact_parse_from_string n) (List.map ~f:(exact_parse_from_string) c) m))))
+              [
+              "(lambda (x:num y:num) (+ (+ x y) z))" , [], [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)"; 
+              "(lambda (x:num y:num) (+ (+ x y) z))" , ["(< z 1)"], [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)";
+              "(lambda (x:num y:num) (+ (+ x y) z))" , ["(< z 1)"], [([`Num 6;`Num 7],`Num 8)], "(+ (+ x y) -5)";
+              "(lambda (x:num y:num) (+ (+ x y) z))" , ["(< z 1)";"(> z (- 0 1))"], [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)";
+              "(lambda (x:num y:num) (+ (+ (+ x y) z1) z2))" ,["(< z1 2)"; "(<z2 2)"], [([`Num 1;`Num 2],`Num 3)], "(+ (+ (+ x y) 0) 0)";
+              "(lambda (x:num y:num) (+ (+ (+ x y) z1) z2))" ,["(< z1 (- 0 2))"; "(> z2 2)"], [([`Num 1;`Num 2],`Num 3)], "(+ (+ (+ x y) -3) 3)";
+              "(lambda (x:num y:num) (+ (+ x y) z))" , ["(< (f 1 2) 1)"], [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)";
+
+            ])
 
 let test_eval_typeof_value _ = 
   assert_equal Num_t (Eval.typeof_value (`Num 1));
@@ -285,6 +310,7 @@ let () = run_test_tt_main
                 test_specialize;
                 test_straight_solve;
                 test_catamorphic_solve;
-                test_symb_solver;
+                test_sat_solver;
+                test_symb_solver
            ]);
 ;;
