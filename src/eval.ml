@@ -25,27 +25,24 @@ let argn_error id = raise (RuntimeError ("Wrong # of arguments to " ^ id))
 
 (** Look up an id in the provided context. Works for type and eval
 contexts. *)
-let lookup id ctx =
-  match String.Map.find !ctx id with
+let lookup id ctx = String.Map.find !ctx id
+let lookup_exn id ctx =
+  match lookup id ctx with
   | Some v -> v
   | None -> unbound_error id
 
 (** Bind a type or value to an id, returning a new context. *)
 let bind ctx ~key:k ~data:v = ref (String.Map.add !ctx ~key:k ~data:v)
+let unbind ctx ~key:k = ref (String.Map.remove !ctx k)
 
 (** Bind a type or value to an id, updating the context in place. *)
 let update ctx ~key:k ~data:v = ctx := String.Map.add !ctx ~key:k ~data:v
-
-(** Create an empty type or eval context. The type system complains
-unless these are separate functions. *)
-let empty_type_ctx = fun () -> ref String.Map.empty
-let empty_eval_ctx = fun () -> ref String.Map.empty
 
 (** Evaluate an expression in the provided context. *)
 let rec eval (env: eval_ctx) expr =
   let eval_all l = List.map l ~f:(eval env) in
   match expr with
-  | `Id id               -> lookup id env
+  | `Id id               -> lookup_exn id env
   | `Num x               -> `Num x
   | `Bool x              -> `Bool x
   | `Nil                 -> `Nil
@@ -148,8 +145,14 @@ let rec eval (env: eval_ctx) expr =
                                                     `Op (Cons, [`Op (Car, [l]);
                                                                 `Op (Filter, [`Op (Cdr, [l]); f])]);
                                                     `Op (Filter, [`Op (Cdr, [l]); f])])]))
-                                                      
                    | _ -> arg_error op args)
+      | Map -> (match args with
+                | [l; f] ->
+                   eval env (`Op (If, [`Op (Eq, [`Nil; l]);
+                                       `Nil;
+                                       `Op (Cons, [`Apply (f, [`Op (Car, [l])]);
+                                                   `Op (Cdr, [l])])]))
+                | _ -> arg_error op args)
       | Foldl -> (match args with
                   | [l; f; i] ->
                      eval env 
@@ -168,7 +171,7 @@ eval context which contains bindings for each define in the
 program. It then evaluates the last non-define expression and returns
 the result. *)
 let prog_eval prog =
-  let env = prog |> List.fold_left ~init:(empty_eval_ctx ())
+  let env = prog |> List.fold_left ~init:(Util.empty_ctx ())
                                    ~f:(fun nv def ->
                                        match def with
                                        | `Define (id, ex) ->
@@ -213,29 +216,27 @@ let rec typeof_expr (ctx: type_ctx) (expr: expr) : typ =
       | And -> (match args with [Bool_t; Bool_t] -> Bool_t | _ -> type_error op args)
       | Cons -> (match args with
                  | [t; Nil_t] -> List_t t
-                 | [t1; List_t t2] -> if type_equal t1 t2 then List_t t1
-                                      else type_error op args
+                 | [t1; List_t t2] when type_equal t1 t2 -> List_t t1
                  | _ -> type_error op args)
       | If -> (match args with
-               | [Bool_t; t1; t2] ->
-                  if type_equal t1 t2 then t1
-                  else raise @@ TypeError "If branches have different types."
+               | [Bool_t; t1; t2] when type_equal t1 t2 -> t1
                | _ -> type_error op args)
-      | Fold 
+      | Map -> (match args with
+                | [Nil_t; Arrow_t ([_], _)] -> Nil_t
+                | [List_t it1; Arrow_t ([it2], ot)] when type_equal it1 it2 -> List_t ot
+                | _ -> type_error op args)
+      | Fold
       | Foldl -> (match args with
-                  | [Nil_t; Arrow_t ([at1; _], at2); at3] ->
-                     if Util.all_equal ~eq:type_equal [at1; at2; at3]
-                     then at2 else type_error op args
-                  | [List_t et2; Arrow_t ([at1; et1], at2); at3] ->
-                     if (Util.all_equal ~eq:type_equal [at1; at2; at3]) && (type_equal et1 et2)
-                     then at2 else type_error op args
+                  | [Nil_t; Arrow_t ([at1; _], at2); at3]
+                       when Util.all_equal ~eq:type_equal [at1; at2; at3] -> at2
+                  | [List_t et2; Arrow_t ([at1; et1], at2); at3]
+                      when (Util.all_equal ~eq:type_equal [at1; at2; at3]) && (type_equal et1 et2) -> at2
                   | _ -> type_error op args)
       | Filter -> (match args with
                    | [Nil_t; Arrow_t ([_], Bool_t)] -> Nil_t
-                   | [List_t et1; Arrow_t ([et2], Bool_t)] -> 
-                      if type_equal et1 et2 then List_t et1 else type_error op args
+                   | [List_t et1; Arrow_t ([et2], Bool_t)] when type_equal et1 et2 -> List_t et1
                    | _ -> type_error op args))
-  | `Id name -> lookup name ctx
+  | `Id name -> lookup_exn name ctx
   | `Let (name, e1, e2) ->
      let ctx' = bind ctx ~key:name ~data:(typeof_expr ctx e1) in
      typeof_expr ctx' e2

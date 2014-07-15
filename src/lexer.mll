@@ -18,6 +18,7 @@ rule token = parse
        | "let"             { LET }
        | "define"          { DEF }
        | "lambda"          { LAMBDA }
+       | "forall"          { FORALL }
        | "nil"             { NIL }
        | "->"              { ARROW }
        | ':'               { COLON }

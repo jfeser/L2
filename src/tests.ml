@@ -2,6 +2,9 @@ open Core.Std
 open OUnit2
 open Ast
 
+(* Configuration options. *)
+let test_solve = Conf.make_bool "solve" false "By default, do not test solve functions."
+
 let identity (x: 'a) : 'a = x
 
 let cmp_partition a b = 
@@ -21,7 +24,7 @@ let assert_solve_cata (result: string) (examples: example list) (init: expr list
   let solve_prog = ((Search.solve_catamorphic examples ~init:init) :> expr list) in
   assert_equal ~printer:prog_to_string res_prog solve_prog
 
-let eval expr = Eval.eval (Eval.empty_eval_ctx ()) expr
+let eval expr = Eval.eval (Util.empty_ctx ()) expr
 
 let make_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name cases = 
   name >:::
@@ -29,6 +32,15 @@ let make_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name case
                   let case_name = Printf.sprintf "%s => %s" (in_str input) (out_str output) in
                   case_name >:: (fun _ -> assert_equal ~printer:res_str ~cmp:cmp 
                                                        (out_f output) (in_f input)))
+              cases)
+
+let make_solve_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name cases = 
+  name >:::
+    (List.map ~f:(fun (input, output) -> 
+                  let case_name = Printf.sprintf "%s => %s" (in_str input) (out_str output) in
+                  case_name >:: (fun ctx -> 
+                                 skip_if (not (test_solve ctx)) "Skipping solve tests.";
+                                 assert_equal ~printer:res_str ~cmp:cmp (out_f output) (in_f input)))
               cases)
 
 let test_parse_expr =
@@ -61,6 +73,8 @@ let test_parse_expr =
                 "(cons 1 [2])", `Op (Cons, [`Num 1; `List [`Num 2]]);
                 "(cdr [])", `Op (Cdr, [`List []]);
                 "(cdr [1 2])", `Op (Cdr, [`List [`Num 1; `Num 2;]]);
+                "(f 1 2)", `Apply (`Id "f", [`Num 1; `Num 2]);
+                "(> (f 1 2) 3)", `Op (Gt, [`Apply (`Id "f", [`Num 1; `Num 2]); `Num 3]);
               ]
 
 let test_parse_example = 
@@ -217,62 +231,86 @@ let test_denormalize =
     ]
 
 let test_straight_solve =
-  make_tests ~in_f:(fun (_, example_strs, init_strs) -> 
-                    let solution = Search.solve ~init:(List.map init_strs ~f:Util.parse_expr) 
-                                                (List.map example_strs ~f:Util.parse_example) in
-                    (solution :> expr))
-             ~out_f:Util.parse_expr
-             ~in_str:(fun (name, _, _) -> name) ~out_str:identity ~res_str:expr_to_string
-             "straight_solve"
-             [
-               ("plus", ["(f 1 1) -> 2"; 
-                         "(f 2 1) -> 3"], []), 
-               "(define f (lambda (x0:num x1:num) (+ x0 x1)))";
+  make_solve_tests 
+    ~in_f:(fun (_, example_strs, init_strs) -> 
+           let solution = Search.solve ~init:(List.map init_strs ~f:Util.parse_expr) 
+                                       (List.map example_strs ~f:Util.parse_example) in
+           (solution :> expr))
+    ~out_f:Util.parse_expr
+    ~in_str:(fun (name, _, _) -> name) ~out_str:identity ~res_str:expr_to_string
+    "straight_solve"
+    [
+      ("plus", ["(f 1 1) -> 2"; 
+                "(f 2 1) -> 3"], []), 
+      "(define f (lambda (x0:num x1:num) (+ x0 x1)))";
 
-               ("max", ["(f 3 5) -> 5";
-                        "(f 5 3) -> 5"], []),
-               "(define f (lambda (x0:num x1:num) (if (< x0 x1) x1 x0)))";
+      ("max", ["(f 3 5) -> 5";
+               "(f 5 3) -> 5"], []),
+      "(define f (lambda (x0:num x1:num) (if (< x0 x1) x1 x0)))";
 
-               ("second", ["(f [1 2]) -> 2";
-                           "(f [1 3]) -> 3"], []),
-               "(define f (lambda (x0:[num]) (car (cdr x0))))";
+      ("second", ["(f [1 2]) -> 2";
+                  "(f [1 3]) -> 3"], []),
+      "(define f (lambda (x0:[num]) (car (cdr x0))))";
 
-               ("even", ["(f 1) -> #f";
-                         "(f 2) -> #t";
-                         "(f 3) -> #f";
-                         "(f 4) -> #t";
-                        ], ["0"; "2"]),
-               "(define f (lambda (x0:num) (= (% x0 2) 0)))";
-             ]
+      ("even", ["(f 1) -> #f";
+                "(f 2) -> #t";
+                "(f 3) -> #f";
+                "(f 4) -> #t";
+               ], ["0"; "2"]),
+      "(define f (lambda (x0:num) (= (% x0 2) 0)))";
+    ]
 
 let test_catamorphic_solve =
-  make_tests ~in_f:(fun (_, example_strs, init_strs) ->
-                    let solution = Search.solve_catamorphic 
-                                     ~init:(List.map init_strs ~f:Util.parse_expr)
-                                     (List.map example_strs ~f:Util.parse_example) in
-                    (solution :> expr list))
-             ~out_f:Util.parse_prog
-             ~in_str:(fun (name, _, _) -> name) ~out_str:identity ~res_str:prog_to_string
-             "catamorphic_solve"
-             [
-               ("sum", ["(f []) -> 0";
-                        "(f [1]) -> 1";
-                        "(f [1 2]) -> 3";
-                       ], []),
-               "";
+  make_solve_tests 
+    ~in_f:(fun (_, example_strs, init_strs) ->
+           let solution = Search.solve_catamorphic 
+                            ~init:(List.map init_strs ~f:Util.parse_expr)
+                            (List.map example_strs ~f:Util.parse_example) in
+           (solution :> expr list))
+    ~out_f:Util.parse_prog
+    ~in_str:(fun (name, _, _) -> name) ~out_str:identity ~res_str:prog_to_string
+    "catamorphic_solve"
+    [
+      ("sum", ["(f []) -> 0";
+               "(f [1]) -> 1";
+               "(f [1 2]) -> 3";
+              ], []),
+      "";
 
-               ("rev-concat", ["(f []) -> []";
-                               "(f [[1]]) -> [1]";
-                               "(f [[1] [2]]) -> [1 2]";
-                              ], []),
-               "";
+      (* ("rev-concat", ["(f []) -> []"; *)
+      (*                 "(f [[1]]) -> [1]"; *)
+      (*                 "(f [[1] [2 3]]) -> [1 2 3]"; *)
+      (*                 "(f [[1 4 5] [2 3]]) -> [1 4 5 2 3]"; *)
+      (*                ], []), *)
+      (* ""; *)
 
-               ("length", ["(f []) -> 0";
-                           "(f [0]) -> 1";
-                           "(f [0 0]) -> 2";
-                          ], ["1"]),
-               "";
-             ]
+      ("length", ["(f []) -> 0";
+                  "(f [0]) -> 1";
+                  "(f [0 0]) -> 2";
+                 ], ["1"]),
+      "";
+
+      ("evens", ["(f []) -> []";
+                 "(f [1]) -> []";
+                 "(f [1 2]) -> [2]";
+                 "(f [1 2 3 4]) -> [2 4]";
+                ], ["0"; "2"]),
+      "";
+
+      ("odds", ["(f []) -> []";
+                "(f [1]) -> [1]";
+                "(f [1 2]) -> [1]";
+                "(f [1 2 3 4]) -> [1 3]";
+               ], ["0"; "2"]),
+      "";
+
+      ("incr", ["(f []) -> []";
+                "(f [1]) -> [2]";
+                "(f [1 2]) -> [2 3]";
+                "(f [1 2 3 4]) -> [2 3 4 5]";
+               ], ["1"]),
+      "";
+    ]
 (* let test_catamorphic_solve =  *)
 (*   "catamorphic_solve" >::: *)
 (*     (List.map ~f:(fun (str, examples, init) ->  *)
@@ -378,7 +416,7 @@ let test_typeof_value =
 
 let test_typeof_example = 
   make_tests ~in_f:(fun ex -> ex |> Util.parse_example 
-                              |> (Search.typeof_example (Eval.empty_type_ctx ())))
+                              |> (Search.typeof_example (Util.empty_ctx ())))
              ~out_f:identity
              ~in_str:identity ~out_str:typ_to_string ~res_str:typ_to_string
              "typeof_example"
@@ -400,6 +438,67 @@ let test_signature =
                ["(f 1 []) -> [1]"; "(f 1 (f 2 [])) -> [2 1]"], Arrow_t ([Num_t; List_t Num_t], (List_t Num_t));
              ]
 
+let test_expand = 
+  make_tests ~in_f:(fun e -> e |> Util.parse_expr |> Verify.expand (Util.empty_ctx ())) 
+             ~out_f:Util.parse_expr
+             ~in_str:identity ~out_str:identity ~res_str:expr_to_string
+             "expand"
+             [ 
+               "(let x 2 (+ x 1))", "(+ 2 1)";
+               "(let x 3 [1 x 2 x])", "[1 3 2 3]";
+               "(let x 3 (lambda (a:num) (+ a x)))", "(lambda (a:num) (+ a 3))";
+               "(let x 3 (lambda (x:num) (+ 5 x)))", "(lambda (x:num) (+ 5 x))";
+               "(define y (let a (+ 1 2) (* a 3)))", "(define y (* (+ 1 2) 3))";
+               "(let x 2 (let x 3 (let x 4 x)))", "4";
+               "(let x 2 (let x 3 (let x 4 x)))", "4";
+             ]
+
+let test_expr_to_z3 =
+  let zctx = Z3.mk_context [] in
+  make_tests ~in_f:(fun e -> e 
+                             |> Util.parse_expr 
+                             |> Verify.expr_to_z3 zctx (Util.empty_ctx ()))
+             ~out_f:identity 
+             ~in_str:identity ~out_str:Z3.Expr.to_string ~res_str:Z3.Expr.to_string
+             ~cmp:Z3.Expr.equal
+             "expr_to_z3"
+             [
+               "(+ 1 2)", Z3.Arithmetic.mk_add zctx
+                                               [ (Z3.Arithmetic.Integer.mk_numeral_i zctx 1);
+                                                 (Z3.Arithmetic.Integer.mk_numeral_i zctx 2); ];
+             ]
+
+let test_verify = 
+  let status_to_str = function
+    | Verify.Invalid -> "Invalid"
+    | Verify.Valid -> "Valid"
+    | Verify.Error -> "Error" in
+
+  make_tests 
+    ~in_f:(fun (fdef_str, cs_strs) -> 
+           let fdef = match Util.parse_expr fdef_str with 
+             | `Define (n, `Lambda (a, b)) -> `Define (n, `Lambda (a, b)) 
+             | _ -> assert_failure "Not a function definition." in
+           let cs = List.map cs_strs ~f:Util.parse_constr in
+           Verify.verify fdef cs)
+    ~out_f:identity 
+    ~in_str:(fun (fdef_str, cs_strs) -> String.concat ~sep:", " (fdef_str::cs_strs))
+    ~out_str:status_to_str ~res_str:status_to_str
+    "verify"
+    [ 
+      ("(define f (lambda (x:num) (+ x 1)))", [ "(forall (a:num) (> (f a) a))" ]), Verify.Valid;
+      ("(define f (lambda (x:num) (+ x 1)))", [ "(forall (a:num) (= (f a) a))" ]), Verify.Invalid;
+      ("(define f (lambda (x0:num x1:num) (if (< x0 x1) x1 x0)))", 
+       [ "(forall (a:num b:num) (>= (f a b) a))";
+         "(forall (a:num b:num) (>= (f a b) b))" ]), Verify.Valid;
+      ("(define f (lambda (x0:num x1:num) (if (< x0 x1) x1 x0)))", 
+       [ "(forall (a:num b:num) (>= (f a b) a))";
+         "(forall (a:num b:num) (>= (f a b) b))"; 
+         "(forall (a:num b:num) (= (f a b) b))"; 
+      ]), Verify.Invalid;
+    ]
+      
+
 let () = run_test_tt_main 
            ("test-suite" >::: 
               [                 
@@ -417,6 +516,10 @@ let () = run_test_tt_main
                 test_specialize;
                 test_signature;
 
+                test_expand;
+                test_expr_to_z3;
+                test_verify;
+                
                 test_partition;
                 test_m_partition;
 
@@ -427,5 +530,4 @@ let () = run_test_tt_main
 
                 test_straight_solve;
                 test_catamorphic_solve;
-           ]);
-;;
+              ]);

@@ -59,26 +59,16 @@ let rec all_equal (l: 'a list) ~eq:eq = match l with
   | x::xs -> (List.for_all xs ~f:(eq x)) && (all_equal ~eq:eq xs)
   | []    -> true
 
-let parse_prog str = 
+let parse parse_f str = 
   let lexbuf = Lexing.from_string str in
-  try Parser.prog Lexer.token lexbuf with
+  try parse_f Lexer.token lexbuf with
   | Parser.Error -> raise Parser.Error
   | Lexer.SyntaxError _ -> raise Parser.Error
-  | Parsing.Parse_error -> raise Parser.Error
-;;
+  | Parsing.Parse_error -> raise Parser.Error  
 
-let parse_expr str =
-  let lexbuf = Lexing.from_string str in
-  try Parser.expr Lexer.token lexbuf with
-  | Parser.Error -> raise Parser.Error
-  | Lexer.SyntaxError _ -> raise Parser.Error
-  | Parsing.Parse_error -> raise Parser.Error
-;;
+let parse_prog str = parse Parser.prog str
+let parse_expr str = parse Parser.expr str
+let parse_example str = parse Parser.example str
+let parse_constr str = parse Parser.constr str
 
-let parse_example str =
-  let lexbuf = Lexing.from_string str in
-  try Parser.example Lexer.token lexbuf with
-  | Parser.Error -> raise Parser.Error
-  | Lexer.SyntaxError _ -> raise Parser.Error
-  | Parsing.Parse_error -> raise Parser.Error
-;;
+let empty_ctx () : 'a String.Map.t ref = ref String.Map.empty

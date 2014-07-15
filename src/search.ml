@@ -15,12 +15,6 @@ module TypedExpr =
 module TypedExprSet = Set.Make(TypedExpr)
 type build_set = TypedExprSet.t IntMap.t
 
-(** A constraint is a more general form of an example that allows
-arbitrary expressions on either side of the equals sign. *)
-type constraint_ = expr * expr
-
-type function_def = [`Define of id * [`Lambda of typed_id list * expr]]
-
 exception Solved of function_def
 exception SolveError of string
 
@@ -55,18 +49,19 @@ let target_name (examples: example list) : id =
 
 (** Infer a function signature from input/output examples. *)
 let signature (examples: example list) : typ =
-  let etc = empty_type_ctx in
   let name = target_name examples in
   match examples with
-  | x::xs -> let init_ctx = bind (etc ()) ~key:name ~data:(typeof_example (etc ()) x) in
+  | x::xs -> let init_ctx = bind (Util.empty_ctx ()) 
+                                 ~key:name
+                                 ~data:(typeof_example (Util.empty_ctx ()) x) in
              let final_ctx =
                List.fold xs
                          ~init:init_ctx
                          ~f:(fun ctx ex ->
                              let example_typ = specialize (typeof_example ctx ex)
-                                                          (lookup name ctx) in
+                                                          (lookup_exn name ctx) in
                              bind ctx ~key:name ~data:example_typ) in
-             lookup name final_ctx
+             lookup_exn name final_ctx
   | [] -> solve_error "Example list is empty."
 
 let fresh_name = 
@@ -90,7 +85,7 @@ let create_ctx (vars: typed_expr list) : type_ctx =
   List.fold vars ~f:(fun ctx (e, t) -> match e with
                                        | `Id n -> bind ctx ~key:n ~data:t
                                        | _ -> ctx)
-            ~init:(empty_type_ctx ())
+            ~init:(Util.empty_ctx ())
 
 let apply_candidate (def: [< `Define of id * expr ]) (inputs: expr list) : value =
   let `Define (id, _) = def in
@@ -124,7 +119,7 @@ let solve ?(init=[]) (examples: example list) : function_def =
 
   (* Generate the set of initial expressions from the argument names
   and any provided expressions. *)
-  let initial = (List.map ~f:(fun e -> (e, typeof_expr (empty_type_ctx ()) e)) init) @
+  let initial = (List.map ~f:(fun e -> (e, typeof_expr (Util.empty_ctx ()) e)) init) @
                   argument_ids in
   
   (* Generate an oracle function from the examples. *)
@@ -223,13 +218,27 @@ let solve ?(init=[]) (examples: example list) : function_def =
   | Solved expr -> expr
 ;;
 
-(* Future: Use kitzelmann's ideas on generalizing examples into
-constructor systems to determine as much program structure as possible
-from provided examples, and then use a subfunction and search to find
-the parts that aren't generalizable. *)
-
 let rec solve_catamorphic ?(init=[]) (examples: example list) : function_def list =
   match signature examples with
+  (* If the signature is list 'a -> list 'a, then assume f can be
+    implemented using filter. *)
+  | Arrow_t ([List_t et1], List_t et2) when et1 = et2 -> 
+     let extract_lists (ex: example) = match ex with (`Apply (_, [`List i])), `List o -> i, o in
+     (* If the input and output lists are the same length in every
+     example, assume f can be implemented using map. *)
+     if List.for_all examples ~f:(fun ex -> let i, o = extract_lists ex in (List.length i) = 
+                                                                             (List.length o))
+     then solve_map ~init:init examples
+
+     (* If there is an example with a shorter output list than its
+     input list, implement with filter. Otherwise, use fold, since it
+     is the most general. *)
+     else 
+       if List.exists examples ~f:(fun ex -> let i, o = extract_lists ex in (List.length i) > 
+                                                                              (List.length o))
+       then solve_filter ~init:init examples
+       else solve_fold ~init:init examples
+
   (* If the input is a list of 'a, assume that f can be implemented
     using a fold. *)
   | Arrow_t ([List_t _], _) -> solve_fold ~init:init examples
@@ -252,7 +261,8 @@ and solve_fold ?(init=[]) (examples: example list) : function_def list =
    | [(`Apply (_, _)), fold_init] ->
       (* Extract examples for the lambda that is passed to fold. *)
       let lambda_name = fresh_name () in
-      let apply_lambda acc elem : example_lhs = `Apply (`Id lambda_name, [acc; elem]) in
+      let apply_lambda (acc: const_app) (elem: const) : example_lhs = 
+        `Apply (`Id lambda_name, [acc; (elem :> const_app)]) in
       let (lambda_examples: example list) =
         List.map recursive ~f:(fun ((`Apply (_, [`List (x::xs)])), result) ->
                                (List.fold xs ~init:(apply_lambda (fold_init :> const_app) x)
@@ -269,50 +279,35 @@ and solve_fold ?(init=[]) (examples: example list) : function_def list =
         [`Define (name, `Lambda ([list_name, List_t elem_type],
                                  `Op (Fold, [`Id list_name; `Id lambda_name; (fold_init :> expr)])))]
    | _ -> solve_error "Multiple return values for the same input.")
-  
-(* f([]) -> 0 *)
-(* f([1]) -> 1 *)
-(* f([1 2]) -> 3 *)
 
-(* l(1, 0) -> 1 *)
-(* l(1, l(2, 0)) -> 3 *)
+and solve_filter ?(init=[]) (examples: example list) : function_def list =
+  let Arrow_t ([List_t elem_type], _) = signature examples in
+  let lambda_name = fresh_name () in
+  let filter_ex ret elem : example = (`Apply (`Id lambda_name, [(elem :> const_app)])), `Bool ret in
+  let lambda_examples = 
+    List.concat_map examples 
+                    ~f:(fun ((`Apply (_, [`List input])), `List result) ->
+                        let retained, removed = List.partition_tf input ~f:(List.mem result) in
+                        (List.map retained ~f:(filter_ex true) @
+                          (List.map removed ~f:(filter_ex false)))) in
+  let lambda_def = solve_catamorphic ~init:init lambda_examples in
+  let name = target_name examples in
+  let list_name = fresh_name () in
+  lambda_def @
+    [`Define (name, `Lambda ([list_name, List_t elem_type],
+                             `Op (Filter, [`Id list_name; `Id lambda_name])))]
 
-(* f([]) -> [] *)
-(* f([1]) -> [2] *)
-(* f([1 1]) -> [2 2] *)
-
-(* l(1, []) -> [2] *)
-(* l(1, l(1, [])) -> [2 2] *)
-
-(* f([]) -> [] *)
-(* f([1]) -> [1] *)
-(* f([1 1]) -> [2 1] *)
-(* f([1 1 1]) -> [3 2 1] *)
-
-(* l(1, []) -> [1] *)
-(* l(1, l(1, [])) -> [2 1] *)
-
-                    (* Problem: The IO examples generated when we infer fold are
-insufficient to determine the type of the target expression using the
-current type algorithm. The only example that contains only constants
-will always have [] as the second parameter, so the second parameter
-will be inferred as Nil_t.  *)
-
-                    (* Problem: We can only generate one IO example that contains only
-constants when we infer a fold (or map or filter). The rest of the
-examples have references to the target function in them. However,
-there are no free variables, so these examples can still be checked
-using eval. Don't really want to treat them like constraints and use
-Z3. However, restricting the structure of examples is nice for
-inferring properties of the target function. *)
-
-                    (* Possible solution: Broaden examples and allow them to contain exprs
-as arguments. Return value still restricted to constants. Or, could
-broaden further and allow anything that has free variables and either
-pass in the target name or try to find an example to infer it
-from. Also, inferring the type of the target. Could pass as parameter,
-since search_catamorphic knows the type of the lambda, or could write
-a more powerful type checker that can determine the type
-automatically. Tempting to just pass types around since there's no use
-for the type checker elsewhere. *)
+and solve_map ?(init=[]) (examples: example list) : function_def list =
+  let Arrow_t ([List_t elem_type], _) = signature examples in
+  let lambda_name = fresh_name () in
+  let map_ex elem ret = (`Apply (`Id lambda_name, [(elem :> const_app)])), ret in
+  let (lambda_examples: example list) =
+    List.concat_map examples ~f:(fun ((`Apply (_, [`List input])), `List result) ->
+                                 List.map2_exn input result ~f:map_ex) in
+  let lambda_def = solve_catamorphic ~init:init lambda_examples in
+  let name = target_name examples in
+  let list_name = fresh_name () in
+  lambda_def @
+    [`Define (name, `Lambda ([list_name, List_t elem_type],
+                             `Op (Map, [`Id list_name; `Id lambda_name])))]
 

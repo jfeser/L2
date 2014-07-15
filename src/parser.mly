@@ -10,6 +10,7 @@ open Ast
 %token LET
 %token DEF
 %token LAMBDA
+%token FORALL
 %token NIL
 %token NUM_T
 %token BOOL_T
@@ -25,6 +26,7 @@ open Ast
 %start <Ast.expr list> prog
 %start <Ast.expr> expr
 %start <Ast.example> example
+%start <Ast.constr> constr
 %%
 
 prog:
@@ -50,6 +52,9 @@ expr:
  | x = NUM                                { `Num x }
  | x = ID                                 { `Id x }
 
+constr:
+ | LPAREN; FORALL; LPAREN; vars = list(typed_id); RPAREN; e = expr; RPAREN { (e, vars) }
+
 example:
  | lhs = example_lhs; ARROW; rhs = const { (lhs, rhs) }
 
@@ -58,7 +63,7 @@ example_lhs:
 
 const_or_apply:
  | LPAREN; f = ID; args = list(const_or_apply); RPAREN { `Apply (`Id f, args) }
- | LBRACKET; items = list(const_or_apply); RBRACKET    { `List items }
+ | LBRACKET; items = list(const); RBRACKET             { `List items }
  | NIL                                                 { `Nil }
  | x = BOOL                                            { `Bool x }
  | x = NUM                                             { `Num x }

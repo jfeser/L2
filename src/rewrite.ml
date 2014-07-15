@@ -80,7 +80,7 @@ let fold_constants (expr: expr) : expr option =
     | `Op (op, args)  -> let folded_args = fold_all args in
                          let new_op = `Op (op, folded_args) in
                          if List.for_all ~f:is_constant folded_args then
-                           (match value_to_constant (Eval.eval (Eval.empty_eval_ctx ()) new_op) with
+                           (match value_to_constant (Eval.eval (Util.empty_ctx ()) new_op) with
                             | Some const -> const
                             | None -> new_op)
                          else new_op
@@ -180,6 +180,9 @@ let rewrite (expr: expr) : expr option =
                               | Foldl -> (match args with
                                           | [`Nil; _; x] -> x
                                           | _ -> `Op (op, args))
+                              | Map -> (match args with
+                                        | [`Nil; _] -> `Nil
+                                        | _ -> `Op (op, args))
                               | Filter -> (match args with
                                            | [`Nil; _] -> `Nil
                                            | _ -> `Op (op, args)))

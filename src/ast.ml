@@ -33,6 +33,7 @@ type op =
   | Car
   | Cdr
   | If
+  | Map
   | Fold
   | Foldl 
   | Filter with compare, sexp
@@ -49,11 +50,7 @@ the constant that should result. E.g. (f 1 2) -> 3 would be an example
 for the function f. The target function can be applied to constants or
 to recursive invocations of itself. (Invoking other functions cannot
 be disallowed by the type system, but is not allowed.) *)
-type const_app = [ `Num of int 
-                 | `Bool of bool 
-                 | `List of const_app list
-                 | `Nil 
-                 | `Apply of [`Id of id] * (const_app list) ]
+type const_app = [ const | `Apply of [`Id of id] * (const_app list) ]
 type example_lhs = [ `Apply of [ `Id of id ] * (const_app list) ]
 type example = example_lhs * const
 
@@ -68,6 +65,10 @@ type expr = [ `Num of int
             | `Lambda of typed_id list * expr
             | `Apply of expr * (expr list)
             | `Op of op * (expr list) ] with compare, sexp
+
+type function_def = [`Define of id * [`Lambda of typed_id list * expr]]
+
+type constr = expr * (typed_id list)
 
 type value = [ `Num of int
              | `Bool of bool 
@@ -147,6 +148,11 @@ let match_filter_f prev t = match prev, t with
   | [List_t et1], Arrow_t ([et2], Bool_t) -> type_equal et1 et2
   | _ -> false
 
+let match_map_f prev t = match prev, t with
+  | [Nil_t], Arrow_t ([_], _) -> true
+  | [List_t et1], Arrow_t ([et2], _) -> type_equal et1 et2
+  | _ -> false
+
 let operators = [
   { name = Plus;  arity = 2; commut = true; assoc = true;   str = "+";
     input_types = [match_num; match_num]; };
@@ -189,6 +195,8 @@ let operators = [
   { name = Foldl; arity = 3; commut = false; assoc = false; str = "foldl";
     input_types = [match_list; match_fold_f; match_fold_init]; };
   { name = Filter; arity = 2; commut = false; assoc = false; str = "filter";
+    input_types = [match_list; match_filter_f]; };
+  { name = Map; arity = 2; commut = false; assoc = false; str = "map";
     input_types = [match_list; match_filter_f]; };
 ]
 
