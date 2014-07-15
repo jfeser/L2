@@ -15,6 +15,14 @@ let cmp_partition a b =
 
 let m_expr_to_string = function Some e -> expr_to_string e | None -> "None"
 
+let vals_to_string (res:(value list * value) list) =
+  let val_to_string (v: value list * value) = 
+    let (inputs, result) = v in
+    let inputs_strs = List.map inputs ~f:value_to_string in
+    (Ast.sexp "(" inputs_strs ")") ^ " = " ^ (value_to_string result) in
+  let vals_strs = List.map res ~f:val_to_string in
+  Ast.sexp "[" vals_strs "]"
+
 let assert_solve result examples init = 
   let res_expr = Util.parse_expr result in
   assert_equal ~printer:expr_to_string res_expr ((Search.solve examples ~init:init) :> expr)
@@ -496,18 +504,6 @@ let test_verify =
          "(forall (a:num b:num) (= (f a b) b))"; 
       ]), Verify.Invalid;
     ]
-
-let vals_to_string (res:(value list * value) list) =
-  let rec list_to_string (in_list: value list) = 
-    match in_list with
-    | `Num(hd)::tl -> (string_of_int hd) ^ " " ^ (list_to_string tl)
-    | _ -> "" in 
-  let rec vals_to_string_helper (res: (value list * value) list) = 
-    match res with
-    | (hd1, `Num (hd2))::tl -> "(" ^ String.strip (list_to_string hd1) ^ ") = " ^ 
-                                 string_of_int hd2 ^ ") " ^ vals_to_string_helper tl
-    | _ -> "" in
-  "[" ^ (String.strip (vals_to_string_helper res)) ^ "]"
 
 let test_sat_solver = 
   make_tests
