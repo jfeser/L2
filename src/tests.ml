@@ -473,7 +473,6 @@ let test_verify =
     | Verify.Invalid -> "Invalid"
     | Verify.Valid -> "Valid"
     | Verify.Error -> "Error" in
-
   make_tests 
     ~in_f:(fun (fdef_str, cs_strs) -> 
            let fdef = match Util.parse_expr fdef_str with 
@@ -497,7 +496,63 @@ let test_verify =
          "(forall (a:num b:num) (= (f a b) b))"; 
       ]), Verify.Invalid;
     ]
-      
+
+let vals_to_string (res:(value list * value) list) =
+  let rec list_to_string (in_list: value list) = 
+    match in_list with
+    | `Num(hd)::tl -> (string_of_int hd) ^ " " ^ (list_to_string tl)
+    | _ -> "" in 
+  let rec vals_to_string_helper (res: (value list * value) list) = 
+    match res with
+    | (hd1, `Num (hd2))::tl -> "(" ^ String.strip (list_to_string hd1) ^ ") = " ^ 
+                                 string_of_int hd2 ^ ") " ^ vals_to_string_helper tl
+    | _ -> "" in
+  "[" ^ (String.strip (vals_to_string_helper res)) ^ "]"
+
+let test_sat_solver = 
+  make_tests
+    ~in_f:(fun (f_str, exs) -> SymbSolver.sat_solve (Util.parse_expr f_str) exs)
+    ~out_f:Util.parse_expr
+    ~in_str:(fun (f_str, exs) -> f_str ^ " " ^ (vals_to_string exs))
+    ~out_str:identity
+    ~res_str:expr_to_string
+    "sat_solver"
+    [ 
+      ("(lambda (x:num y:num) (+ (+ x y) z))", [[`Num 1; `Num 2], `Num 3]), "(+ (+ x y) 0)";
+      ("(lambda (x:num y:num) (+ (+ x y) z))", [[`Num 6; `Num 7], `Num 8]), "(+ (+ x y) -5)";
+      ("(lambda (x:num y:num) (+ (+ (+ x y) z1) z2))", [[`Num 1;`Num 2],`Num 3]), "(+ (+ (+ x y) 0) 0)";
+    ]
+
+let test_symb_solver = 
+  make_tests
+    ~in_f:(fun (f_str, constr_strs, exs) -> 
+           let f = Util.parse_expr f_str in
+           let constrs = List.map constr_strs ~f:Util.parse_expr in
+           SymbSolver.symb_solve f constrs exs)
+    ~out_f:Util.parse_expr
+    ~in_str:(fun (f_str, constr_strs, exs) -> 
+             Printf.sprintf "%s, %s, %s" f_str (String.concat ~sep:" " constr_strs) (vals_to_string exs))
+    ~out_str:identity
+    ~res_str:expr_to_string
+    "symb_solver"
+    [
+      ("(lambda (x:num y:num) (+ (+ x y) z))", [], [[`Num 1; `Num 2], `Num 3]), 
+      "(+ (+ x y) 0)"; 
+      ("(lambda (x:num y:num) (+ (+ x y) z))", [ "(< z 1)" ], [[`Num 1; `Num 2], `Num 3]), 
+      "(+ (+ x y) 0)";
+      ("(lambda (x:num y:num) (+ (+ x y) z))", [ "(< z 1)" ], [[`Num 6; `Num 7], `Num 8]),
+      "(+ (+ x y) -5)";
+      ("(lambda (x:num y:num) (+ (+ x y) z))", [ "(< z 1)"; "(> z (- 0 1))" ], [[`Num 1; `Num 2], `Num 3]),
+      "(+ (+ x y) 0)";
+      ("(lambda (x:num y:num) (+ (+ (+ x y) z1) z2))", [ "(< z1 2)"; "(<z2 2)" ], [[`Num 1; `Num 2], `Num 3]),
+      "(+ (+ (+ x y) 0) 0)";
+      ("(lambda (x:num y:num) (+ (+ (+ x y) z1) z2))", [ "(< z1 (- 0 2))"; "(> z2 2)" ], [[`Num 1; `Num 2], `Num 3]),
+      "(+ (+ (+ x y) -3) 3)";
+      ("(lambda (x:num y:num) (+ (+ x y) z))", [ "(< (f 1 2) 4)" ], [[`Num 1; `Num 2], `Num 3]), 
+      "(+ (+ x y) 0)";
+      ("(lambda (x:num y:num) (+ (+ (* x z1) z2) y))", [ "(< (f 2 3) 4)"; "(< 0 z2)"], [[`Num 1; `Num 2], `Num 0]), 
+      "(+ (+ (* x -3) 1) y)";
+    ]
 
 let () = run_test_tt_main 
            ("test-suite" >::: 
@@ -510,7 +565,6 @@ let () = run_test_tt_main
                 test_eval; 
                 test_eval_prog;
 
-                (* "typeof_examples" >:: test_search_typeof_examples; *)
                 test_typeof_value;
                 test_typeof_example;
                 test_specialize;
@@ -528,6 +582,9 @@ let () = run_test_tt_main
                 test_normalize;
                 test_denormalize;
 
+                test_sat_solver;
+                test_symb_solver;
+
                 test_straight_solve;
                 test_catamorphic_solve;
-              ]);
+           ]);

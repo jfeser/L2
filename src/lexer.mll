@@ -11,25 +11,25 @@ let operator = "+" | "-" | "*" | "/" | "%" | "=" | "!=" | ">" | ">=" | "<" |
                "<=" | "&" | "|" | "~" | "cons" | "car" | "cdr" | "if" | "fold" | "foldl" | "filter"
 
 rule token = parse
-       | white             { token lexbuf } (* Eat whitespace. *)
-       | "num"             { NUM_T }
-       | "bool"            { BOOL_T }
-       | "unit"            { UNIT_T }
-       | "let"             { LET }
-       | "define"          { DEF }
-       | "lambda"          { LAMBDA }
-       | "forall"          { FORALL }
-       | "nil"             { NIL }
-       | "->"              { ARROW }
-       | ':'               { COLON }
-       | operator as text  { OP text }
-       | id as text        { ID text }
-       | ['0'-'9']+ as num { NUM (int_of_string num) }
-       | "#t"              { BOOL true }
-       | "#f"              { BOOL false }
-       | '('               { LPAREN }
-       | ')'               { RPAREN }
-       | '['               { LBRACKET }
-       | ']'               { RBRACKET }
-       | eof               { EOF }
-       | _                 { syntax_error (Lexing.lexeme lexbuf) }
+       | white                 { token lexbuf } (* Eat whitespace. *)
+       | "num"                 { NUM_T }
+       | "bool"                { BOOL_T }
+       | "unit"                { UNIT_T }
+       | "let"                 { LET }
+       | "define"              { DEF }
+       | "lambda"              { LAMBDA }
+       | "forall"              { FORALL }
+       | "nil"                 { NIL }
+       | "->"                  { ARROW }
+       | ':'                   { COLON }
+       | operator as text      { OP text }
+       | id as text            { ID text }
+       | '-'?['0'-'9']+ as num { NUM (int_of_string num) }
+       | "#t"                  { BOOL true }
+       | "#f"                  { BOOL false }
+       | '('                   { LPAREN }
+       | ')'                   { RPAREN }
+       | '['                   { LBRACKET }
+       | ']'                   { RBRACKET }
+       | eof                   { EOF }
+       | _                     { syntax_error (Lexing.lexeme lexbuf) }
