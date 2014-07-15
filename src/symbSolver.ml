@@ -22,6 +22,11 @@ let rec eval_fun (exp:expr) =
                  | [x; y] -> (concat ["("; operator_to_str op ; " "; x ;" "; y ; ")"])
                  | _ -> raise (RuntimeError ("Bad argument to " ^ 
                                            (Ast.operator_to_str op))))
+  | `Apply (`Id (id), uneval_args) ->
+     (let args = List.map ~f:(eval_fun) uneval_args in
+      match args with 
+                 | [x; y] -> (concat ["("; id ; " "; x ;" "; y ; ")"])
+                 | _ -> raise (RuntimeError "Bad argument to `Apply for function f"))
   | _ -> raise (RuntimeError "Invalid input expression (used an unsupported element of 'typ'.")
 
 (*Makes Z3 string for defining constants*)
@@ -148,6 +153,11 @@ let rec find_and_replace vals (exp:expr) =
                    | [x; y] -> `Op(op, [x;y])
                    | _ -> raise (RuntimeError ("Bad argument to " ^ 
                                              (Ast.operator_to_str op))))
+    | `Apply (id, uneval_args) -> 
+      (let args = List.map ~f:(find_and_replace vals) uneval_args in
+        match args with 
+                   | [x; y] -> `Apply(id, [x;y])
+                   | _ -> raise (RuntimeError "Poor number of args for function CHANGE THIS!!"))
     | _ -> raise (RuntimeError "Invalid input expression (used an unsupported element of 'typ'."))
   | None -> raise (RuntimeError "The expression was unsatisfiable")
 
@@ -188,8 +198,10 @@ let rec build_new_assert vals =
 
 (* The powerhorse method of the symbolic solver recesivley calls itself and the sat solver untill it solves a problem or deams it unsatisfiable*)
 let rec solve_itteration args exp constr values head asserts tail = 
-  match z3_solve (concat [head; asserts; tail]) with 
-  | Some s1_vals -> (let new_z3 = concat [head; "(assert ";make_constraints constr (Some s1_vals);")\n"; tail] in
+  match z3_solve (concat [head; define_fun args exp; asserts; tail]) with 
+  | Some s1_vals -> (
+    let new_fun = (define_fun args (find_and_replace (Some s1_vals) exp)) in 
+    let new_z3 = concat [head; new_fun;"(assert ";make_constraints constr (Some s1_vals);")\n"; tail] in
     match z3_solve new_z3 with
     | Some _ -> solve_itteration args exp constr values head (concat [asserts;"(assert ";build_new_assert (Some s1_vals);")\n"]) tail
     | None -> find_and_replace (Some s1_vals) exp)
@@ -202,7 +214,7 @@ let symb_solve (lambda:expr) (constraints:expr list) (values:(value list * value
   | _ ->  match lambda with
     | `Lambda (args, exp) -> 
       let consts = find_and_filter_consts args exp in
-      let (head, asserts,tail) = (concat [define_consts consts; define_fun args exp],define_asserts values, concat ["(check-sat)\n";define_tail consts]) in
+      let (head, asserts,tail) = (define_consts consts, define_asserts values, concat ["(check-sat)\n";define_tail consts]) in
       solve_itteration args exp constraints values head asserts tail;
     | _ -> raise (RuntimeError "The value inputted into the Z3 solver was not a '`Lambda' expresssion")
 

@@ -269,7 +269,8 @@ let test_symb_solver =
               "(lambda (x:num y:num) (+ (+ x y) z))" , ["(< z 1)";"(> z (- 0 1))"], [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)";
               "(lambda (x:num y:num) (+ (+ (+ x y) z1) z2))" ,["(< z1 2)"; "(<z2 2)"], [([`Num 1;`Num 2],`Num 3)], "(+ (+ (+ x y) 0) 0)";
               "(lambda (x:num y:num) (+ (+ (+ x y) z1) z2))" ,["(< z1 (- 0 2))"; "(> z2 2)"], [([`Num 1;`Num 2],`Num 3)], "(+ (+ (+ x y) -3) 3)";
-              "(lambda (x:num y:num) (+ (+ x y) z))" , ["(< (f 1 2) 1)"], [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)";
+              "(lambda (x:num y:num) (+ (+ x y) z))" , ["(< (f 1 2) 4)"], [([`Num 1;`Num 2],`Num 3)], "(+ (+ x y) 0)";
+              "(lambda (x:num y:num) (+ (+ (* x z1) z2) y))" , ["(< (f 2 3) 4)"; "(< 0 z2)"], [([`Num 1;`Num 2],`Num 0)], "(+ (+ (* x -3) 1) y)";
 
             ])
 
