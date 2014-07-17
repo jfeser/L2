@@ -3,7 +3,9 @@ open Ast
 open Eval
 open Util
 
-exception VerifyError
+exception VerifyError of string
+
+let verify_error str = raise (VerifyError str)
 
 type status = 
   | Invalid
@@ -31,17 +33,45 @@ let rec expand (ctx: expr_ctx) (expr: expr) : expr =
          let ctx' = List.fold2_exn lambda_args args' ~init:ctx
                                    ~f:(fun a (id, _) arg -> bind a ~key:id ~data:arg) in
          expand ctx' body
-      | _ -> raise VerifyError)
+      | _ -> verify_error (Printf.sprintf "Tried to apply a non-lambda expression. (%s)" 
+                                          (expr_to_string expr)))
   | `Op (op, args) -> `Op (op, exp_all args)
   | `Num _ | `Bool _ | `List _ -> expr
 
+let rec typ_to_z3 (zctx: Z3.context) (typ: typ) : Z3.Sort.sort = 
+  match typ with
+  | Num_t -> Z3.Arithmetic.Integer.mk_sort zctx
+  | Bool_t -> Z3.Boolean.mk_sort zctx
+  | List_t elem_typ -> Z3.Z3List.mk_list_s zctx (typ_to_string typ) (typ_to_z3 zctx elem_typ)
+  | Unit_t
+  | Arrow_t _ -> verify_error "Unit_t and Arrow_t are not supported by Z3."
+
+let typed_id_to_z3 zctx tid = 
+  let id, typ = tid in
+  let sort = typ_to_z3 zctx typ in
+  Z3.Expr.mk_const_s zctx id sort
+
+let rec const_to_z3 (zctx: Z3.context) (const: const) : Z3.Expr.expr = 
+  match const with
+  | `Num x  -> Z3.Arithmetic.Integer.mk_numeral_i zctx x
+  | `Bool x -> Z3.Boolean.mk_val zctx x
+  | `List (x, t) ->
+     let sort = typ_to_z3 zctx t in
+     let nil = Z3.Z3List.nil sort in
+     let cons = Z3.Z3List.get_cons_decl sort in
+     List.fold_right x ~init:nil
+                     ~f:(fun elem acc -> 
+                         let z3_elem = const_to_z3 zctx elem in
+                         Z3.FuncDecl.apply cons [z3_elem; acc])  
+
 let rec expr_to_z3 (zctx: Z3.context) (z3ectx: z3_ctx) (expr: expr) =
   match expr with
+  | `Num x -> const_to_z3 zctx (`Num x)
+  | `Bool x -> const_to_z3 zctx (`Bool x)
+  | `List x -> const_to_z3 zctx (`List x)
   | `Id x -> (match lookup x z3ectx with
               | Some z3expr -> z3expr
-              | None -> raise VerifyError)
-  | `Num x -> Z3.Arithmetic.Integer.mk_numeral_i zctx x
-  | `Bool x -> Z3.Boolean.mk_val zctx x
+              | None -> verify_error (Printf.sprintf "Looking up identifier \"%s\" failed." x))
   | `Op (op, op_args) ->
      (match op, (List.map ~f:(expr_to_z3 zctx z3ectx) op_args) with
       | Plus, z3_args -> Z3.Arithmetic.mk_add zctx z3_args
@@ -59,21 +89,20 @@ let rec expr_to_z3 (zctx: Z3.context) (z3ectx: z3_ctx) (expr: expr) =
       | Or, z3_args   -> Z3.Boolean.mk_or zctx z3_args
       | Not, [a]      -> Z3.Boolean.mk_not zctx a
       | If, [a; b; c] -> Z3.Boolean.mk_ite zctx a b c
-      | _             -> raise VerifyError)
-  | `Lambda _ | `Let _ | `Define _ | `Apply _ | `List _ -> raise VerifyError
-
-let rec typ_to_z3 (zctx: Z3.context) (typ: typ) = 
-  match typ with
-  | Num_t -> Z3.Arithmetic.Integer.mk_sort zctx
-  | Bool_t -> Z3.Boolean.mk_sort zctx
-  | List_t elem_typ -> Z3.Z3List.mk_list_s zctx (typ_to_string typ) (typ_to_z3 zctx elem_typ)
-  | Unit_t
-  | Arrow_t _ -> raise VerifyError
-
-let typed_id_to_z3 zctx tid = 
-  let id, typ = tid in
-  let sort = typ_to_z3 zctx typ in
-  Z3.Expr.mk_const_s zctx id sort
+      | Cons, [a; b]  -> let sort = Z3.Expr.get_sort b in
+                         let cons = Z3.Z3List.get_cons_decl sort in
+                         Z3.FuncDecl.apply cons [a; b]
+      | Car, [a]      -> let sort = Z3.Expr.get_sort a in
+                         let head = Z3.Z3List.get_head_decl sort in
+                         Z3.FuncDecl.apply head [a]
+      | Cdr, [a]      -> let sort = Z3.Expr.get_sort a in
+                         let tail = Z3.Z3List.get_tail_decl sort in
+                         Z3.FuncDecl.apply tail [a]
+      | _ -> verify_error "Attempted to convert unsupported operator to Z3.")
+  | `Lambda _ 
+  | `Let _ 
+  | `Define _ 
+  | `Apply _ -> verify_error "(lambda, let, define, apply) are not supported by Z3."
 
 let verify (target_def: function_def) (constraints: constr list) =
   let open Z3.Solver in
@@ -101,17 +130,20 @@ let verify (target_def: function_def) (constraints: constr list) =
                                ~f:(fun acc (id, _) z3c -> bind acc ~key:id ~data:z3c) in
       expr_to_z3 zctx ctx constr_body' in
 
+    (* let _ = Printf.printf "%s\n" (Z3.Expr.to_string z3_constr_body) in *)
+
     add solver [Z3.Boolean.mk_not zctx z3_constr_body];
 
     (* Add the constraint to the solver and check. *)
     match check solver [] with
     | UNSATISFIABLE -> true
-    | UNKNOWN -> raise VerifyError
+    | UNKNOWN -> verify_error "Z3 returned unknown."
     | SATISFIABLE -> false
   in
 
   try
     if List.for_all constraints ~f:verify_constraint then Valid
     else Invalid
-  with VerifyError -> Error
-  
+  with VerifyError msg -> 
+    Printf.printf "%s\n" msg;
+    Error

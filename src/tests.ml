@@ -416,6 +416,7 @@ let test_expand =
 
 let test_expr_to_z3 =
   let zctx = Z3.mk_context [] in
+  
   make_tests ~in_f:(fun e -> e 
                              |> Util.parse_expr 
                              |> Verify.expr_to_z3 zctx (Util.empty_ctx ()))
@@ -456,6 +457,9 @@ let test_verify =
          "(forall (a:num b:num) (>= (f a b) b))"; 
          "(forall (a:num b:num) (= (f a b) b))"; 
       ]), Verify.Invalid;
+      ("(define f (lambda (x:num) (= (% x 2) 0)))", [ "(forall (a:num) (= (f (* 2 a)) #t))" ]), Verify.Valid;
+      ("(define f (lambda (x:num y:[num]) (cons x y)))", 
+       [ "(forall (a:num b:[num]) (= (car (f a b)) a))" ]), Verify.Valid;
     ]
 
 let test_sat_solver = 
