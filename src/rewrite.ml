@@ -4,30 +4,30 @@ open Ast
 
 exception BadExpression
 
-let rec is_constant expr =
+let is_constant (expr: expr) : bool =
   match expr with
   | `Id _ | `Let _ | `Define _ | `Lambda _ | `Apply _ | `Op _ -> false
-  | `Num _ | `Bool _ | `Nil -> true
-  | `List l -> List.for_all ~f:is_constant l
+  | `Num _ | `Bool _ | `List _ -> true
 
-let rec value_to_constant (value: value) : expr option = 
-  match value with
-  | `List x -> let const_x = List.filter_map x ~f:value_to_constant in
-               if (List.length x) = (List.length const_x) then Some (`List const_x)
-               else None
-  | `Unit | `Closure _ -> None
+let expr_to_const (expr: expr) : const option = 
+  match expr with
   | `Num x -> Some (`Num x)
   | `Bool x -> Some (`Bool x)
-  | `Nil -> Some (`Nil)
+  | `List x -> Some (`List x)
+  | `Id _ 
+  | `Let _
+  | `Lambda _
+  | `Define _
+  | `Apply _
+  | `Op _ -> None
 
-let rec normalize expr =
+let rec normalize (expr: expr) : expr =
   let normalize_all l = List.map l ~f:normalize in
   match expr with
-  | `Id id          -> `Id id
-  | `Num x          -> `Num x
-  | `Bool x         -> `Bool x
-  | `Nil            -> `Nil
-  | `List x         -> (match x with | [] -> `Nil | a  -> `List (normalize_all a))
+  | `Num _
+  | `Bool _
+  | `List _
+  | `Id _           -> expr
   | `Let (id, v, e) -> `Let (id, normalize v, normalize e)
   | `Lambda (a, e)  -> `Lambda (a, normalize e)
   | `Define (id, e) -> `Define (id, normalize e)
@@ -48,11 +48,10 @@ let rec normalize expr =
 let rec denormalize expr =
   let denormalize_all l = List.map l ~f:denormalize in
   match expr with
-  | `Id id          -> `Id id
-  | `Num x          -> `Num x
-  | `Bool x         -> `Bool x
-  | `Nil            -> `Nil
-  | `List x         -> (match x with | [] -> `Nil | a  -> `List (denormalize_all a))
+  | `Id _
+  | `Num _
+  | `Bool _
+  | `List _         -> expr
   | `Let (id, v, e) -> `Let (id, denormalize v, denormalize e)
   | `Lambda (a, e)  -> `Lambda (a, denormalize e)
   | `Define (id, e) -> `Define (id, denormalize e)
@@ -65,14 +64,13 @@ let rec denormalize expr =
      `Op (op, denormalize_all new_args)
 
 let fold_constants (expr: expr) : expr option =
-  let rec fold expr = 
+  let rec fold (expr: expr) : expr = 
     let fold_all l = List.map l ~f:fold in
     match expr with
-    | `Id id          -> `Id id
-    | `Num x          -> `Num x
-    | `Bool x         -> `Bool x
-    | `Nil            -> `Nil
-    | `List x         -> (match x with | [] -> `Nil | a  -> `List (fold_all a))
+    | `Id _
+    | `Num _
+    | `Bool _
+    | `List _         -> expr
     | `Let (id, v, e) -> let fe = fold e in if is_constant fe then fe else `Let (id, fold v, fe)
     | `Lambda (a, e)  -> let fe = fold e in if is_constant fe then fe else `Lambda (a, fe)
     | `Define (id, e) -> `Define (id, fold e)
@@ -80,21 +78,19 @@ let fold_constants (expr: expr) : expr option =
     | `Op (op, args)  -> let folded_args = fold_all args in
                          let new_op = `Op (op, folded_args) in
                          if List.for_all ~f:is_constant folded_args then
-                           (match value_to_constant (Eval.eval (Util.empty_ctx ()) new_op) with
-                            | Some const -> const
-                            | None -> new_op)
+                           (try ((Eval.value_to_const (Eval.eval (Util.empty_ctx ()) new_op)) :> expr) with
+                            | Eval.RuntimeError _ -> new_op)
                          else new_op
   in try Some (fold expr) with Eval.RuntimeError _ -> None
   
 let rewrite (expr: expr) : expr option =
-  let rec rewrite_r expr = 
+  let rec rewrite_r (expr: expr) : expr = 
     let rewrite_all l = List.map l ~f:rewrite_r in
     match expr with
-    | `Id id          -> `Id id
-    | `Num x          -> `Num x
-    | `Bool x         -> `Bool x
-    | `Nil            -> `Nil
-    | `List x         -> if x = [] then `Nil else `List (rewrite_all x)
+    | `Id _
+    | `Num _
+    | `Bool _
+    | `List _         -> expr
     | `Lambda (a, e)  -> `Lambda (a, rewrite_r e)
     | `Let (id, v, e) -> `Let (id, rewrite_r v, rewrite_r e)
     | `Define (id, e) -> `Define (id, rewrite_r e)
@@ -164,8 +160,12 @@ let rewrite (expr: expr) : expr option =
                                         | [`Op (Neq, [x; y])] -> `Op (Eq, [x; y])
                                         | _ -> `Op (op, args))
                               | Cons -> (match args with
-                                         | [x; `Nil] -> `List [x]
-                                         | [x; `List xs] -> `List (x::xs)
+                                         | [x; `List ([], t)] -> (match expr_to_const x with
+                                                                  | Some cx -> `List ([cx], t)
+                                                                  | None -> `Op (op, args))
+                                         | [x; `List (xs, t)] -> (match expr_to_const x with
+                                                                  | Some cx -> `List (cx::xs, t)
+                                                                  | None -> `Op (op, args))
                                          | _ -> `Op (op, args))
                               | Car 
                               | Cdr -> `Op (op, args)
@@ -178,13 +178,13 @@ let rewrite (expr: expr) : expr option =
                                        | _ -> `Op (op, args))
                               | Fold
                               | Foldl -> (match args with
-                                          | [`Nil; _; x] -> x
+                                          | [`List ([], _); _; x] -> x
                                           | _ -> `Op (op, args))
                               | Map -> (match args with
-                                        | [`Nil; _] -> `Nil
+                                        | [`List ([], t); _] -> `List ([], t)
                                         | _ -> `Op (op, args))
                               | Filter -> (match args with
-                                           | [`Nil; _] -> `Nil
+                                           | [`List ([], t); _] -> `List ([], t)
                                            | _ -> `Op (op, args)))
   in try Some (rewrite_r expr) with BadExpression -> None
 

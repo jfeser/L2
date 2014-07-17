@@ -58,12 +58,11 @@ let test_parse_expr =
               [ "1", `Num 1;
                 "#t", `Bool true;
                 "#f", `Bool false;
-                "nil", `Nil;
-                "[]", `List [];
-                "[1]", `List [`Num 1;];
-                "[1 2]", `List [`Num 1; `Num 2;];
-                "[[]]", `List [`List []];
-                "[[1]]", `List [`List [`Num 1;]];
+                "[]:bool", `List ([], Bool_t);
+                "[1]", `List ([`Num 1;], Num_t);
+                "[1 2]", `List ([`Num 1; `Num 2;], Num_t);
+                "[[]:num]", `List ([`List ([], Num_t)], List_t Num_t);
+                "[[1]]", `List ([`List ([`Num 1], Num_t)], List_t Num_t);
                 "a", `Id "a";
                 "test", `Id "test";
                 "(+ (+ 1 2) 3)", `Op (Plus, [`Op (Plus, [`Num 1; `Num 2]); `Num 3;]);
@@ -77,10 +76,10 @@ let test_parse_expr =
                                                           `Num 1])])),
                       `Apply (`Id "f", [`Num 0]));
                 "(+ 1 2)", `Op (Plus, [`Num 1; `Num 2]);
-                "(cons 1 [])", `Op (Cons, [`Num 1; `List []]);
-                "(cons 1 [2])", `Op (Cons, [`Num 1; `List [`Num 2]]);
-                "(cdr [])", `Op (Cdr, [`List []]);
-                "(cdr [1 2])", `Op (Cdr, [`List [`Num 1; `Num 2;]]);
+                "(cons 1 []:num)", `Op (Cons, [`Num 1; `List ([], Num_t)]);
+                "(cons 1 [2])", `Op (Cons, [`Num 1; `List ([`Num 2], Num_t)]);
+                "(cdr []:num)", `Op (Cdr, [`List ([], Num_t)]);
+                "(cdr [1 2])", `Op (Cdr, [`List ([`Num 1; `Num 2;], Num_t)]);
                 "(f 1 2)", `Apply (`Id "f", [`Num 1; `Num 2]);
                 "(> (f 1 2) 3)", `Op (Gt, [`Apply (`Id "f", [`Num 1; `Num 2]); `Num 3]);
               ]
@@ -91,6 +90,7 @@ let test_parse_example =
               "parse_example"
               [ "(f 1) -> 1", ((`Apply (`Id "f", [`Num 1])), `Num 1); 
                 "(f (f 1)) -> 1", ((`Apply (`Id "f", [`Apply (`Id "f", [`Num 1])])), `Num 1);
+                "(f []:[num]) -> []:[num]", ((`Apply (`Id "f", [`List ([], List_t Num_t)])), (`List ([], List_t Num_t)));
               ]
 
 let test_parse_prog = 
@@ -116,9 +116,7 @@ let test_eval =
               [ "1", `Num 1;
                 "#t", `Bool true;
                 "#f", `Bool false;
-                "[]", `Nil;
-                "[1]", `List [`Num 1];
-                "nil", `Nil;
+                "[1]", `List ([`Num 1], Num_t);
                 "(+ 1 2)", `Num 3;
                 "(- 1 2)", `Num (-1);
                 "(* 1 2)", `Num 2;
@@ -131,10 +129,10 @@ let test_eval =
                 "(>= 4 2)", `Bool true;
                 "(>= 4 4)", `Bool true;
                 "(>= 4 5)", `Bool false;
-                "(cons 4 [])", `List [`Num 4];
-                "(cons 4 [1])", `List [`Num 4; `Num 1];
+                "(cons 4 []:num)", `List ([`Num 4], Num_t);
+                "(cons 4 [1])", `List ([`Num 4; `Num 1], Num_t);
                 "(car [1])", `Num 1;
-                "(cdr [1 2])", `List [`Num 2];
+                "(cdr [1 2])", `List ([`Num 2], Num_t);
                 "(if #t 1 2)", `Num 1;
                 "(if #f 1 2)", `Num 2;
                 "(let a 1 (+ 1 a))", `Num 2;
@@ -148,13 +146,13 @@ let test_eval =
                 "(let f (lambda (x:num) (if (= x 0) 0 (f (- x 1)))) (f 0))", `Num 0;
                 "(let f (lambda (x:num) (if (= x 0) 0 (f (- x 1)))) (f 5))", `Num 0;
                 "(fold [1 2 3] (lambda (a:num e:num) (+ a e)) 0)", `Num 6; (* Sum *)
-                "(fold [[1] [2 1] [3 2 1]] (lambda (a:[num] e:num) (cons (car e) a)) [])", 
-                `List [`Num 1; `Num 2; `Num 3]; (* Firsts *)
+                "(fold [[1] [2 1] [3 2 1]] (lambda (a:[num] e:num) (cons (car e) a)) []:num)",
+                `List ([`Num 1; `Num 2; `Num 3], Num_t); (* Firsts *)
                 "(foldl [1 2 3] (lambda (a:num e:num) (+ a e)) 0)", `Num 6; (* Sum *)
-                "(foldl [[1] [2 1] [3 2 1]] (lambda (a:[num] e:num) (cons (car e) a)) [])", 
-                `List [`Num 3; `Num 2; `Num 1]; (* Rev-firsts *)
-                "(filter [1 2 3 4] (lambda (e:num) (> 3 e)))", `List [`Num 1; `Num 2];
-                "(filter [1 2 3 4] (lambda (e:num) (= 0 (% e 2))))", `List [`Num 2; `Num 4];
+                "(foldl [[1] [2 1] [3 2 1]] (lambda (a:[num] e:num) (cons (car e) a)) []:num)",
+                `List ([`Num 3; `Num 2; `Num 1], Num_t); (* Rev-firsts *)
+                "(filter [1 2 3 4] (lambda (e:num) (> 3 e)))", `List ([`Num 1; `Num 2], Num_t);
+                "(filter [1 2 3 4] (lambda (e:num) (= 0 (% e 2))))", `List ([`Num 2; `Num 4], Num_t);
               ]
 
 let test_eval_prog = 
@@ -164,9 +162,9 @@ let test_eval_prog =
               [ "(define a 1) (+ a 1)", `Num 2;
                 "(define a 1) (define b (+ a 1)) (+ b 1)", `Num 3;
                 "(define plus (lambda (a:num b:num) (+ a b))) (plus 1 2)", `Num 3;
-                "(define a 1)", `Nil;
+                "(define a 1)", `Unit;
                 "1 2 3", `Num 3;
-                "(define last (lambda (l:[num]) (if (= nil (cdr l)) (car l) (last (cdr l))))) (last [1 2 3])", `Num 3;
+                "(define last (lambda (l:[num]) (if (= []:num (cdr l)) (car l) (last (cdr l))))) (last [1 2 3])", `Num 3;
               ]
 
 let test_fold_constants = 
@@ -279,97 +277,69 @@ let test_catamorphic_solve =
     ~in_str:(fun (name, _, _) -> name) ~out_str:identity ~res_str:prog_to_string
     "catamorphic_solve"
     [
-      ("sum", ["(f []) -> 0";
+      ("sum", ["(f []:num) -> 0";
                "(f [1]) -> 1";
                "(f [1 2]) -> 3";
               ], []),
       "";
 
-      (* ("rev-concat", ["(f []) -> []"; *)
-      (*                 "(f [[1]]) -> [1]"; *)
-      (*                 "(f [[1] [2 3]]) -> [1 2 3]"; *)
-      (*                 "(f [[1 4 5] [2 3]]) -> [1 4 5 2 3]"; *)
-      (*                ], []), *)
+      (* ("sums", ["(f []:[num]) -> []:num"; *)
+      (*           "(f [[]:num]) -> [0]"; *)
+      (*           "(f [[1] []:num]) -> [1 0]"; *)
+      (*           "(f [[1 2] [3 4]]) -> [3 7]"; *)
+      (*          ], []), *)
       (* ""; *)
 
-      ("length", ["(f []) -> 0";
+      ("concat", ["(f []:[num]) -> []:num";
+                  "(f [[1]]) -> [1]";
+                  "(f [[1] [2]]) -> [1 2]";
+                  "(f [[1] [3]]) -> [1 3]";
+                 ], []),
+      "";
+
+      ("length", ["(f []:num) -> 0";
                   "(f [0]) -> 1";
                   "(f [0 0]) -> 2";
                  ], ["1"]),
       "";
 
-      ("evens", ["(f []) -> []";
-                 "(f [1]) -> []";
+      ("evens", ["(f []:num) -> []:num";
+                 "(f [1]) -> []:num";
                  "(f [1 2]) -> [2]";
                  "(f [1 2 3 4]) -> [2 4]";
                 ], ["0"; "2"]),
       "";
 
-      ("odds", ["(f []) -> []";
+      ("odds", ["(f []:num) -> []:num";
                 "(f [1]) -> [1]";
                 "(f [1 2]) -> [1]";
                 "(f [1 2 3 4]) -> [1 3]";
                ], ["0"; "2"]),
       "";
 
-      ("incr", ["(f []) -> []";
+      ("zeroes", ["(f []:num) -> []:num";
+                  "(f [0]) -> []:num";
+                  "(f [1 0]) -> [1]";
+                  "(f [1 0 2]) -> [1 2]";
+                 ], ["0"]),
+      "";
+
+      ("incr", ["(f []:num) -> []:num";
                 "(f [1]) -> [2]";
                 "(f [1 2]) -> [2 3]";
                 "(f [1 2 3 4]) -> [2 3 4 5]";
                ], ["1"]),
       "";
+
+      ("allodd", ["(f []:num) -> #t";
+                  "(f [1]) -> #t";
+                  "(f [4]) -> #f";
+                  "(f [1 3]) -> #t";
+                  "(f [4 1]) -> #f";
+                  "(f [2 1 2 3]) -> #f";
+                 ], ["0"; "2"; "#t"; "#f"]),
+      "";
     ]
-(* let test_catamorphic_solve =  *)
-(*   "catamorphic_solve" >::: *)
-(*     (List.map ~f:(fun (str, examples, init) ->  *)
-(*                   let title = str in *)
-(*                   title >:: (fun _ -> assert_solve_cata str examples init)) *)
-(*               [ "(define f (lambda (x0:[num]) (foldl x0 (lambda (a:num e:num) (+ a e)) 0)))",  *)
-(*                 [ ([`Nil], `Num 0); *)
-(*                   ([`List [`Num 1]], `Num 1); *)
-(*                   ([`List [`Num 1; `Num 2]], `Num 3); *)
-(*                 ], []; *)
-
-(*                 "(define f (lambda (x0:[[num]]) (foldl x0 (lambda (a:[num] e:num) (cons (car e) a)) [])))", *)
-(*                 [ ([`Nil], `Nil); *)
-(*                   ([`List [`List [`Num 1]]], `List [`Num 1]); *)
-(*                   ([`List [`List [`Num 1]; `List [`Num 2]]], `List [`Num 2; `Num 1]); *)
-(*                 ], []; *)
-
-(*                 "nil", (\*length*\) *)
-(*                 [ ([`Nil], `Num 0); *)
-(*                   ([`List [`Num 0]], `Num 1); *)
-(*                   ([`List [`Num 0; `Num 0]], `Num 2);], [`Num 1]; *)
-
-(*                 "nil", (\* incr *\) *)
-(*                 [ ([`Nil], `Nil); *)
-(*                   ([`List [`Num 0]], `List [`Num 1]); *)
-(*                   ([`List [`Num 0; `Num 1]], `List [`Num 2; `Num 1]);], [`Num 1]; *)
-
-(*                 "allodd", (\* allodd *\) *)
-(*                 [ [`Nil], `Bool true; *)
-(*                   [`List [`Num 1]], `Bool true; *)
-(*                   [`List [`Num 4]], `Bool false; *)
-(*                   [`List [`Num 1; `Num 3]], `Bool true; *)
-(*                   [`List [`Num 4; `Num 1]], `Bool false; *)
-(*                   [`List [`Num 2; `Num 1; `Num 2; `Num 3]], `Bool false; *)
-(*                 ], [`Num 0; `Num 2; `Bool true; `Bool false]; *)
-
-(*                 "and", (\* and *\) *)
-(*                 [ [`Nil], `Bool true; *)
-(*                   [`List [`Bool true]], `Bool true; *)
-(*                   [`List [`Bool false]], `Bool false; *)
-(*                   [`List [`Bool true; `Bool true]], `Bool true; *)
-(*                   [`List [`Bool false; `Bool true]], `Bool false; *)
-(*                 ], [`Bool true; `Bool false]; *)
-
-(*                 (\* "zeroes", (\\* zeroes *\\) *\) *)
-(*                 (\* [ [`Nil], `Nil; *\) *)
-(*                 (\*   [`List [`Num 0]], `Nil; *\) *)
-(*                 (\*   [`List [`Num 1; `Num 0]], `List [`Num 1]; *\) *)
-(*                 (\*   [`List [`Num 1; `Num 2; `Num 0]], `List [`Num 1; `Num 2]; *\) *)
-(*                 (\* ], [`Num 0]; *\) *)
-(*     ]) *)
 
 let partition_to_string = List.to_string ~f:(List.to_string ~f:Int.to_string)
 let test_partition =
@@ -395,31 +365,14 @@ let test_m_partition =
                 3, 3, [[1; 1; 1]];
     ])
 
-let test_specialize = 
-  "test_specialize" >:::
-    (List.map ~f:(fun (t1, t2, t3) ->
-                  let title = Printf.sprintf "%s %s -> %s"
-                                             (typ_to_string t1)
-                                             (typ_to_string t2)
-                                             (typ_to_string t3) in
-                  title >:: (fun _ -> assert_equal (Eval.specialize t1 t2) t3))
-              [ Nil_t, Nil_t, Nil_t;
-                List_t Num_t, Nil_t, List_t Num_t;
-                Nil_t, List_t Num_t, List_t Num_t;
-                List_t Num_t, List_t Num_t, List_t Num_t;
-                List_t (List_t Num_t), List_t Nil_t, List_t (List_t Num_t);
-                Num_t, Num_t, Num_t;
-    ])
-
 let test_typeof_value = 
   make_tests ~in_f:Eval.typeof_value ~out_f:identity
               ~in_str:value_to_string ~out_str:typ_to_string ~res_str:typ_to_string
               "typeof_value"
               [ `Num 1, Num_t;
                 `Bool true, Bool_t;
-                `List [`Num 1; `Num 2], List_t Num_t;
-                `List [`Nil; `Nil], List_t Nil_t;
-                `List [`List [`Num 1; `Num 2]], List_t (List_t Num_t);
+                `List ([`Num 1; `Num 2], Num_t), List_t Num_t;
+                `List ([`List ([`Num 1; `Num 2], Num_t)], List_t Num_t), List_t (List_t Num_t);
               ]
 
 let test_typeof_example = 
@@ -429,8 +382,8 @@ let test_typeof_example =
              ~in_str:identity ~out_str:typ_to_string ~res_str:typ_to_string
              "typeof_example"
              [ "(f 1) -> 1", Arrow_t ([Num_t], Num_t);
-               "(f 1) -> []", Arrow_t ([Num_t], Nil_t);
-               "(f 1) -> [1]", Arrow_t ([Num_t], (List_t Num_t));
+               "(f 1) -> []:num", Arrow_t ([Num_t], List_t Num_t);
+               "(f 1) -> [1]", Arrow_t ([Num_t], List_t Num_t);
                "(f 1 #f) -> #f", Arrow_t ([Num_t; Bool_t], Bool_t);
              ]
 
@@ -443,7 +396,8 @@ let test_signature =
              [ ["(f 1) -> 1"; "(f 2) -> 2"], Arrow_t ([Num_t], Num_t);
                ["(f #f 0) -> 1"; "(f #t 5) -> 2"], Arrow_t ([Bool_t; Num_t], Num_t);
                ["(f 1) -> 1"; "(f (f 2)) -> 2"], Arrow_t ([Num_t], Num_t);
-               ["(f 1 []) -> [1]"; "(f 1 (f 2 [])) -> [2 1]"], Arrow_t ([Num_t; List_t Num_t], (List_t Num_t));
+               ["(f 1 []:num) -> [1]"; "(f 1 (f 2 []:num)) -> [2 1]"], 
+               Arrow_t ([Num_t; List_t Num_t], (List_t Num_t));
              ]
 
 let test_expand = 
@@ -453,7 +407,6 @@ let test_expand =
              "expand"
              [ 
                "(let x 2 (+ x 1))", "(+ 2 1)";
-               "(let x 3 [1 x 2 x])", "[1 3 2 3]";
                "(let x 3 (lambda (a:num) (+ a x)))", "(lambda (a:num) (+ a 3))";
                "(let x 3 (lambda (x:num) (+ 5 x)))", "(lambda (x:num) (+ 5 x))";
                "(define y (let a (+ 1 2) (* a 3)))", "(define y (* (+ 1 2) 3))";
@@ -563,7 +516,7 @@ let () = run_test_tt_main
 
                 test_typeof_value;
                 test_typeof_example;
-                test_specialize;
+                (* test_specialize; *)
                 test_signature;
 
                 test_expand;

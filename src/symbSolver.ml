@@ -15,7 +15,6 @@ let rec eval_fun (exp:expr) =
   | `Id id               -> id
   | `Num x               -> string_of_int x
   | `Bool x              -> string_of_bool x
-  | `Nil                 -> ""
   | `Op (op, uneval_args) ->
      (let args = List.map ~f:(eval_fun) uneval_args in
       match args with 
@@ -146,7 +145,6 @@ let rec find_and_replace vals (exp:expr) =
     | `Id id               ->  (lookup id v)
     | `Num x               -> `Num(x)
     | `Bool x              -> `Bool(x)
-    | `Nil                 -> `Nil
     | `Op (op, uneval_args) ->
        (let args = List.map ~f:(find_and_replace vals) uneval_args in
         match args with 
@@ -164,7 +162,6 @@ let rec find_and_replace vals (exp:expr) =
 (*Evaluates Z3 input string and returns constants found*)
 let z3_solve raw_z3 = 
   let (prefix, suffix) = ("unprocessedZ3", ".smt2") in
-  let dir = Some "temp" in
   let (file_name, oc) = Filename.open_temp_file prefix suffix in
       Printf.fprintf oc "%s\n" raw_z3;   
       close_out_noerr oc;

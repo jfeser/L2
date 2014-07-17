@@ -6,7 +6,6 @@ type typ =
   | Bool_t
   | Unit_t
   | List_t of typ
-  | Nil_t
   | Arrow_t of (typ list) * typ with compare, sexp
 
 (** Represents identifiers and typed identifiers. *)
@@ -42,8 +41,7 @@ type op =
 lambdas. *)
 type const = [ `Num of int 
              | `Bool of bool 
-             | `List of const list 
-             | `Nil ]
+             | `List of (const list) * typ ] with compare, sexp
 
 (** An example is the application of a function to some constants and
 the constant that should result. E.g. (f 1 2) -> 3 would be an example
@@ -55,10 +53,7 @@ type example_lhs = [ `Apply of [ `Id of id ] * (const_app list) ]
 type example = example_lhs * const
 
 (** Types for expressions and values. *)
-type expr = [ `Num of int 
-            | `Bool of bool 
-            | `List of expr list 
-            | `Nil 
+type expr = [ const
             | `Id of id
             | `Let of id * expr * expr 
             | `Define of id * expr 
@@ -66,14 +61,11 @@ type expr = [ `Num of int
             | `Apply of expr * (expr list)
             | `Op of op * (expr list) ] with compare, sexp
 
-type function_def = [`Define of id * [`Lambda of typed_id list * expr]]
+type function_def = [ `Define of id * [ `Lambda of typed_id list * expr ] ]
 
 type constr = expr * (typed_id list)
 
-type value = [ `Num of int
-             | `Bool of bool 
-             | `List of value list 
-             | `Nil 
+type value = [ const
              | `Closure of expr * eval_ctx
              | `Unit ]
 and eval_ctx = value String.Map.t ref with compare, sexp
@@ -95,62 +87,30 @@ type op_data = {
   input_types : type_pred list;
 }
 
-(** Determine whether t1 and t2 are compatible types. *)
-let rec type_equal t1 t2 = match t1 with
-  | Num_t  -> (match t2 with 
-               | Num_t -> true 
-               | Bool_t | Unit_t | List_t _ | Nil_t | Arrow_t _ -> false)
-  | Bool_t -> (match t2 with 
-               | Bool_t -> true 
-               | Num_t | Unit_t | List_t _ | Nil_t | Arrow_t _ -> false)
-  | Nil_t  -> (match t2 with 
-               | List_t _ | Nil_t -> true 
-               | Num_t | Bool_t | Unit_t | Arrow_t _ -> false)
-  | Unit_t -> (match t2 with 
-               | Unit_t -> true 
-               | Num_t | Bool_t | List_t _ | Nil_t | Arrow_t _ -> false)
-  | List_t ct1 -> (match t2 with
-                   | List_t ct2 -> type_equal ct1 ct2 
-                   | Nil_t -> true
-                   | Num_t | Bool_t | Unit_t | Arrow_t _ -> false)
-  | Arrow_t (it1, ot1) -> 
-     (match t2 with 
-      | Arrow_t (it2, ot2) -> 
-         (type_equal ot1 ot2) &&
-           (match List.zip it1 it2 with
-            | Some it -> List.for_all it ~f:(fun (i1, i2) -> type_equal i1 i2)
-            | None -> false)
-      | Num_t | Bool_t | Unit_t | List_t _ | Nil_t -> false)
-
 (** Type predicates used to select operator arguments. *)
 let match_num _ t = match t with Num_t -> true | _ -> false
 let match_bool _ t = match t with Bool_t -> true | _ -> false
-let match_list _ t = match t with  Nil_t | List_t _ -> true | _ -> false
+let match_list _ t = match t with List_t _ -> true | _ -> false
 let match_any _ _ = true
 let match_cons prev t = match t with
-  | Nil_t -> true
   | List_t ct -> (List.last_exn prev) = ct
   | _ -> false
 let match_prev prev t = (List.last_exn prev) = t
 
 let match_fold_f prev t = match prev, t with
-  | [Nil_t], Arrow_t ([at1; _], at2) -> type_equal at1 at2
-  | [List_t et1], Arrow_t ([at1; et2], at2) -> (type_equal at1 at2) &&
-                                                 (type_equal et1 et2)
+  | [List_t et1], Arrow_t ([at1; et2], at2) -> (at1 = at2) && (et1 = et2)
   | _ -> false
 
 let match_fold_init prev t = match prev with
-  | [_; Arrow_t ([at1; _], at2)] -> (type_equal at1 at2) && (type_equal t at1)
+  | [_; Arrow_t ([at1; _], at2)] -> (at1 = at2) && (t = at1)
   | _ -> false
 
 let match_filter_f prev t = match prev, t with
-  | [Nil_t], Arrow_t ([_], Bool_t) -> true
-  | [List_t et1], Arrow_t ([et2], Bool_t) -> type_equal et1 et2
+  | [List_t et1], Arrow_t ([et2], Bool_t) -> et1 = et2
   | _ -> false
 
 let match_map_f prev t = match prev, t with
-  | [Nil_t], Arrow_t ([_], _) -> true
-  | [List_t et1], Arrow_t ([et2], _) -> type_equal et1 et2
+  | [List_t et1], Arrow_t ([et2], _) -> et1 = et2
   | _ -> false
 
 let operators = [
@@ -219,15 +179,14 @@ let operator_from_str op_str =
   | None -> None
 
 (** Calculate the size of an expression. *)
-let rec size e =
+let rec size (e: expr) : int =
   let sum_sizes = List.fold_left ~init:0 ~f:(fun acc e -> acc + size e) in
   match e with
   | `Id _
   | `Num _
-  | `Bool _ 
-  | `Nil -> 1
+  | `Bool _ -> 1
   | `Op (_, args) -> 1 + sum_sizes args
-  | `List l -> 1 + sum_sizes l
+  | `List (l, _) -> 1 + (List.fold l ~init:0 ~f:(fun acc c -> acc + size (c :> expr)))
   | `Let (_, a, b) -> 1 + size a + size b
   | `Define (_, a) -> 1 + size a
   | `Lambda (args, expr) -> 1 + (List.length args) + size expr
@@ -237,49 +196,48 @@ let rec size e =
 let sexp lb strs rb = lb ^ (String.concat ~sep:" " strs) ^ rb
 
 (** Convert a type to a string. *)
-let rec typ_to_string t =
-  let str_all l = List.map ~f:typ_to_string l in
-  match t with
+let rec typ_to_string = function
   | Num_t -> "num"
   | Bool_t -> "bool"
   | Unit_t -> "unit"
-  | Nil_t -> "nil"
   | List_t ct -> "[" ^ (typ_to_string ct) ^ "]"
   | Arrow_t (it, ot) -> 
-     (sexp "(" (str_all it) ")") ^ " -> " ^ (typ_to_string ot)
+     (sexp "(" (List.map ~f:typ_to_string it) ")") ^ " -> " ^ (typ_to_string ot)
+
+let rec const_to_string = function
+  | `Num x -> Int.to_string x
+  | `Bool true -> "#t"
+  | `Bool false -> "#f"
+  | `List ([], t) -> "[]:" ^ (typ_to_string t)
+  | `List (x, _) -> sexp "[" (List.map ~f:const_to_string x) "]"
 
 (** Convert and expression to a string. *)
-let rec expr_to_string e =
+let rec expr_to_string (e: expr) : string =
   let str_all l = List.map ~f:expr_to_string l in
   match e with
+  | `Num x  -> const_to_string (`Num x)
+  | `Bool x -> const_to_string (`Bool x)
+  | `List x -> const_to_string (`List x)
   | `Id x -> x
-  | `Num x -> Int.to_string x
-  | `Bool x -> if x then "#t" else "#f"
-  | `Nil -> "nil"
   | `Op (op, args) -> sexp "(" ((operator_to_str op)::(str_all args)) ")"
-  | `List l -> sexp "[" (str_all l) "]"
-  | `Let (x, y, z) -> 
-     sexp "(" ["let"; x; expr_to_string y; expr_to_string z] ")"
+  | `Let (x, y, z) -> sexp "(" ["let"; x; expr_to_string y; expr_to_string z] ")"
   | `Define (x, y) -> sexp "(" ["define"; x; expr_to_string y] ")"
-  | `Lambda (x, y) ->
+  | `Apply (x, y)  -> sexp "(" ((expr_to_string x)::(str_all y)) ")"
+  | `Lambda (x, y) -> 
      let arg_strs l = List.map ~f:(fun (n, t) -> n ^ ":" ^ typ_to_string t) l in
      sexp "(" ["lambda"; sexp "(" (arg_strs x) ")"; expr_to_string y] ")"
-  | `Apply (x, y) -> sexp "(" ((expr_to_string x)::(str_all y)) ")"
 
 let prog_to_string p = List.map p ~f:expr_to_string |> String.concat ~sep:"\n"
 
-let rec value_to_string v = 
-  let str_all l = List.map ~f:value_to_string l in
+let value_to_string (v: value) : string = 
   match v with
-  | `Id x -> x
-  | `Num x -> Int.to_string x
-  | `Bool x -> Bool.to_string x
-  | `Nil -> "nil"
+  | `Num x  -> const_to_string (`Num x)
+  | `Bool x -> const_to_string (`Bool x)
+  | `List x -> const_to_string (`List x)
   | `Unit -> "unit"
-  | `List l -> sexp "[" (str_all l) "]"
   | `Closure (e, _) -> expr_to_string e
 
-let example_to_string (ex: example) = 
+let example_to_string (ex: example) : string =
   let e1, e2 = ex in
   (expr_to_string (e1 :> expr)) ^ " -> " ^ (expr_to_string (e2 :> expr))
   

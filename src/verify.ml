@@ -18,7 +18,6 @@ let rec expand (ctx: expr_ctx) (expr: expr) : expr =
   let exp_all es = List.map ~f:exp es in
   match expr with
   | `Id id -> (match lookup id ctx with Some expr' -> expr' | None -> expr)
-  | `List elems -> `List (exp_all elems)
   | `Define (id, body) -> `Define (id, expand ctx body)
   | `Let (id, bound, body) -> expand (bind ctx ~key:id ~data:(expand ctx bound)) body
   | `Lambda (args, body) ->
@@ -34,7 +33,7 @@ let rec expand (ctx: expr_ctx) (expr: expr) : expr =
          expand ctx' body
       | _ -> raise VerifyError)
   | `Op (op, args) -> `Op (op, exp_all args)
-  | `Num _ | `Bool _ | `Nil -> expr
+  | `Num _ | `Bool _ | `List _ -> expr
 
 let rec expr_to_z3 (zctx: Z3.context) (z3ectx: z3_ctx) (expr: expr) =
   match expr with
@@ -61,7 +60,7 @@ let rec expr_to_z3 (zctx: Z3.context) (z3ectx: z3_ctx) (expr: expr) =
       | Not, [a]      -> Z3.Boolean.mk_not zctx a
       | If, [a; b; c] -> Z3.Boolean.mk_ite zctx a b c
       | _             -> raise VerifyError)
-  | `Lambda _ | `Let _ | `Define _ | `Apply _ | `List _ | `Nil -> raise VerifyError
+  | `Lambda _ | `Let _ | `Define _ | `Apply _ | `List _ -> raise VerifyError
 
 let rec typ_to_z3 (zctx: Z3.context) (typ: typ) = 
   match typ with
@@ -69,17 +68,12 @@ let rec typ_to_z3 (zctx: Z3.context) (typ: typ) =
   | Bool_t -> Z3.Boolean.mk_sort zctx
   | List_t elem_typ -> Z3.Z3List.mk_list_s zctx (typ_to_string typ) (typ_to_z3 zctx elem_typ)
   | Unit_t
-  | Nil_t 
   | Arrow_t _ -> raise VerifyError
 
 let typed_id_to_z3 zctx tid = 
   let id, typ = tid in
   let sort = typ_to_z3 zctx typ in
   Z3.Expr.mk_const_s zctx id sort
-
-(* A constraint should consist of an operator that returns a boolean
-applied to expressions that can contain: constants, applications of the
-target function, and universally quantified ids. E.g (f a) > 0. The ids must have provided types, *)
 
 let verify (target_def: function_def) (constraints: constr list) =
   let open Z3.Solver in

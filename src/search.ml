@@ -45,22 +45,21 @@ let target_name (examples: example list) : id =
   match List.map ~f:(fun ex -> let (`Apply (`Id n, _)), _ = ex in n) examples with
   | [] -> solve_error "Example list is empty."
   | name::rest -> if List.for_all rest ~f:((=) name) then name
-                  else solve_error "Multiple names in example list."
+                  else solve_error "Multiple target names in example list."
 
 (** Infer a function signature from input/output examples. *)
 let signature (examples: example list) : typ =
   let name = target_name examples in
   match examples with
-  | x::xs -> let init_ctx = bind (Util.empty_ctx ()) 
+  | x::xs -> let init_ctx = bind (Util.empty_ctx ())
                                  ~key:name
                                  ~data:(typeof_example (Util.empty_ctx ()) x) in
-             let final_ctx =
-               List.fold xs
-                         ~init:init_ctx
-                         ~f:(fun ctx ex ->
-                             let example_typ = specialize (typeof_example ctx ex)
-                                                          (lookup_exn name ctx) in
-                             bind ctx ~key:name ~data:example_typ) in
+             let final_ctx = 
+               xs |> List.fold ~init:init_ctx
+                               ~f:(fun ctx ex -> let example_typ = typeof_example ctx ex in
+                                                 if example_typ = (lookup_exn name ctx)
+                                                 then bind ctx ~key:name ~data:example_typ
+                                                 else solve_error "Inconsistent types in example list.") in
              lookup_exn name final_ctx
   | [] -> solve_error "Example list is empty."
 
@@ -223,7 +222,7 @@ let rec solve_catamorphic ?(init=[]) (examples: example list) : function_def lis
   (* If the signature is list 'a -> list 'a, then assume f can be
     implemented using filter. *)
   | Arrow_t ([List_t et1], List_t et2) when et1 = et2 -> 
-     let extract_lists (ex: example) = match ex with (`Apply (_, [`List i])), `List o -> i, o in
+     let extract_lists (ex: example) = match ex with (`Apply (_, [`List (i, _)])), `List (o, _) -> i, o in
      (* If the input and output lists are the same length in every
      example, assume f can be implemented using map. *)
      if List.for_all examples ~f:(fun ex -> let i, o = extract_lists ex in (List.length i) = 
@@ -252,8 +251,7 @@ and solve_fold ?(init=[]) (examples: example list) : function_def list =
   (* Locate the base case example and extract the initial value for
      the fold. Base case examples are those that look like f([]) -> x. *)
   let partition_base ex = (match ex with
-                           | (`Apply (_, [`List []])), _
-                           | (`Apply (_, [`Nil])), _ -> `Fst ex
+                           | (`Apply (_, [`List ([], _)])), _ -> `Fst ex
                            | rex -> `Snd rex) in
   let base, recursive = List.partition_map examples ~f:partition_base in
 
@@ -264,7 +262,7 @@ and solve_fold ?(init=[]) (examples: example list) : function_def list =
       let apply_lambda (acc: const_app) (elem: const) : example_lhs = 
         `Apply (`Id lambda_name, [acc; (elem :> const_app)]) in
       let (lambda_examples: example list) =
-        List.map recursive ~f:(fun ((`Apply (_, [`List (x::xs)])), result) ->
+        List.map recursive ~f:(fun ((`Apply (_, [`List (x::xs, _)])), result) ->
                                (List.fold xs ~init:(apply_lambda (fold_init :> const_app) x)
                                           ~f:(fun a e -> apply_lambda (a :> const_app) e)),
                                result) in
@@ -286,7 +284,7 @@ and solve_filter ?(init=[]) (examples: example list) : function_def list =
   let filter_ex ret elem : example = (`Apply (`Id lambda_name, [(elem :> const_app)])), `Bool ret in
   let lambda_examples = 
     List.concat_map examples 
-                    ~f:(fun ((`Apply (_, [`List input])), `List result) ->
+                    ~f:(fun ((`Apply (_, [`List (input, _)])), `List (result, _)) ->
                         let retained, removed = List.partition_tf input ~f:(List.mem result) in
                         (List.map retained ~f:(filter_ex true) @
                           (List.map removed ~f:(filter_ex false)))) in
@@ -302,7 +300,7 @@ and solve_map ?(init=[]) (examples: example list) : function_def list =
   let lambda_name = fresh_name () in
   let map_ex elem ret = (`Apply (`Id lambda_name, [(elem :> const_app)])), ret in
   let (lambda_examples: example list) =
-    List.concat_map examples ~f:(fun ((`Apply (_, [`List input])), `List result) ->
+    List.concat_map examples ~f:(fun ((`Apply (_, [`List (input, _)])), `List (result, _)) ->
                                  List.map2_exn input result ~f:map_ex) in
   let lambda_def = solve_catamorphic ~init:init lambda_examples in
   let name = target_name examples in

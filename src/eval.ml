@@ -23,8 +23,7 @@ let type_error op args =
 (** Raise a wrong # of arguments error. *)
 let argn_error id = raise (RuntimeError ("Wrong # of arguments to " ^ id))
 
-(** Look up an id in the provided context. Works for type and eval
-contexts. *)
+(** Look up an id in the provided context. *)
 let lookup id ctx = String.Map.find !ctx id
 let lookup_exn id ctx =
   match lookup id ctx with
@@ -33,20 +32,31 @@ let lookup_exn id ctx =
 
 (** Bind a type or value to an id, returning a new context. *)
 let bind ctx ~key:k ~data:v = ref (String.Map.add !ctx ~key:k ~data:v)
+
+(** Remove a binding from a context, returning a new context. *)
 let unbind ctx ~key:k = ref (String.Map.remove !ctx k)
 
 (** Bind a type or value to an id, updating the context in place. *)
 let update ctx ~key:k ~data:v = ctx := String.Map.add !ctx ~key:k ~data:v
 
+(** Convert a value to a constant, raising an error if v is a type
+that cannot be converted. *)
+let value_to_const (v: value) : const = 
+  match v with
+  | `Num x -> `Num x
+  | `Bool x -> `Bool x
+  | `List x -> `List x
+  | `Closure _ 
+  | `Unit -> raise (RuntimeError ((value_to_string v) ^ " is not a constant."))
+
 (** Evaluate an expression in the provided context. *)
-let rec eval (env: eval_ctx) expr =
+let rec eval (env: eval_ctx) (expr: expr) : value =
   let eval_all l = List.map l ~f:(eval env) in
   match expr with
-  | `Id id               -> lookup_exn id env
-  | `Num x               -> `Num x
-  | `Bool x              -> `Bool x
-  | `Nil                 -> `Nil
-  | `List x              -> (match x with | [] -> `Nil | a  -> `List (eval_all a))
+  | `Num x  -> `Num x
+  | `Bool x -> `Bool x
+  | `List x -> `List x
+  | `Id id  -> lookup_exn id env
   | `Let (id, v, e) -> let env' = bind env ~key:id ~data:`Unit in
                        update env' ~key:id ~data:(eval env' v);
                        eval env' e
@@ -70,14 +80,10 @@ let rec eval (env: eval_ctx) expr =
                 | [`Bool x] -> `Bool (not x)
                 | _ -> arg_error op args)
       | Car -> (match eval_all args with
-                | [`List l] -> (match List.hd l with
-                                | Some x -> x
-                                | None -> arg_error op args)
+                | [`List ((x::_), _)] -> (x :> value)
                 | _ -> arg_error op args)
       | Cdr -> (match eval_all args with
-                | [`List l] -> (match List.tl l with
-                                | Some x -> (match x with [] -> `Nil | a -> `List a)
-                                | None -> arg_error op args)
+                | [`List ((_::xs), t)] -> ((`List (xs, t)) :> value)
                 | _ -> arg_error op args)
       | Plus -> (match eval_all args with 
                  | [`Num x; `Num y] -> `Num (x + y)
@@ -121,8 +127,7 @@ let rec eval (env: eval_ctx) expr =
                | [`Bool x; `Bool y] -> `Bool (x || y)
                | _ -> arg_error op args)
       | Cons -> (match eval_all args with
-                 | [x; `Nil] -> `List [x]
-                 | [x; `List y] -> `List (x :: y)
+                 | [x; `List (y, t)] -> `List (((value_to_const x) :: y), t)
                  | _ -> arg_error op args)
       | If -> (match args with
                | [ux; uy; uz] -> (match eval env ux with
@@ -131,40 +136,43 @@ let rec eval (env: eval_ctx) expr =
                                   | _ -> arg_error op args)
                | _ -> arg_error op args)
       | Fold -> (match args with
-                 | [l; f; i] ->
-                    eval env
-                         (`Op (If, [`Op (Eq, [`Nil; l]); i;
-                                    `Apply (f, [`Op (Fold, [`Op (Cdr, [l]); f; i]); 
-                                                `Op (Car, [l])])]))
+                 | [ul; uf; ui] -> (match eval env ul with
+                                    | `List ([], _) -> eval env ui
+                                    | `List (x::xs, t) ->
+                                       let x_expr = (x :> expr) in
+                                       let xs_expr = ((`List (xs, t)) :> expr) in
+                                       eval env (`Apply (uf, [`Op (Fold, [xs_expr; uf; ui]); x_expr]))
+                                    | _ -> arg_error op args)
                  | _ -> arg_error op args)
       | Filter -> (match args with
-                   | [l; f] -> 
-                      eval env (`Op (If, [`Op (Eq, [`Nil; l]); 
-                                          `Nil;
-                                          `Op (If, [`Apply (f, [`Op (Car, [l])]);
-                                                    `Op (Cons, [`Op (Car, [l]);
-                                                                `Op (Filter, [`Op (Cdr, [l]); f])]);
-                                                    `Op (Filter, [`Op (Cdr, [l]); f])])]))
+                   | [ul; uf] -> (match eval env ul with
+                                  | `List ([], t) -> `List ([], t)
+                                  | `List (x::xs, t) -> 
+                                     let x_expr = (x :> expr) in
+                                     let xs_expr = ((`List (xs, t)) :> expr) in
+                                     eval env (`Op (If, [`Apply (uf, [x_expr]);
+                                                         `Op (Cons, [x_expr; `Op (Filter, [xs_expr; uf])]);
+                                                         `Op (Filter, [xs_expr; uf])]))
+                                  | _ -> arg_error op args)
                    | _ -> arg_error op args)
       | Map -> (match args with
-                | [l; f] ->
-                   eval env (`Op (If, [`Op (Eq, [`Nil; l]);
-                                       `Nil;
-                                       `Op (Cons, [`Apply (f, [`Op (Car, [l])]);
-                                                   `Op (Cdr, [l])])]))
+                | [ul; uf] -> (match eval env ul with
+                               | `List ([], t) -> `List ([], t)
+                               | `List (x::xs, t) ->
+                                  let x_expr = (x :> expr) in
+                                  let xs_expr = ((`List (xs, t)) :> expr) in
+                                  eval env (`Op (Cons, [`Apply (uf, [x_expr]); xs_expr]))
+                               | _ -> arg_error op args)
                 | _ -> arg_error op args)
       | Foldl -> (match args with
-                  | [l; f; i] ->
-                     eval env 
-                          (`Op (If, [`Op (Eq, [`Nil; l]); 
-                                     i; 
-                                     `Op (Foldl, 
-                                          [`Op (Cdr, [l]);
-                                           f; 
-                                           `Apply (f, [i; `Op (Car, [l])]);])]))
-                  | _ -> arg_error op args)
-     )
-;;
+                  | [ul; uf; ui] -> (match eval env ul with
+                                     | `List ([], _) -> eval env ui
+                                     | `List (x::xs, t) ->
+                                        let x_expr = (x :> expr) in
+                                        let xs_expr = ((`List (xs, t)) :> expr) in
+                                        eval env (`Op (Foldl, [xs_expr; uf; `Apply (uf, [ui; x_expr]);]))
+                                     | _ -> arg_error op args)
+                  | _ -> arg_error op args))
 
 (** Evaluate a "program," or a list of expressions. This creates an
 eval context which contains bindings for each define in the
@@ -185,16 +193,31 @@ let prog_eval prog =
                                          | _ -> true)
          |> List.hd) with
   | Some exp -> eval env exp
-  | None -> `Nil
+  | None -> `Unit
 ;;
+
+let rec typeof_const (const: const) : typ = 
+  match const with
+  | `Num _ -> Num_t
+  | `Bool _ -> Bool_t
+  | `List ([], t) -> List_t t
+  | `List (_, Unit_t) 
+  | `List (_, Arrow_t _) -> raise (TypeError "List tagged with non-constant type.")
+  | `List (x::xs, tag_t) -> 
+     let t = typeof_const x in
+     let ts = List.map ~f:typeof_const xs in
+     if List.for_all ~f:((=) t) ts 
+     then if t = tag_t then List_t t 
+          else raise (TypeError "List tagged with incorrect type.")
+     else raise (TypeError "List contains multiple types.")
   
 (** Get the type of an expression given a type context. *)
 let rec typeof_expr (ctx: type_ctx) (expr: expr) : typ =
   let typeof_all es = List.map ~f:(typeof_expr ctx) es in
   match expr with
-  | `Num _ -> Num_t
-  | `Bool _ -> Bool_t
-  | `Nil -> Nil_t
+  | `Num x  -> typeof_const (`Num x)
+  | `Bool x -> typeof_const (`Bool x)
+  | `List x -> typeof_const (`List x)
   | `Op (op, untyped_args) ->
      (let args = typeof_all untyped_args in
       match op with
@@ -215,37 +238,27 @@ let rec typeof_expr (ctx: type_ctx) (expr: expr) : typ =
       | Or
       | And -> (match args with [Bool_t; Bool_t] -> Bool_t | _ -> type_error op args)
       | Cons -> (match args with
-                 | [t; Nil_t] -> List_t t
-                 | [t1; List_t t2] when type_equal t1 t2 -> List_t t1
+                 | [t1; List_t t2] when t1 = t2 -> List_t t1
                  | _ -> type_error op args)
       | If -> (match args with
-               | [Bool_t; t1; t2] when type_equal t1 t2 -> t1
+               | [Bool_t; t1; t2] when t1 = t2 -> t1
                | _ -> type_error op args)
       | Map -> (match args with
-                | [Nil_t; Arrow_t ([_], _)] -> Nil_t
-                | [List_t it1; Arrow_t ([it2], ot)] when type_equal it1 it2 -> List_t ot
+                | [List_t it1; Arrow_t ([it2], ot)] when it1 = it2 -> List_t ot
                 | _ -> type_error op args)
       | Fold
       | Foldl -> (match args with
-                  | [Nil_t; Arrow_t ([at1; _], at2); at3]
-                       when Util.all_equal ~eq:type_equal [at1; at2; at3] -> at2
                   | [List_t et2; Arrow_t ([at1; et1], at2); at3]
-                      when (Util.all_equal ~eq:type_equal [at1; at2; at3]) && (type_equal et1 et2) -> at2
+                      when (Util.all_equal ~eq:(=) [at1; at2; at3]) && (et1 = et2) -> at2
                   | _ -> type_error op args)
       | Filter -> (match args with
-                   | [Nil_t; Arrow_t ([_], Bool_t)] -> Nil_t
-                   | [List_t et1; Arrow_t ([et2], Bool_t)] when type_equal et1 et2 -> List_t et1
+                   | [List_t et1; Arrow_t ([et2], Bool_t)] when et1 = et2 -> List_t et1
                    | _ -> type_error op args))
   | `Id name -> lookup_exn name ctx
   | `Let (name, e1, e2) ->
      let ctx' = bind ctx ~key:name ~data:(typeof_expr ctx e1) in
      typeof_expr ctx' e2
   | `Define _ -> Unit_t
-  | `List l ->
-     (match typeof_all l with
-      | [] -> Nil_t
-      | x::xs -> if List.for_all ~f:(type_equal x) xs then List_t x
-                 else raise @@ TypeError "List contains multiple types.")
   | `Lambda (args, e) ->
      let ctx' = List.fold_left ~f:(fun c (n, t) -> bind c ~key:n ~data:t)
                                ~init:ctx args in
@@ -253,47 +266,16 @@ let rec typeof_expr (ctx: type_ctx) (expr: expr) : typ =
   | `Apply (e, args) -> 
      (match typeof_expr ctx e with
       | Arrow_t (its, ot) -> 
-         if List.equal its (typeof_all args) ~equal:type_equal then ot
+         if its = (typeof_all args) then ot
          else raise @@ RuntimeError ("Bad argument to " ^ (expr_to_string e))
       | _ -> raise @@ RuntimeError "Tried to apply non-lambda.")
 
 (** Get the type of a value. No type context is necessary, since ids
 are not values. *)
-let rec typeof_value (value: value) : typ =
+let typeof_value (value: value) : typ =
   match value with
-  | `Num _ -> Num_t
-  | `Bool _ -> Bool_t
-  | `List l -> 
-     (match List.map ~f:typeof_value l with
-      | [] -> Nil_t
-      | [a] -> (List_t a)
-      | a::b -> if List.for_all ~f:(type_equal a) b
-                then (List_t a) 
-                else raise @@ RuntimeError "List has inconsistent type.")
-  | `Nil -> Nil_t
+  | `Num x  -> typeof_const (`Num x)
+  | `Bool x -> typeof_const (`Bool x)
+  | `List x -> typeof_const (`List x)
   | `Unit -> Unit_t
   | `Closure _ -> raise @@ RuntimeError "Closures not permitted in examples."
-
-let rec specialize t1 t2 = 
-  let error a b = raise @@ TypeError (Printf.sprintf "No specialization for %s %s."
-                                                     (typ_to_string a)
-                                                     (typ_to_string b)) in
-  match t1 with
-  | Nil_t -> (match t2 with
-              | Nil_t -> t1
-              | List_t _ -> t2
-              | _ -> error t1 t2)
-  | List_t ct1 -> (match t2 with
-                   | Nil_t -> t1
-                   | List_t ct2 -> List_t (specialize ct1 ct2)
-                   | _ -> error t1 t2)
-  | Arrow_t (its1, ot1) -> 
-     (match t2 with
-      | Arrow_t (its2, ot2) -> 
-         Arrow_t (List.map2_exn ~f:specialize its1 its2, specialize ot1 ot2)
-      | _ -> error t1 t2)
-  | _ -> if t1 = t2 then t1 else error t1 t2
-
-let specialize_all = function
-  | [] -> raise @@ TypeError "No types to specialize."
-  | x::xs -> List.fold_left xs ~f:specialize ~init:x
