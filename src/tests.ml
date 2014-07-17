@@ -23,15 +23,6 @@ let vals_to_string (res:(value list * value) list) =
   let vals_strs = List.map res ~f:val_to_string in
   Ast.sexp "[" vals_strs "]"
 
-let assert_solve result examples init = 
-  let res_expr = Util.parse_expr result in
-  assert_equal ~printer:expr_to_string res_expr ((Search.solve examples ~init:init) :> expr)
-
-let assert_solve_cata (result: string) (examples: example list) (init: expr list) = 
-  let res_prog = Util.parse_prog result in
-  let solve_prog = ((Search.solve_catamorphic examples ~init:init) :> expr list) in
-  assert_equal ~printer:prog_to_string res_prog solve_prog
-
 let eval expr = Eval.eval (Util.empty_ctx ()) expr
 
 let make_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name cases = 
@@ -240,7 +231,7 @@ let test_straight_solve =
   make_solve_tests 
     ~in_f:(fun (_, example_strs, init_strs) -> 
            let solution = Search.solve ~init:(List.map init_strs ~f:Util.parse_expr) 
-                                       (List.map example_strs ~f:Util.parse_example) in
+                                       (List.map example_strs ~f:Util.parse_example) [] in
            (solution :> expr))
     ~out_f:Util.parse_expr
     ~in_str:(fun (name, _, _) -> name) ~out_str:identity ~res_str:expr_to_string
@@ -441,7 +432,7 @@ let test_verify =
              | `Define (n, `Lambda (a, b)) -> `Define (n, `Lambda (a, b)) 
              | _ -> assert_failure "Not a function definition." in
            let cs = List.map cs_strs ~f:Util.parse_constr in
-           Verify.verify fdef cs)
+           Verify.verify [] cs fdef)
     ~out_f:identity 
     ~in_str:(fun (fdef_str, cs_strs) -> String.concat ~sep:", " (fdef_str::cs_strs))
     ~out_str:status_to_str ~res_str:status_to_str

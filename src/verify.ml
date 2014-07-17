@@ -104,46 +104,56 @@ let rec expr_to_z3 (zctx: Z3.context) (z3ectx: z3_ctx) (expr: expr) =
   | `Define _ 
   | `Apply _ -> verify_error "(lambda, let, define, apply) are not supported by Z3."
 
-let verify (target_def: function_def) (constraints: constr list) =
+let verify_example (target_def: function_def) (example: example) : bool = 
+  let (input, result) = example in
+  let test_program = [(target_def :> expr); (input :> expr)] in
+  try (Eval.prog_eval test_program) = (result :> value) with
+    RuntimeError _ -> false
+
+let verify_constraint (zctx: Z3.context) (target_def: function_def) (constr: constr) : bool = 
   let open Z3.Solver in
   let `Define (target_name, `Lambda (target_args, target_body)) = target_def in
-  let zctx = Z3.mk_context [] in
+  let solver = mk_simple_solver zctx in
+  let constr_body, constr_ids = constr in
 
-  let verify_constraint constr = 
-    let solver = mk_simple_solver zctx in
-    let constr_body, constr_ids = constr in
-
-    (* Expand the constraint using a context that contains the
+  (* Expand the constraint using a context that contains the
     definition of the target function. *)
-    let constr_body' = 
-      let ctx = bind (empty_ctx ()) ~key:target_name ~data:(`Lambda (target_args, target_body)) in
-      expand ctx constr_body in
+  let constr_body' =
+    let ctx = bind (empty_ctx ())
+                   ~key:target_name
+                   ~data:(`Lambda (target_args, target_body)) in
+    expand ctx constr_body in
 
-    (* let _ = Printf.printf "%s\n" (expr_to_string constr_body') in *)
-    
-    (* Generate a correctly typed Z3 constant for each unbound id in the constraint. *)
-    let z3_consts = List.map constr_ids ~f:(typed_id_to_z3 zctx) in
+  (* let _ = Printf.printf "%s\n" (expr_to_string constr_body') in *)
+  
+  (* Generate a correctly typed Z3 constant for each unbound id in the constraint. *)
+  let z3_consts = List.map constr_ids ~f:(typed_id_to_z3 zctx) in
 
-    (* Convert constraint body to a Z3 expression. *)
-    let z3_constr_body = 
-      let ctx = List.fold2_exn constr_ids z3_consts ~init:(empty_ctx ())
-                               ~f:(fun acc (id, _) z3c -> bind acc ~key:id ~data:z3c) in
-      expr_to_z3 zctx ctx constr_body' in
+  (* Convert constraint body to a Z3 expression. *)
+  let z3_constr_body = 
+    let ctx = List.fold2_exn constr_ids z3_consts 
+                             ~init:(empty_ctx ())
+                             ~f:(fun acc (id, _) z3c -> bind acc ~key:id ~data:z3c) in
+    expr_to_z3 zctx ctx constr_body' in
 
-    (* let _ = Printf.printf "%s\n" (Z3.Expr.to_string z3_constr_body) in *)
+  (* let _ = Printf.printf "%s\n" (Z3.Expr.to_string z3_constr_body) in *)
 
-    add solver [Z3.Boolean.mk_not zctx z3_constr_body];
+  (* Add the constraint to the solver and check. *)
+  add solver [Z3.Boolean.mk_not zctx z3_constr_body];
+  match check solver [] with
+  | UNSATISFIABLE -> true
+  | UNKNOWN -> verify_error "Z3 returned unknown."
+  | SATISFIABLE -> false
 
-    (* Add the constraint to the solver and check. *)
-    match check solver [] with
-    | UNSATISFIABLE -> true
-    | UNKNOWN -> verify_error "Z3 returned unknown."
-    | SATISFIABLE -> false
-  in
-
-  try
-    if List.for_all constraints ~f:verify_constraint then Valid
-    else Invalid
-  with VerifyError msg -> 
-    Printf.printf "%s\n" msg;
-    Error
+let verify (examples: example list) (constraints: constr list) (target_def: function_def) : status =
+  if List.for_all examples ~f:(verify_example target_def)
+  then
+    let zctx = Z3.mk_context [] in
+    try
+      if List.for_all constraints ~f:(verify_constraint zctx target_def)
+      then Valid
+      else Invalid
+    with VerifyError msg -> 
+      Printf.printf "%s\n" msg; 
+      Error
+  else Invalid

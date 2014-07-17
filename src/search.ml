@@ -91,15 +91,6 @@ let apply_candidate (def: [< `Define of id * expr ]) (inputs: expr list) : value
   let app = `Apply (`Id id, inputs) in
   let prog = [(def :> expr); app] in
   prog_eval prog
-
-(** Returns a function that checks a function against the provided
-    examples. target_name is the name that the function is bound to in
-    the provided definition. *)
-let oracle (examples: example list) : [< `Define of id * expr ] -> bool =
-  (fun def -> List.for_all 
-                examples ~f:(fun (input, result) -> 
-                             try (prog_eval [(def :> expr); (input :> expr)]) = (result :> value) with
-                               RuntimeError _ -> false))
    
 let select (map: build_set) (pred: typ -> bool) (size: int) : typed_expr list =
   match IntMap.find map size with
@@ -107,7 +98,7 @@ let select (map: build_set) (pred: typ -> bool) (size: int) : typed_expr list =
                   |> TypedExprSet.to_list
   | None -> []
 
-let solve ?(init=[]) (examples: example list) : function_def =
+let solve ?(init=[]) (examples: example list) (constraints: constr list) : function_def =
   (* Extract the name of the target function from the examples. *)
   let name = target_name examples in
 
@@ -122,7 +113,7 @@ let solve ?(init=[]) (examples: example list) : function_def =
                   argument_ids in
   
   (* Generate an oracle function from the examples. *)
-  let check = oracle examples in
+  let check = Verify.verify examples constraints in
 
   (* Create a type context from the target function signature and
   typed arguments so that expressions can be typed correctly. *)
@@ -144,7 +135,7 @@ let solve ?(init=[]) (examples: example list) : function_def =
                        then
                          begin
                            let def = `Define (name, `Lambda (argument_names, e)) in
-                           if check def then raise (Solved def)
+                           if (check def) = Verify.Valid then raise (Solved def)
                            else
                              if ac || (not (Rewrite.is_constant se)) then
                                begin
@@ -243,7 +234,7 @@ let rec solve_catamorphic ?(init=[]) (examples: example list) : function_def lis
   | Arrow_t ([List_t _], _) -> solve_fold ~init:init examples
 
   (* Otherwise, perform a general search for f. *)
-  | _ -> [solve ~init:init examples]
+  | _ -> [solve ~init:init examples []]
 
 and solve_fold ?(init=[]) (examples: example list) : function_def list =
   let Arrow_t ([List_t elem_type], _) = signature examples in
