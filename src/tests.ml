@@ -232,9 +232,12 @@ let test_straight_solve =
     ~in_f:(fun (_, example_strs, init_strs) -> 
            let solution = Search.solve ~init:(List.map init_strs ~f:Util.parse_expr) 
                                        (List.map example_strs ~f:Util.parse_example) [] in
-           (solution :> expr))
-    ~out_f:Util.parse_expr
-    ~in_str:(fun (name, _, _) -> name) ~out_str:identity ~res_str:expr_to_string
+           (solution :> expr option))
+    ~out_f:(fun res_str -> Some (Util.parse_expr res_str))
+    ~in_str:(fun (name, _, _) -> name) ~out_str:identity 
+    ~res_str:(fun res -> match res with
+                         | Some expr -> expr_to_string expr
+                         | None -> "")
     "straight_solve"
     [
       ("plus", ["(f 1 1) -> 2"; 

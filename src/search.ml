@@ -15,8 +15,10 @@ module TypedExpr =
 module TypedExprSet = Set.Make(TypedExpr)
 type build_set = TypedExprSet.t IntMap.t
 
-exception Solved of function_def
 exception SolveError of string
+
+exception Solved of function_def
+exception TimedOut
 
 let solve_error msg = raise (SolveError msg)
 
@@ -98,7 +100,10 @@ let select (map: build_set) (pred: typ -> bool) (size: int) : typed_expr list =
                   |> TypedExprSet.to_list
   | None -> []
 
-let solve ?(init=[]) (examples: example list) (constraints: constr list) : function_def =
+let solve ?(init=[])
+          ?(max_depth=None)
+          (examples: example list)
+          (constraints: constr list) : function_def option =
   (* Extract the name of the target function from the examples. *)
   let name = target_name examples in
 
@@ -201,11 +206,15 @@ let solve ?(init=[]) (examples: example list) (constraints: constr list) : funct
         (*               |> check_exprs); *)
         
         i := !i + 1;
+        match max_depth with
+        | Some max -> if i >= max then raise TimedOut else ()
+        | None -> ()
       done;
       solve_error "Completed solve loop without finding solution.";
     end
   with
-  | Solved expr -> expr
+  | Solved expr -> Some expr
+  | TimedOut -> None
 ;;
 
 let rec solve_catamorphic ?(init=[]) (examples: example list) : function_def list =
@@ -234,7 +243,9 @@ let rec solve_catamorphic ?(init=[]) (examples: example list) : function_def lis
   | Arrow_t ([List_t _], _) -> solve_fold ~init:init examples
 
   (* Otherwise, perform a general search for f. *)
-  | _ -> [solve ~init:init examples []]
+  | _ -> match solve ~init:init examples [] with
+         | Some def -> [def]
+         | None -> []
 
 and solve_fold ?(init=[]) (examples: example list) : function_def list =
   let Arrow_t ([List_t elem_type], _) = signature examples in
