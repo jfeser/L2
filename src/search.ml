@@ -219,26 +219,29 @@ let solve ?(init=[])
 
 let rec solve_catamorphic ?(init=[]) (examples: example list) : function_def list =
   match signature examples with
-  (* If the signature is list 'a -> list 'a, then assume f can be
-    implemented using filter. *)
-  | Arrow_t ([List_t et1], List_t et2) when et1 = et2 -> 
-     let extract_lists (ex: example) = match ex with (`Apply (_, [`List (i, _)])), `List (o, _) -> i, o in
+  (* If the signature is list 'a -> list 'b, then assume f can be
+    implemented using either map or filter. *)
+  | Arrow_t ([List_t et1], List_t et2) ->
+     let extract_lists (ex: example) = match ex with
+       | (`Apply (_, [`List (i, _)])), `List (o, _) -> i, o
+       | _ -> solve_error "Expression does not conform to type." in
+
      (* If the input and output lists are the same length in every
      example, assume f can be implemented using map. *)
-     if List.for_all examples ~f:(fun ex -> let i, o = extract_lists ex in (List.length i) = 
-                                                                             (List.length o))
+     if List.for_all examples ~f:(fun ex -> let i, o = extract_lists ex in 
+                                            (List.length i) = (List.length o))
      then solve_map ~init:init examples
 
      (* If there is an example with a shorter output list than its
      input list, implement with filter. Otherwise, use fold, since it
      is the most general. *)
      else 
-       if List.exists examples ~f:(fun ex -> let i, o = extract_lists ex in (List.length i) > 
-                                                                              (List.length o))
+       if List.exists examples ~f:(fun ex -> let i, o = extract_lists ex in 
+                                             (List.length i) > (List.length o))
        then solve_filter ~init:init examples
        else solve_fold ~init:init examples
 
-  (* If the input is a list of 'a, assume that f can be implemented
+  (* If the input is list 'a -> 'b, assume that f can be implemented
     using a fold. *)
   | Arrow_t ([List_t _], _) -> solve_fold ~init:init examples
 
@@ -257,7 +260,7 @@ and solve_fold ?(init=[]) (examples: example list) : function_def list =
                            | rex -> `Snd rex) in
   let base, recursive = List.partition_map examples ~f:partition_base in
 
-  (match base with
+  (match List.dedup ~compare:compare_example base with
    | [(`Apply (_, _)), fold_init] ->
       (* Extract examples for the lambda that is passed to fold. *)
       let lambda_name = fresh_name () in
@@ -310,4 +313,3 @@ and solve_map ?(init=[]) (examples: example list) : function_def list =
   lambda_def @
     [`Define (name, `Lambda ([list_name, List_t elem_type],
                              `Op (Map, [`Id list_name; `Id lambda_name])))]
-

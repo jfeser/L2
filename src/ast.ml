@@ -48,9 +48,9 @@ the constant that should result. E.g. (f 1 2) -> 3 would be an example
 for the function f. The target function can be applied to constants or
 to recursive invocations of itself. (Invoking other functions cannot
 be disallowed by the type system, but is not allowed.) *)
-type const_app = [ const | `Apply of [`Id of id] * (const_app list) ]
-type example_lhs = [ `Apply of [ `Id of id ] * (const_app list) ]
-type example = example_lhs * const
+type const_app = [ const | `Apply of [`Id of id] * (const_app list) ] with compare, sexp
+type example_lhs = [ `Apply of [ `Id of id ] * (const_app list) ] with compare, sexp
+type example = example_lhs * const with compare, sexp
 
 (** Types for expressions and values. *)
 type expr = [ const

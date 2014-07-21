@@ -277,12 +277,12 @@ let test_catamorphic_solve =
               ], []),
       "";
 
-      (* ("sums", ["(f []:[num]) -> []:num"; *)
-      (*           "(f [[]:num]) -> [0]"; *)
-      (*           "(f [[1] []:num]) -> [1 0]"; *)
-      (*           "(f [[1 2] [3 4]]) -> [3 7]"; *)
-      (*          ], []), *)
-      (* ""; *)
+      ("sums", ["(f []:[num]) -> []:num";
+                "(f [[]:num]) -> [0]";
+                "(f [[1] []:num]) -> [1 0]";
+                "(f [[1 2] [3 4]]) -> [3 7]";
+               ], []),
+      "";
 
       ("concat", ["(f []:[num]) -> []:num";
                   "(f [[1]]) -> [1]";
@@ -295,6 +295,12 @@ let test_catamorphic_solve =
                   "(f [0]) -> 1";
                   "(f [0 0]) -> 2";
                  ], ["1"]),
+      "";
+
+      ("lengths", ["(f []:[num]) -> []:num";
+                   "(f [[]:num]) -> [0]";
+                   "(f [[1] [1 1] [1 1 1]]) -> [1 2 3]";
+                  ], ["1"]),
       "";
 
       ("evens", ["(f []:num) -> []:num";
@@ -514,7 +520,6 @@ let () = run_test_tt_main
 
                 test_typeof_value;
                 test_typeof_example;
-                (* test_specialize; *)
                 test_signature;
 
                 test_expand;
