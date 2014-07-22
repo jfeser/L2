@@ -161,7 +161,8 @@ let rec eval (env: eval_ctx) (expr: expr) : value =
                                | `List (x::xs, t) ->
                                   let x_expr = (x :> expr) in
                                   let xs_expr = ((`List (xs, t)) :> expr) in
-                                  eval env (`Op (Cons, [`Apply (uf, [x_expr]); xs_expr]))
+                                  eval env (`Op (Cons, [`Apply (uf, [x_expr]); 
+                                                        `Op (Map, [xs_expr; uf])]))
                                | _ -> arg_error op args)
                 | _ -> arg_error op args)
       | Foldl -> (match args with

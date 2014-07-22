@@ -73,6 +73,7 @@ let test_parse_expr =
                 "(cdr [1 2])", `Op (Cdr, [`List ([`Num 1; `Num 2;], Num_t)]);
                 "(f 1 2)", `Apply (`Id "f", [`Num 1; `Num 2]);
                 "(> (f 1 2) 3)", `Op (Gt, [`Apply (`Id "f", [`Num 1; `Num 2]); `Num 3]);
+                "(map x7 f6)", `Op (Map, [`Id "x7"; `Id "f6"]);
               ]
 
 let test_parse_example = 
@@ -142,8 +143,12 @@ let test_eval =
                 "(foldl [1 2 3] (lambda (a:num e:num) (+ a e)) 0)", `Num 6; (* Sum *)
                 "(foldl [[1] [2 1] [3 2 1]] (lambda (a:[num] e:num) (cons (car e) a)) []:num)",
                 `List ([`Num 3; `Num 2; `Num 1], Num_t); (* Rev-firsts *)
+                "(filter []:num (lambda (e:num) (> 3 e)))", `List ([], Num_t);
                 "(filter [1 2 3 4] (lambda (e:num) (> 3 e)))", `List ([`Num 1; `Num 2], Num_t);
                 "(filter [1 2 3 4] (lambda (e:num) (= 0 (% e 2))))", `List ([`Num 2; `Num 4], Num_t);
+                "(map []:num (lambda (e:num) (+ e 1)))", `List ([], Num_t);
+                "(map [1] (lambda (e:num) (+ e 1)))", `List ([`Num 2], Num_t);
+                "(map [1 2] (lambda (e:num) (+ e 1)))", `List ([`Num 2; `Num 3], Num_t);
               ]
 
 let test_eval_prog = 
@@ -155,7 +160,10 @@ let test_eval_prog =
                 "(define plus (lambda (a:num b:num) (+ a b))) (plus 1 2)", `Num 3;
                 "(define a 1)", `Unit;
                 "1 2 3", `Num 3;
-                "(define last (lambda (l:[num]) (if (= []:num (cdr l)) (car l) (last (cdr l))))) (last [1 2 3])", `Num 3;
+                "(define last (lambda (l:[num]) (if (= []:num (cdr l)) (car l) (last (cdr l))))) (last [1 2 3])", 
+                `Num 3;
+                "(define f6 (lambda (e8:num) (+ 1 e8))) (define f (lambda (x7:[num]) (map x7 f6))) (f [1 2 3])", 
+                `List ([`Num 2; `Num 3; `Num 4], Num_t);
               ]
 
 let test_fold_constants = 
