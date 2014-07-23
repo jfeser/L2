@@ -6,3 +6,6 @@ _build/
 
 # Emacs
 .merlin
+
+# Vagrant
+.vagrant/

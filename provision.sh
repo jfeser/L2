@@ -11,8 +11,8 @@ sudo apt-get -y install ocaml-nox ocaml-native-compilers opam m4 gettext zlib1g-
 OPAM_ROOT=/usr/local/opam
 sudo mkdir -p $OPAM_ROOT
 sudo chown vagrant:vagrant $OPAM_ROOT
-opam init -y --root $OPAM_ROOT 
-sudo opam init -y --root $OPAM_ROOT
+opam init --auto-setup --yes --root $OPAM_ROOT
+sudo opam init --auto-setup --yes --root $OPAM_ROOT
 eval `opam config env --root=/usr/local/opam`
 opam install -y core menhir utop
 
@@ -21,7 +21,7 @@ if [ "$(git --version)" == 'git version 1.9.1' ]; then
     cd /tmp
     git clone https://github.com/git/git.git
     cd git
-    make configure 
+    make configure
     ./configure --prefix=/usr
     make all
     sudo make install
@@ -36,13 +36,11 @@ git checkout ml-ng
 python2 scripts/mk_make.py --ml
 cd build
 make
-echo '#!/bin/bash' > install.sh 
-echo 'eval `opam config --root /usr/local/opam env`' >> install.sh 
-echo 'echo $PATH' >> install.sh 
+echo '#!/bin/bash' > install.sh
+echo 'eval `opam config --root /usr/local/opam env`' >> install.sh
+echo 'echo $PATH' >> install.sh
 echo 'make install; chown -R vagrant:vagrant /usr/local/opam' >> install.sh
 chmod +x install.sh
 sudo ./install.sh
-cd ..
+cd /tmp
 rm -r z3
-
-
