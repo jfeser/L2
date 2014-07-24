@@ -22,7 +22,7 @@ open Ast
 %token ARROW
 %token EOF
 
-%start <Ast.expr list> prog
+%start <Ast.program> prog
 %start <Ast.expr> expr
 %start <Ast.example> example
 %start <Ast.constr> constr

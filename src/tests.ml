@@ -236,7 +236,7 @@ let test_denormalize =
     ]
 
 let test_straight_solve =
-  make_solve_tests 
+  make_solve_tests
     ~in_f:(fun (_, example_strs, init_strs) -> 
            let solution = Search.solve ~init:(List.map init_strs ~f:Util.parse_expr) 
                                        (List.map example_strs ~f:Util.parse_example) [] in
@@ -248,7 +248,7 @@ let test_straight_solve =
                          | None -> "")
     "straight_solve"
     [
-      ("plus", ["(f 1 1) -> 2"; 
+      ("plus", ["(f 1 1) -> 2";
                 "(f 2 1) -> 3"], []), 
       "(define f (lambda (x0:num x1:num) (+ x0 x1)))";
 
@@ -346,6 +346,68 @@ let test_catamorphic_solve =
                   "(f [4 1]) -> #f";
                   "(f [2 1 2 3]) -> #f";
                  ], ["0"; "2"; "#t"; "#f"]),
+      "";
+    ]
+
+let test_catamorphic_looped_solve =
+  make_solve_tests 
+    ~in_f:(fun (_, example_strs, init_strs) ->
+           let solution = Search.solve_catamorphic_looped
+                            ~init:(List.map init_strs ~f:Util.parse_expr)
+                            (List.map example_strs ~f:Util.parse_example) in
+           (solution :> program))
+    ~out_f:Util.parse_prog
+    ~in_str:(fun (name, _, _) -> name) ~out_str:identity ~res_str:prog_to_string
+    "catamorphic_solve"
+    [
+      ("incr", ["(f []:num) -> []:num";
+                "(f [1]) -> [2]";
+                "(f [1 2]) -> [2 3]";
+                "(f [1 2 3 4]) -> [2 3 4 5]";
+               ], ["1"]),
+      "";
+
+      ("add", ["(f []:num 1) -> []:num";
+                "(f [1] 1) -> [2]";
+                "(f [1 2] 1) -> [2 3]";
+                "(f [1 2] 2) -> [3 4]";
+                "(f [1 2 3 4] 5) -> [6 7 8 9]";
+               ], []),
+      "";
+
+      ("evens", ["(f []:num) -> []:num";
+                 "(f [1]) -> []:num";
+                 "(f [1 2]) -> [2]";
+                 "(f [1 2 3 4]) -> [2 4]";
+                ], ["0"; "2"]),
+      "";
+
+      ("odds", ["(f []:num) -> []:num";
+                "(f [1]) -> [1]";
+                "(f [1 2]) -> [1]";
+                "(f [1 2 3 4]) -> [1 3]";
+               ], ["0"; "2"]),
+      "";
+
+      ("zeroes", ["(f []:num) -> []:num";
+                  "(f [0]) -> []:num";
+                  "(f [1 0]) -> [1]";
+                  "(f [1 0 2]) -> [1 2]";
+                 ], ["0"]),
+      "";
+
+      ("concat", ["(f []:num []:num) -> []:num";
+                  "(f [0] []:num) -> [0]";
+                  "(f [1 0] [0]) -> [1 0 0]";
+                  "(f [1 0 2] [3 4]) -> [1 0 2 3 4]";
+                 ], []),
+      "";
+
+      ("reverse", ["(f []:num) -> []:num";
+                   "(f [0] []:num) -> [0]";
+                   "(f [1 0] [0]) -> [1 0 0]";
+                   "(f [1 0 2] [3 4]) -> [1 0 2 3 4]";
+                  ], []),
       "";
     ]
 
@@ -546,5 +608,6 @@ let () = run_test_tt_main
                 test_symb_solver;
 
                 test_straight_solve;
-                test_catamorphic_solve;
+                test_catamorphic_looped_solve;
+           (* test_catamorphic_solve; *)
            ]);

@@ -63,6 +63,8 @@ type expr = [ const
 
 type function_def = [ `Define of id * [ `Lambda of typed_id list * expr ] ]
 
+type program = expr list
+
 type constr = expr * (typed_id list)
 
 type value = [ const
