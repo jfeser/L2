@@ -104,11 +104,14 @@ let rec expr_to_z3 (zctx: Z3.context) (z3ectx: z3_ctx) (expr: expr) =
   | `Define _ 
   | `Apply _ -> verify_error "(lambda, let, define, apply) are not supported by Z3."
 
-let verify_example (target_def: function_def) (example: example) : bool = 
+let verify_example (target_prog: program) (example: example) : bool =
   let (input, result) = example in
-  let test_program = [(target_def :> expr); (input :> expr)] in
+  let test_program = target_prog @ [(input :> expr)] in
   try (Eval.prog_eval test_program) = (result :> value) with
     RuntimeError _ -> false
+
+let verify_examples (target_prog: program) (examples: example list) : bool =
+  List.for_all examples ~f:(verify_example target_prog)
 
 let verify_constraint (zctx: Z3.context) (target_def: function_def) (constr: constr) : bool = 
   let open Z3.Solver in
@@ -146,7 +149,7 @@ let verify_constraint (zctx: Z3.context) (target_def: function_def) (constr: con
   | SATISFIABLE -> false
 
 let verify (examples: example list) (constraints: constr list) (target_def: function_def) : status =
-  if List.for_all examples ~f:(verify_example target_def)
+  if List.for_all examples ~f:(verify_example [(target_def :> expr)])
   then
     let zctx = Z3.mk_context [] in
     try
