@@ -42,4 +42,4 @@ rm -rf z3
 
 # Set permissions so that the user can install using opam.
 chown -R vagrant:vagrant $OPAM_ROOT
-sudo -u vagrant opam init --auto-setup --yes --root $OPAM_ROOT
+sudo -i -u vagrant opam init --auto-setup --yes --root $OPAM_ROOT
