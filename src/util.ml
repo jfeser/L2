@@ -59,6 +59,13 @@ let rec all_equal (l: 'a list) ~eq:eq = match l with
   | x::xs -> (List.for_all xs ~f:(eq x)) && (all_equal ~eq:eq xs)
   | []    -> true
 
+let rec unzip3 l =
+  match l with
+  | (a1, b1, c1)::xs ->
+     let a, b, c = unzip3 xs in
+     (a1::a), (b1::b), (c1::c)
+  | [] -> [], [], []
+
 let parse parse_f str = 
   let lexbuf = Lexing.from_string str in
   try parse_f Lexer.token lexbuf with

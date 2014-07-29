@@ -59,10 +59,18 @@ let signature (examples: example list) : typ =
                                  ~data:(typeof_example (Util.empty_ctx ()) x) in
              let final_ctx =
                xs |> List.fold ~init:init_ctx
-                               ~f:(fun ctx ex -> let example_typ = typeof_example ctx ex in
-                                                 if example_typ = (lookup_exn name ctx)
-                                                 then bind ctx ~key:name ~data:example_typ
-                                                 else solve_error "Inconsistent types in example list.") in
+                               ~f:(fun ctx ex ->
+                                   let example_typ = typeof_example ctx ex in
+                                   let existing_typ = (lookup_exn name ctx) in
+                                   if example_typ = existing_typ
+                                   then bind ctx ~key:name ~data:example_typ
+                                   else solve_error (Printf.sprintf
+                                                       "Inconsistent types in example list (%s and %s). %s"
+                                                       (typ_to_string example_typ)
+                                                       (typ_to_string existing_typ)
+                                                       (String.concat ~sep:" "
+                                                                      (List.map ~f:example_to_string
+                                                                                examples)))) in
              lookup_exn name final_ctx
   | [] -> solve_error "Example list is empty."
 
@@ -190,9 +198,9 @@ let solve ?(init=[])
   let target_name = get_target_name examples in
 
   let sig_ = signature examples in
-  match sig_ with 
-  | Arrow_t (input_types, _) -> 
-     let target_args = List.map input_types 
+  match sig_ with
+  | Arrow_t (input_types, _) ->
+     let target_args = List.map input_types
                                 ~f:(fun typ -> (fresh_name ()), typ) in
 
      (* Generate the set of initial expressions from the argument
@@ -211,182 +219,316 @@ let solve ?(init=[])
       | None -> None)
   | _ -> solve_error "Examples do not represent a function."
 
-let solve_catamorphic_looped ?(init=[]) ?(start_depth=3) (examples: example list) : program =
-  (* Map is an appropriate implementation when one of the inputs is a
-  list and the output is a list of the same length. *)
-  let map_bodies (sig_: typ)
-                 (target_args: typed_id list)
-                 (examples: example list)
-                 (lambda_name: string) : (expr * typed_expr list * typed_id list) list =
-    match sig_ with
-    | Arrow_t (_, List_t _) ->
-       target_args
-       |> List.filteri ~f:(fun num (_, typ) ->
-                           match typ with
-                           | (List_t _) ->
-                              List.for_all examples
-                                           ~f:(fun (`Apply (_, inputs), result) ->
-                                               match (List.nth_exn inputs num), result with
-                                               | (`List (x, _)), (`List (y, _)) -> 
-                                                  (List.length x) = (List.length y)
-                                               | (`Apply _), (`List _) -> true
-                                               | _ -> solve_error "Examples do not have a consistent type.")
-                           | _ -> false)
-       |> List.map ~f:(fun (name, typ) ->
-                       let elem_arg = fresh_name ~prefix:"e" () in
-                       let elem_typ = match typ with
-                         | List_t et -> et
-                         | _ -> solve_error "Lambda argument has incorrect type." in
-                       let lambda_args = [elem_arg, elem_typ] in
-                       let target_init = [`Id elem_arg, elem_typ]
-                                         @ List.filter_map target_args
-                                                           ~f:(fun (name', typ') ->
-                                                               if name = name'
-                                                               then None
-                                                               else Some (`Id name', typ')) in
-                       let _ = Printf.printf "%s\n" (List.to_string target_init ~f:(fun (expr, _) -> expr_to_string expr)) in
-                       `Op (Map, [`Id name; `Id lambda_name]), target_init, lambda_args)
-    | _ -> []
-  in
+let get_example_typ_ctx (examples: example list)
+                        (arg_names: string list) : typ String.Map.t =
+  match signature examples with
+  | Arrow_t (arg_typs, res_typ) ->
+     let name_typ_pairs = List.zip_exn arg_names arg_typs in
+     String.Map.of_alist_exn name_typ_pairs
+  | _ -> solve_error "Examples do not represent a function."
 
-  let filter_bodies (sig_: typ)
-                    (target_args: typed_id list)
-                    (examples: example list)
-                    (lambda_name: string) : (expr * typed_expr list * typed_id list) list =
-    match sig_ with
-    | Arrow_t (_, List_t res_elem_typ) ->
-       target_args
-       |> List.filteri ~f:(fun num (_, typ) ->
-                           match typ with
-                           | List_t t when t = res_elem_typ ->
-                              List.for_all examples
-                                           ~f:(fun (`Apply (_, inputs), result) ->
-                                               match (List.nth_exn inputs num), result with
-                                               | (`List (x, _)), (`List (y, _)) -> 
-                                                  (List.length x) >= (List.length y)
-                                               | (`Apply _), (`List _) -> true
-                                               | _ -> solve_error "Examples do not have a consistent type.")
-                           | _ -> false)
-       |> List.map ~f:(fun (name, typ) ->
-                       let elem_arg = fresh_name ~prefix:"e" () in
-                       let elem_typ = match typ with
-                         | List_t et -> et
-                         | _ -> solve_error "Lambda argument has incorrect type." in
-                       let lambda_args = [elem_arg, elem_typ] in
-                       let target_init = [`Id elem_arg, elem_typ]
-                                         @ List.filter_map target_args
-                                                           ~f:(fun (name', typ') ->
-                                                               if name = name'
-                                                               then None
-                                                               else Some (`Id name', typ')) in
-                       let _ = Printf.printf "%s\n" (List.to_string target_init ~f:(fun (expr, _) -> expr_to_string expr)) in
-                       `Op (Filter, [`Id name; `Id lambda_name]), target_init, lambda_args)
-    | _ -> []
-  in
+let get_example_value_ctxs (examples: example list)
+                           (arg_names: string list) : const_app String.Map.t list =
+  List.map examples
+           ~f:(fun example ->
+               match example with
+               | (`Apply (_, inputs)), result ->
+                  let name_value_pairs = List.zip_exn arg_names inputs in
+                  String.Map.of_alist_exn name_value_pairs
+               | _ -> solve_error "Malformed example.")
 
-  (* Foldl and foldr are the most general functions. They are
-  appropriate whenever one of the inputs is a list. If another of the
-  arguments can act as a base case, it is used. Otherwise, a default
-  base case is used for each type. *)
-  let fold_bodies (sig_: typ)
-                  (target_args: typed_id list)
-                  (examples: example list)
-                  (lambda_name: string) : (expr * typed_expr list * typed_id list) list =
-    match sig_ with
-    | Arrow_t _ ->
-       target_args
-       (* Select all list arguments. *)
-       |> List.filter ~f:(fun (_, typ) ->
-                          match typ with List_t _ -> true | _ -> false)
+let ctx_merge outer_ctx inner_ctx =
+  String.Map.merge outer_ctx inner_ctx
+                   ~f:(fun ~key:_ value ->
+                       match value with
+                       | `Both (octx_v, ictx_v) -> Some ictx_v
+                       | `Left octx_v -> Some octx_v
+                       | `Right ictx_v -> Some ictx_v)
 
-       (* Pair each list argument with every other non-function
-       argument and with each base case for each element type. *)
-       |> List.concat_map ~f:(fun (l_name, l_typ) ->
-                              List.filter_map target_args
-                                              ~f:(fun (i_name, i_typ) ->
-                                                  match i_typ with
-                                                  | Arrow_t _ -> None
-                                                  | _ -> Some ((l_name, l_typ), (i_name, i_typ))))
+let extract_base_case (examples: example list) : const option =
+  let bases = List.filter_map examples
+                             ~f:(fun ex -> match ex with
+                                           | (`Apply (_, [`List ([], _)])), res -> Some res
+                                           | _ -> None) in
+  match bases with
+  | [] -> None
+  | [base] -> Some base
+  | _::_::_ -> solve_error "Examples contain multiple base cases."
 
-       (* Take each argument pair and generate a body for each of foldl, foldr. *)
-       |> List.concat_map ~f:(fun ((l_name, l_typ), (i_name, i_typ)) ->
-                              let elem_arg = fresh_name ~prefix:"e" () in
-                              let elem_typ = match l_typ with
-                                | List_t et -> et
-                                | _ -> solve_error "First argument to fold is not a list." in
-                              let acc_arg = fresh_name ~prefix:"a" () in
-                              let acc_typ = i_typ in
-                              let lambda_args = [acc_arg, acc_typ; elem_arg, elem_typ] in
-                              let target_init = [`Id acc_arg, acc_typ; `Id elem_arg, elem_typ]
-                                                @ List.filter_map target_args
-                                                                  ~f:(fun (name', typ') ->
-                                                                      if l_name = name' || i_name = name'
-                                                                      then None
-                                                                      else Some (`Id name', typ')) in
-                              [ `Op (Fold,  [`Id l_name; `Id lambda_name; `Id i_name]), target_init, lambda_args;
-                                `Op (Foldl, [`Id l_name; `Id lambda_name; `Id i_name]), target_init, lambda_args; ])
-    | _ -> []
-  in
+let const_base_cases typ =
+  match typ with
+  | Num_t -> [`Num 0]
+  | Bool_t -> [`Bool true; `Bool false]
+  | List_t elem_typ -> [`List ([], elem_typ)]
+  | _ -> solve_error "Not a constant type."
 
-  (* Check that the signature of the target function is actually a function. *)
-  let sig_ = signature examples in
-  match sig_ with
-  | Arrow_t (arg_typs, _) ->
-     (* Generate a names for the lambda parameter and for the target function. *)
-     let lambda_name = fresh_name ~prefix:"f" () in
+type body = program * example list * typ String.Map.t * const_app String.Map.t list
+
+(* Map is an appropriate implementation when one of the inputs is a
+   list and the output is a list of the same length. *)
+let map_bodies (examples: example list)
+               (outer_typ_ctx: typ String.Map.t)
+               (outer_value_ctxs: const_app String.Map.t list) : body list =
+  match signature examples with
+  | Arrow_t (arg_typs, List_t _) ->
+     (* Extract the name of the target function and generate the
+        names of the target function's arguments. The types of the
+        target function's arguments are available in the type
+        signature. *)
      let target_name = get_target_name examples in
-
-     (* Generate a name for each argument to the target function. *)
      let arg_names = List.map arg_typs ~f:(fun _ -> fresh_name ()) in
 
-     let target_args = List.map2_exn arg_names arg_typs ~f:(fun name typ -> name, typ) in
+     (* Generate type and value contexts. There is one overall type
+        context, since each example should have the same type, but
+        there will be a value context for each example. *)
+     let typ_ctx = ctx_merge (get_example_typ_ctx examples arg_names) outer_typ_ctx in
+     let value_ctxs = List.map2_exn (get_example_value_ctxs examples arg_names) outer_value_ctxs
+                                    ~f:(fun vctx ovctx -> ctx_merge vctx ovctx) in
 
-     (* Generate a list of all possible bodies of the target function. *)
-     let target_bodies = []
-                         @ (fold_bodies sig_ target_args examples lambda_name)
-                         @ (map_bodies sig_ target_args examples lambda_name)
-                         @ (filter_bodies sig_ target_args examples lambda_name)
+     typ_ctx
+     |> String.Map.filter
+          ~f:(fun ~key:name ~data:typ ->
+              match typ with
+              | List_t _ ->
+                 List.for_all2_exn value_ctxs examples
+                                   ~f:(fun vctx (_, result) ->
+                                       match (String.Map.find_exn vctx name), result with
+                                       | (`List (x, _)), (`List (y, _)) -> (List.length x) = (List.length y)
+                                       | (`Apply _), (`List _) -> true
+                                       | _ -> solve_error "Examples do not have a consistent type.")
+              | _ -> false)
+     |> String.Map.to_alist
+     |> List.map ~f:(fun (name, typ) ->
+                     let lambda_name = fresh_name ~prefix:"f" () in
+                     let lambda_examples, new_value_ctxs =
+                       List.zip_exn value_ctxs examples
+                       |> List.concat_map ~f:(fun (vctx, (_, result)) ->
+                                              match (String.Map.find_exn vctx name), result with
+                                              | (`List (x, _)), (`List (y, _)) ->
+                                                 let new_vctx = String.Map.remove vctx name in
+                                                 List.map2_exn x y ~f:(fun i o ->
+                                                                       ((`Apply (`Id lambda_name, [(i :> const_app)])), o),
+                                                                       new_vctx)
+                                              | _ -> [])
+                       |> List.unzip in
+                     [`Define (target_name, `Lambda (List.zip_exn arg_names arg_typs,
+                                                    `Op (Map, [`Id name; `Id lambda_name])))],
+                     lambda_examples,
+                     (String.Map.remove typ_ctx name),
+                     new_value_ctxs)
+  | _ -> []
+
+let filter_bodies (examples: example list)
+                  (outer_typ_ctx: typ String.Map.t)
+                  (outer_value_ctxs: const_app String.Map.t list) : body list =
+  match signature examples with
+  | Arrow_t (arg_typs, List_t res_elem_typ) ->
+     let target_name = get_target_name examples in
+     let arg_names = List.map arg_typs ~f:(fun _ -> fresh_name ()) in
+
+     let typ_ctx = ctx_merge (get_example_typ_ctx examples arg_names) outer_typ_ctx in
+     let value_ctxs = List.map2_exn (get_example_value_ctxs examples arg_names) outer_value_ctxs
+                                    ~f:(fun vctx ovctx -> ctx_merge vctx ovctx) in
+
+     typ_ctx
+     |> String.Map.filter
+          ~f:(fun ~key:name ~data:typ ->
+              match typ with
+              | List_t elem_typ when elem_typ = res_elem_typ ->
+                 List.for_all2_exn value_ctxs examples
+                                   ~f:(fun vctx (_, result) ->
+                                       match (String.Map.find_exn vctx name), result with
+                                       | (`List (x, _)), (`List (y, _)) -> (List.length x) >= (List.length y)
+                                       | (`Apply _), (`List _) -> true
+                                       | _ -> solve_error "Examples do not have a consistent type.")
+              | _ -> false)
+     |> String.Map.to_alist
+     |> List.map ~f:(fun (name, typ) ->
+                     let lambda_name = fresh_name ~prefix:"f" () in
+                     let filter_example ret elem : example =
+                       (`Apply (`Id lambda_name, [(elem :> const_app)])), `Bool ret
+                     in
+                     let lambda_examples, new_value_ctxs =
+                       List.zip_exn value_ctxs examples
+                       |> List.concat_map ~f:(fun (vctx, (_, result)) ->
+                                              match (String.Map.find_exn vctx name), result with
+                                              | (`List (x, _)), (`List (y, _)) ->
+                                                 let retained, removed = List.partition_tf x ~f:(List.mem y) in
+                                                 let exs = List.map retained ~f:(filter_example true)
+                                                           @ List.map removed ~f:(filter_example false) in
+                                                 let new_vctx = String.Map.remove vctx name in
+                                                 List.map exs ~f:(fun ex -> ex, new_vctx)
+                                              | _ -> [])
+                       |> List.unzip in
+                     [`Define (target_name, `Lambda (List.zip_exn arg_names arg_typs,
+                                                    `Op (Filter, [`Id name; `Id lambda_name])))],
+                     lambda_examples,
+                     (String.Map.remove typ_ctx name),
+                     new_value_ctxs)
+  | _ -> []
+
+(* Foldl and foldr are the most general functions. They are
+appropriate whenever one of the inputs is a list. If another of the
+arguments can act as a base case, it is used. Otherwise, a default
+base case is used for each type. *)
+let fold_bodies (examples: example list)
+                (outer_typ_ctx: typ String.Map.t)
+                (outer_value_ctxs: const_app String.Map.t list) : body list =
+  match signature examples with
+  | Arrow_t (arg_typs, res_typ) ->
+     let target_name = get_target_name examples in
+     let arg_names = List.map arg_typs ~f:(fun _ -> fresh_name ()) in
+     let target_args = List.zip_exn arg_names arg_typs in
+
+     let typ_ctx = ctx_merge (get_example_typ_ctx examples arg_names) outer_typ_ctx in
+     let value_ctxs = List.map2_exn (get_example_value_ctxs examples arg_names) outer_value_ctxs
+                                    ~f:(fun vctx ovctx -> ctx_merge vctx ovctx) in
+     typ_ctx
+     (* Select all list arguments. *)
+     |> String.Map.filter ~f:(fun ~key:name ~data:typ ->
+                              match typ with List_t _ -> true | _ -> false)
+     |> String.Map.to_alist
+
+     |> List.concat_map ~f:(fun (l_name, l_typ) ->
+                            typ_ctx
+                            |> String.Map.to_alist
+                            |> List.filter_map ~f:(fun (i_name, i_typ) ->
+                                                   match i_typ with
+                                                   | Arrow_t _ | Unit_t -> None
+                                                   | i_typ when i_typ = res_typ ->
+                                                      Some ((l_name, l_typ), (i_name, i_typ))
+                                                   | _ -> None))
+
+     (* Take each argument pair and generate a body for each of foldl, foldr. *)
+     |> List.concat_map ~f:(fun ((l_name, l_typ), (i_name, i_typ)) ->
+                            let lambda_name = fresh_name ~prefix:"f" () in
+                            let apply_lambda acc elem = `Apply (`Id lambda_name, [acc; (elem :> const_app)]) in
+                            let remove_names ctx = (String.Map.remove (String.Map.remove ctx l_name) i_name) in
+                            let lambda_examples =
+                              List.zip_exn value_ctxs examples
+                              |> List.filter_map ~f:(fun (vctx, (_, result)) ->
+                                                     match (String.Map.find_exn vctx l_name),
+                                                           (String.Map.find_exn vctx i_name),
+                                                           result with
+                                                     | (`List (x::xs, _)), i, r ->
+                                                        let foldr_example =
+                                                          (List.fold_right
+                                                             xs
+                                                             ~init:(apply_lambda (i :> const_app) x)
+                                                             ~f:(fun e a -> apply_lambda (a :> const_app) e)), r in
+                                                        let foldl_example =
+                                                          (List.fold_left
+                                                             xs
+                                                             ~init:(apply_lambda (i :> const_app) x)
+                                                             ~f:(fun a e -> apply_lambda (a :> const_app) e)), r in
+                                                        let new_vctx = remove_names vctx in
+                                                        Some (foldr_example, foldl_example, vctx)
+                                                     | _ -> None) in
+                            let new_typ_ctx = remove_names typ_ctx in
+                            let foldr_examples, foldl_examples, new_value_ctxs = Util.unzip3 lambda_examples in
+                            [ [`Define (target_name,
+                                       `Lambda (target_args, `Op (Fold, [`Id l_name; `Id lambda_name; `Id i_name])))],
+                              foldr_examples,
+                              new_typ_ctx,
+                              new_value_ctxs;
+                              [`Define (target_name,
+                                       `Lambda (target_args, `Op (Foldl, [`Id l_name; `Id lambda_name; `Id i_name])))],
+                              foldl_examples,
+                              new_typ_ctx,
+                              new_value_ctxs; ])
+  | _ -> []
+
+let target_bodies (examples: example list)
+                  (outer_typ_ctx: typ String.Map.t)
+                  (outer_value_ctxs: const_app String.Map.t list) : body list =
+  (map_bodies examples outer_typ_ctx outer_value_ctxs)
+  @ (filter_bodies examples outer_typ_ctx outer_value_ctxs)
+  @ (fold_bodies examples outer_typ_ctx outer_value_ctxs)
+
+let implement (target: body) (lambda: body) =
+  let (target_body, _, target_typ_ctx, target_value_ctxs) = target in
+  let (lambda_body, examples, lambda_typ_ctx, lambda_value_ctxs) = lambda in
+  lambda_body @ target_body, examples, lambda_typ_ctx, lambda_value_ctxs
+
+let nest (defines: expr list) : expr =
+  match defines with
+  | [d] -> d
+  | (`Define (target_name, `Lambda (target_args, target_body)))::ds ->
+     let rec nest' (defines': expr list) : expr -> expr =
+       let wrap_let name bound body = `Let (name, bound, body) in
+       match defines' with
+       | [`Define (name, lambda)] -> wrap_let name lambda
+       | (`Define (name, `Lambda (args, body)))::ds' -> 
+          wrap_let name (`Lambda (args, (nest' ds') body))
      in
+     `Define (target_name, `Lambda (target_args, (nest' ds) target_body))
 
-     let all_init = List.map init ~f:(fun expr -> expr, typeof_expr (Util.empty_ctx ()) expr) in
+let solve_catamorphic_looped ?(init=[]) ?(start_depth=3) (examples: example list) : program =
+  (* Generate a list of all possible bodies of the target function. *)
+  let initial_bodies = target_bodies examples
+                                     String.Map.empty
+                                     (List.map examples ~f:(fun _ -> String.Map.empty)) in
+  let rec generate_bodies (bodies: body list) : body list =
+    match bodies with
+    | [] -> []
+    | bodies ->
+       let no_children, has_children =
+         List.partition_map bodies
+                            ~f:(fun parent ->
+                                let body, examples, typ_ctx, value_ctxs = parent in
+                                match body with
+                                | (`Define (_, `Lambda (_, `Op (Foldl, _))))::_
+                                | (`Define (_, `Lambda (_, `Op (Fold, _))))::_ -> `Fst parent
+                                | _ ->
+                                   (match target_bodies examples typ_ctx value_ctxs with
+                                    | [] -> `Fst parent
+                                    | children -> `Snd (List.map children ~f:(implement parent)))) in
+       no_children @ (generate_bodies (List.concat has_children))
+  in
 
-     let _ = Printf.printf "%s\n" (List.to_string target_bodies 
-                                                  ~f:(fun (target_body, _, _) ->
-                                                      expr_to_string target_body)) in
-     let _ = Printf.printf "%s\n" (List.to_string all_init 
-                                                  ~f:(fun (expr, _) -> 
-                                                      expr_to_string expr)) in
+  let bodies = generate_bodies initial_bodies in
 
-     let depth = ref start_depth in
-     (try
-         while true do
-           let solution_m =
-             List.find_map target_bodies
-                           ~f:(fun (target_body, target_init, lambda_args) ->
-                               let target_def lambda =
-                                 `Define (target_name, `Lambda (target_args, 
-                                                                `Let (lambda_name, lambda, target_body))) in
-                               let lambda_def body = `Lambda (lambda_args, body) in
-                               let verify expr =
-                                 let prog = [target_def (lambda_def expr)] in
-                                 let _ = Printf.printf "%s\n" (List.to_string prog ~f:expr_to_string) in
-                                 match Verify.verify_examples prog examples with
-                                 | true -> Verify.Valid
-                                 | false -> Verify.Invalid
-                               in
-                               let init' = target_init @ all_init in
-                               match solve_verifier ~max_depth:(Some !depth) init' verify with
-                               | Some expr -> Some [target_def (lambda_def expr)]
-                               | None -> None) in
-           Int.incr depth;
-           match solution_m with
-           | Some solution -> raise (Solved solution)
-           | None -> ()
-         done;
-         solve_error "Exited solve loop without finding a solution."
-       with
-       | Solved prog -> prog)
-  | _ -> solve_error "Examples do not represent a function."
+  let _ = List.iter bodies 
+                    ~f:(fun (prog, examples, _, _) ->
+                        Printf.printf "%s %s\n"
+                                      (String.concat ~sep:" " (List.map ~f:expr_to_string prog))
+                                      (String.concat ~sep:" " (List.map ~f:example_to_string examples))) in
+
+  let depth = ref start_depth in
+  try
+    while true do
+      let solution_m =
+        List.find_map bodies
+                      ~f:(fun (target, lambda_examples, typ_ctx, _) ->
+                          match signature lambda_examples with
+                          | Arrow_t (lambda_arg_typs, _) ->
+                             let lambda_name = get_target_name lambda_examples in
+                             let lambda_args = List.map lambda_arg_typs ~f:(fun typ -> (fresh_name ()), typ) in
+                             let lambda_def body = `Define (lambda_name, `Lambda (lambda_args, body)) in
+                             let target_def lambda = lambda::target |> List.rev |> nest in
+                             let verify expr =
+                               let prog = [target_def (lambda_def expr)] in
+                               let _ = Printf.printf "%s\n" (List.to_string prog ~f:expr_to_string) in
+                               match Verify.verify_examples prog examples with
+                               | true -> Verify.Valid
+                               | false -> Verify.Invalid
+                             in
+                             let init' = (String.Map.to_alist typ_ctx
+                                          |> List.map ~f:(fun (name, typ) -> `Id name, typ))
+                                         @ (List.map init ~f:(fun expr -> expr, typeof_expr (Util.empty_ctx ()) expr))
+                                         @ (List.map lambda_args ~f:(fun (name, typ) -> `Id name, typ)) in
+                             (match solve_verifier ~max_depth:(Some !depth) init' verify with
+                              | Some expr -> Some [target_def (lambda_def expr)]
+                              | None -> None)
+                          | _ -> solve_error "Lambda examples do not represent a function.") in
+      Int.incr depth;
+      match solution_m with
+      | Some solution -> raise (Solved solution)
+      | None -> ()
+    done;
+    solve_error "Exited solve loop without finding a solution."
+  with
+  | Solved prog -> prog
 
 let rec solve_catamorphic ?(init=[]) (examples: example list) : function_def list =
   let _ = List.map ~f:(fun e -> print_endline (example_to_string e)) examples in
