@@ -172,7 +172,7 @@ let z3_solve raw_z3 =
 (*Main method of this class, calls all Z3 generating functions then evaluates parses and returns*)
 let sat_solve (lambda:expr) (values:(value list * value) list)  =
   match lambda with
-  | `Lambda(args, exp) -> 
+  | `Lambda(args, _, exp) -> 
     (let raw_z3 = generate_z3 (args, exp) values in
       find_and_replace (z3_solve raw_z3) exp)
   | _ -> raise (RuntimeError "The value inputted into the Z3 solver was not a '`Lambda' expresssion")
@@ -209,7 +209,7 @@ let symb_solve (lambda:expr) (constraints:expr list) (values:(value list * value
   match constraints with
   | [] -> sat_solve lambda values
   | _ ->  match lambda with
-    | `Lambda (args, exp) -> 
+    | `Lambda (args, _, exp) -> 
       let consts = find_and_filter_consts args exp in
       let (head, asserts,tail) = (define_consts consts, define_asserts values, concat ["(check-sat)\n";define_tail consts]) in
       solve_itteration args exp constraints values head asserts tail;

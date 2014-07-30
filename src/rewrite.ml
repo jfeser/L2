@@ -9,12 +9,12 @@ let is_constant (expr: expr) : bool =
   | `Id _ | `Let _ | `Define _ | `Lambda _ | `Apply _ | `Op _ -> false
   | `Num _ | `Bool _ | `List _ -> true
 
-let expr_to_const (expr: expr) : const option = 
+let expr_to_const (expr: expr) : const option =
   match expr with
   | `Num x -> Some (`Num x)
   | `Bool x -> Some (`Bool x)
   | `List x -> Some (`List x)
-  | `Id _ 
+  | `Id _
   | `Let _
   | `Lambda _
   | `Define _
@@ -29,14 +29,14 @@ let rec normalize (expr: expr) : expr =
   | `List _
   | `Id _           -> expr
   | `Let (id, v, e) -> `Let (id, normalize v, normalize e)
-  | `Lambda (a, e)  -> `Lambda (a, normalize e)
+  | `Lambda (a, r, e)  -> `Lambda (a, r, normalize e)
   | `Define (id, e) -> `Define (id, normalize e)
   | `Apply (f, a)   -> `Apply (normalize f, normalize_all a)
-  | `Op (op, args)  -> 
+  | `Op (op, args)  ->
      let op_data = operator_data op in
-     let unsorted_args = 
+     let unsorted_args =
        normalize_all args |>
-         List.fold_right ~init:[] 
+         List.fold_right ~init:[]
                          ~f:(fun e a -> match e with
                                         | `Op (cop, cargs) -> if (op = cop) && (op_data.assoc)
                                                               then cargs @ a else e::a
@@ -45,7 +45,7 @@ let rec normalize (expr: expr) : expr =
      then `Op (op, List.sort ~cmp:compare_expr unsorted_args)
      else `Op (op, unsorted_args)
 
-let rec denormalize expr =
+let rec denormalize (expr: expr) : expr =
   let denormalize_all l = List.map l ~f:denormalize in
   match expr with
   | `Id _
@@ -53,18 +53,18 @@ let rec denormalize expr =
   | `Bool _
   | `List _         -> expr
   | `Let (id, v, e) -> `Let (id, denormalize v, denormalize e)
-  | `Lambda (a, e)  -> `Lambda (a, denormalize e)
+  | `Lambda (a, r, e)  -> `Lambda (a, r, denormalize e)
   | `Define (id, e) -> `Define (id, denormalize e)
   | `Apply (f, a)   -> `Apply (denormalize f, denormalize_all a)
   | `Op (op, args)  ->
      let arity = (operator_data op).arity in
-     let new_args = if (List.length args) > arity 
+     let new_args = if (List.length args) > arity
                     then let a1, a2 = List.split_n args (arity - 1) in a1 @ [`Op (op, a2)]
                     else args in
      `Op (op, denormalize_all new_args)
 
 let fold_constants (expr: expr) : expr option =
-  let rec fold (expr: expr) : expr = 
+  let rec fold (expr: expr) : expr =
     let fold_all l = List.map l ~f:fold in
     match expr with
     | `Id _
@@ -72,7 +72,7 @@ let fold_constants (expr: expr) : expr option =
     | `Bool _
     | `List _         -> expr
     | `Let (id, v, e) -> let fe = fold e in if is_constant fe then fe else `Let (id, fold v, fe)
-    | `Lambda (a, e)  -> let fe = fold e in if is_constant fe then fe else `Lambda (a, fe)
+    | `Lambda (a, r, e)  -> let fe = fold e in if is_constant fe then fe else `Lambda (a, r, fe)
     | `Define (id, e) -> `Define (id, fold e)
     | `Apply (f, a)   -> `Apply (fold f, fold_all a)
     | `Op (op, args)  -> let folded_args = fold_all args in
@@ -82,16 +82,16 @@ let fold_constants (expr: expr) : expr option =
                             | Eval.RuntimeError _ -> new_op)
                          else new_op
   in try Some (fold expr) with Eval.RuntimeError _ -> None
-  
+
 let rewrite (expr: expr) : expr option =
-  let rec rewrite_r (expr: expr) : expr = 
+  let rec rewrite_r (expr: expr) : expr =
     let rewrite_all l = List.map l ~f:rewrite_r in
     match expr with
     | `Id _
     | `Num _
     | `Bool _
     | `List _         -> expr
-    | `Lambda (a, e)  -> `Lambda (a, rewrite_r e)
+    | `Lambda (a, r, e)  -> `Lambda (a, r, rewrite_r e)
     | `Let (id, v, e) -> `Let (id, rewrite_r v, rewrite_r e)
     | `Define (id, e) -> `Define (id, rewrite_r e)
     | `Apply (f, a)   -> `Apply (rewrite_r f, rewrite_all a)
@@ -125,16 +125,16 @@ let rewrite (expr: expr) : expr option =
                               | Eq -> (match args with
                                        | [x; y] when x = y -> `Bool true
                                        | [`Bool true; x] | [x; `Bool true] -> x
-                                       | [`Bool false; x] 
+                                       | [`Bool false; x]
                                        | [x; `Bool false] -> rewrite_r (`Op (Not, [x]))
                                        | _ -> `Op (op, args))
                               | Neq -> (match args with
                                         | [x; y] when x = y -> `Bool false
-                                        | [`Bool true; x] 
+                                        | [`Bool true; x]
                                         | [x; `Bool true] -> rewrite_r (`Op (Not, [x]))
                                         | [`Bool false; x] | [x; `Bool false] -> x
                                         | _ -> `Op (op, args))
-                              | Lt 
+                              | Lt
                               | Gt -> (match args with
                                        | [x; y] when x = y -> `Bool false
                                        | _ -> `Op (op, args))
@@ -167,7 +167,7 @@ let rewrite (expr: expr) : expr option =
                                                                   | Some cx -> `List (cx::xs, t)
                                                                   | None -> `Op (op, args))
                                          | _ -> `Op (op, args))
-                              | Car 
+                              | Car
                               | Cdr -> `Op (op, args)
                               | If -> (match args with
                                        | [`Bool true; x; _] -> x
