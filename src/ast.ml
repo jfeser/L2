@@ -34,13 +34,13 @@ type op =
   | If
   | Map
   | Fold
-  | Foldl 
+  | Foldl
   | Filter with compare, sexp
 
 (** Constants are a subset of expressions that does not allow names or
 lambdas. *)
-type const = [ `Num of int 
-             | `Bool of bool 
+type const = [ `Num of int
+             | `Bool of bool
              | `List of (const list) * typ ] with compare, sexp
 
 (** An example is the application of a function to some constants and
@@ -55,8 +55,8 @@ type example = example_lhs * const with compare, sexp
 (** Types for expressions and values. *)
 type expr = [ const
             | `Id of id
-            | `Let of id * expr * expr 
-            | `Define of id * expr 
+            | `Let of id * expr * expr
+            | `Define of id * expr
             | `Lambda of typed_id list * typ * expr
             | `Apply of expr * (expr list)
             | `Op of op * (expr list) ] with compare, sexp
@@ -122,35 +122,35 @@ let operators = [
     input_types = [match_num; match_num]; };
   { name = Mul;   arity = 2; commut = true; assoc = true;   str = "*";
     input_types = [match_num; match_num]; };
-  { name = Div;   arity = 2; commut = false; assoc = false; str = "/"; 
+  { name = Div;   arity = 2; commut = false; assoc = false; str = "/";
     input_types = [match_num; match_num]; };
-  { name = Mod;   arity = 2; commut = false; assoc = false; str = "%"; 
+  { name = Mod;   arity = 2; commut = false; assoc = false; str = "%";
     input_types = [match_num; match_num]; };
-  { name = Eq;    arity = 2; commut = true; assoc = false;  str = "="; 
+  { name = Eq;    arity = 2; commut = true; assoc = false;  str = "=";
     input_types = [match_any; match_prev]; };
   { name = Neq;   arity = 2; commut = true; assoc = false;  str = "!=";
     input_types = [match_any; match_prev]; };
-  { name = Lt;    arity = 2; commut = false; assoc = false; str = "<"; 
+  { name = Lt;    arity = 2; commut = false; assoc = false; str = "<";
     input_types = [match_num; match_num]; };
-  { name = Leq;   arity = 2; commut = false; assoc = false; str = "<="; 
+  { name = Leq;   arity = 2; commut = false; assoc = false; str = "<=";
     input_types = [match_num; match_num]; };
-  { name = Gt;    arity = 2; commut = false; assoc = false; str = ">"; 
+  { name = Gt;    arity = 2; commut = false; assoc = false; str = ">";
     input_types = [match_num; match_num]; };
-  { name = Geq;   arity = 2; commut = false; assoc = false; str = ">="; 
+  { name = Geq;   arity = 2; commut = false; assoc = false; str = ">=";
     input_types = [match_num; match_num]; };
-  { name = And;   arity = 2; commut = true; assoc = true;   str = "&"; 
+  { name = And;   arity = 2; commut = true; assoc = true;   str = "&";
     input_types = [match_bool; match_bool]; };
-  { name = Or;    arity = 2; commut = true; assoc = true;   str = "|"; 
+  { name = Or;    arity = 2; commut = true; assoc = true;   str = "|";
     input_types = [match_bool; match_bool]; };
-  { name = Not;   arity = 1; commut = false; assoc = false; str = "~"; 
+  { name = Not;   arity = 1; commut = false; assoc = false; str = "~";
     input_types = [match_bool]; };
-  { name = Cons;  arity = 2; commut = false; assoc = false; str = "cons"; 
+  { name = Cons;  arity = 2; commut = false; assoc = false; str = "cons";
     input_types = [match_any; match_cons]; };
-  { name = Car;   arity = 1; commut = false; assoc = false; str = "car"; 
-    input_types = [match_list]; }; 
-  { name = Cdr;   arity = 1; commut = false; assoc = false; str = "cdr"; 
+  { name = Car;   arity = 1; commut = false; assoc = false; str = "car";
     input_types = [match_list]; };
-  { name = If;    arity = 3; commut = false; assoc = false; str = "if"; 
+  { name = Cdr;   arity = 1; commut = false; assoc = false; str = "cdr";
+    input_types = [match_list]; };
+  { name = If;    arity = 3; commut = false; assoc = false; str = "if";
     input_types = [match_bool; match_any; match_prev]; };
   { name = Fold;  arity = 3; commut = false; assoc = false; str = "fold";
     input_types = [match_list; match_fold_f; match_fold_init]; };
@@ -163,7 +163,7 @@ let operators = [
 ]
 
 (** Get operator record from operator name. *)
-let operator_data op = 
+let operator_data op =
   match List.find ~f:(fun od -> od.name = op) operators with
   | Some op_data -> op_data
   | None -> raise Not_found
@@ -203,7 +203,7 @@ let rec typ_to_string = function
   | Bool_t -> "bool"
   | Unit_t -> "unit"
   | List_t ct -> "[" ^ (typ_to_string ct) ^ "]"
-  | Arrow_t (it, ot) -> 
+  | Arrow_t (it, ot) ->
      (sexp "(" (List.map ~f:typ_to_string it) ")") ^ " -> " ^ (typ_to_string ot)
 
 let rec const_to_string = function
@@ -225,13 +225,15 @@ let rec expr_to_string (e: expr) : string =
   | `Let (x, y, z) -> sexp "(" ["let"; x; expr_to_string y; expr_to_string z] ")"
   | `Define (x, y) -> sexp "(" ["define"; x; expr_to_string y] ")"
   | `Apply (x, y)  -> sexp "(" ((expr_to_string x)::(str_all y)) ")"
-  | `Lambda (x, y, z) -> 
-     let arg_strs l = List.map ~f:(fun (n, t) -> n ^ ":" ^ typ_to_string t) l in
-     sexp "(" ["lambda"; sexp "(" (arg_strs x) ")"; typ_to_string y; expr_to_string z] ")"
+  | `Lambda (x, y, z) ->
+     let args_str = x
+                    |> List.map ~f:(fun (n, t) -> n ^ ":" ^ typ_to_string t)
+                    |> String.concat ~sep:" " in
+     sexp "(" ["lambda"; "(" ^ args_str ^ "):" ^ (typ_to_string y); expr_to_string z] ")"
 
 let prog_to_string p = List.map p ~f:expr_to_string |> String.concat ~sep:"\n"
 
-let value_to_string (v: value) : string = 
+let value_to_string (v: value) : string =
   match v with
   | `Num x  -> const_to_string (`Num x)
   | `Bool x -> const_to_string (`Bool x)
@@ -242,4 +244,3 @@ let value_to_string (v: value) : string =
 let example_to_string (ex: example) : string =
   let e1, e2 = ex in
   (expr_to_string (e1 :> expr)) ^ " -> " ^ (expr_to_string (e2 :> expr))
-  

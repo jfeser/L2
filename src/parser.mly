@@ -1,4 +1,4 @@
-%{ 
+%{
 open Printf
 open Ast
 %}
@@ -53,7 +53,7 @@ apply_body:
  | f = expr; args = list(expr); { `Apply (f, args) }
 
 op_body:
- | op_str = OP; args = list(expr); 
+ | op_str = OP; args = list(expr);
    { match operator_from_str op_str with
      | Some op -> `Op (op, args)
      | None -> begin
@@ -71,18 +71,18 @@ typed_list:
  | LBRACKET; RBRACKET; COLON; t = typ { ([], t) }
  | LBRACKET; items = nonempty_list(constant); RBRACKET;
    { let open Core.Std in
-     let typeof_const (c: const) : typ = 
+     let typeof_const (c: const) : typ =
        match c with
        | `Num _ -> Num_t
        | `Bool _ -> Bool_t
        | `List (_, t) -> List_t t in
      match List.map ~f:typeof_const items with
-     | [] -> 
+     | [] ->
         begin
           printf "Parse error: Expected a non-empty list.\n";
           raise Parsing.Parse_error
         end
-     | x::xs -> if List.for_all xs ~f:((=) x) then (items, x) else 
+     | x::xs -> if List.for_all xs ~f:((=) x) then (items, x) else
                   begin
                     printf "Parse error: Inconsistent types in list.\n";
                     raise Parsing.Parse_error

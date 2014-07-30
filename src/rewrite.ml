@@ -9,12 +9,12 @@ let is_constant (expr: expr) : bool =
   | `Id _ | `Let _ | `Define _ | `Lambda _ | `Apply _ | `Op _ -> false
   | `Num _ | `Bool _ | `List _ -> true
 
-let expr_to_const (expr: expr) : const option = 
+let expr_to_const (expr: expr) : const option =
   match expr with
   | `Num x -> Some (`Num x)
   | `Bool x -> Some (`Bool x)
   | `List x -> Some (`List x)
-  | `Id _ 
+  | `Id _
   | `Let _
   | `Lambda _
   | `Define _
@@ -32,11 +32,11 @@ let rec normalize (expr: expr) : expr =
   | `Lambda (a, r, e)  -> `Lambda (a, r, normalize e)
   | `Define (id, e) -> `Define (id, normalize e)
   | `Apply (f, a)   -> `Apply (normalize f, normalize_all a)
-  | `Op (op, args)  -> 
+  | `Op (op, args)  ->
      let op_data = operator_data op in
-     let unsorted_args = 
+     let unsorted_args =
        normalize_all args |>
-         List.fold_right ~init:[] 
+         List.fold_right ~init:[]
                          ~f:(fun e a -> match e with
                                         | `Op (cop, cargs) -> if (op = cop) && (op_data.assoc)
                                                               then cargs @ a else e::a
@@ -58,13 +58,13 @@ let rec denormalize (expr: expr) : expr =
   | `Apply (f, a)   -> `Apply (denormalize f, denormalize_all a)
   | `Op (op, args)  ->
      let arity = (operator_data op).arity in
-     let new_args = if (List.length args) > arity 
+     let new_args = if (List.length args) > arity
                     then let a1, a2 = List.split_n args (arity - 1) in a1 @ [`Op (op, a2)]
                     else args in
      `Op (op, denormalize_all new_args)
 
 let fold_constants (expr: expr) : expr option =
-  let rec fold (expr: expr) : expr = 
+  let rec fold (expr: expr) : expr =
     let fold_all l = List.map l ~f:fold in
     match expr with
     | `Id _
@@ -82,9 +82,9 @@ let fold_constants (expr: expr) : expr option =
                             | Eval.RuntimeError _ -> new_op)
                          else new_op
   in try Some (fold expr) with Eval.RuntimeError _ -> None
-  
+
 let rewrite (expr: expr) : expr option =
-  let rec rewrite_r (expr: expr) : expr = 
+  let rec rewrite_r (expr: expr) : expr =
     let rewrite_all l = List.map l ~f:rewrite_r in
     match expr with
     | `Id _
@@ -125,16 +125,16 @@ let rewrite (expr: expr) : expr option =
                               | Eq -> (match args with
                                        | [x; y] when x = y -> `Bool true
                                        | [`Bool true; x] | [x; `Bool true] -> x
-                                       | [`Bool false; x] 
+                                       | [`Bool false; x]
                                        | [x; `Bool false] -> rewrite_r (`Op (Not, [x]))
                                        | _ -> `Op (op, args))
                               | Neq -> (match args with
                                         | [x; y] when x = y -> `Bool false
-                                        | [`Bool true; x] 
+                                        | [`Bool true; x]
                                         | [x; `Bool true] -> rewrite_r (`Op (Not, [x]))
                                         | [`Bool false; x] | [x; `Bool false] -> x
                                         | _ -> `Op (op, args))
-                              | Lt 
+                              | Lt
                               | Gt -> (match args with
                                        | [x; y] when x = y -> `Bool false
                                        | _ -> `Op (op, args))
@@ -167,7 +167,7 @@ let rewrite (expr: expr) : expr option =
                                                                   | Some cx -> `List (cx::xs, t)
                                                                   | None -> `Op (op, args))
                                          | _ -> `Op (op, args))
-                              | Car 
+                              | Car
                               | Cdr -> `Op (op, args)
                               | If -> (match args with
                                        | [`Bool true; x; _] -> x

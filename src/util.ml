@@ -15,9 +15,9 @@ let partition n : int list list =
      | 0 -> IntListSet.empty
      (* n is always a partition of itself. For each number x in [0, n)
      generate each partition of n - x and add x to each partition. *)
-     | n -> IntListSet.union_list 
-              ([IntListSet.singleton [n]] @ 
-                 map_range 1 n (fun x -> IntListSet.map 
+     | n -> IntListSet.union_list
+              ([IntListSet.singleton [n]] @
+                 map_range 1 n (fun x -> IntListSet.map
                                            (part (n - x))
                                            ~f:(add_to_partition x)))) in
   IntListSet.to_list (part n)
@@ -50,9 +50,9 @@ let combinations l k =
 
 let permutations_k l k = List.concat_map ~f:permutations (combinations l k)
 
-let uniq (l:'a list) : 'a list = 
-  List.fold_left l ~f:(fun (acc:'a list) (e:'a) -> 
-                       if List.mem acc e then acc else e::acc) 
+let uniq (l:'a list) : 'a list =
+  List.fold_left l ~f:(fun (acc:'a list) (e:'a) ->
+                       if List.mem acc e then acc else e::acc)
                  ~init:[]
 
 let rec all_equal (l: 'a list) ~eq:eq = match l with
@@ -66,12 +66,20 @@ let rec unzip3 l =
      (a1::a), (b1::b), (c1::c)
   | [] -> [], [], []
 
-let parse parse_f str = 
+let superset l1 l2 =
+  (List.length l1) >= (List.length l2)
+  && List.for_all l2 ~f:(List.mem l1)
+
+let strict_superset l1 l2 =
+  (List.length l1) > (List.length l2)
+  && List.for_all l2 ~f:(List.mem l1)
+
+let parse parse_f str =
   let lexbuf = Lexing.from_string str in
   try parse_f Lexer.token lexbuf with
   | Parser.Error -> raise Parser.Error
   | Lexer.SyntaxError _ -> raise Parser.Error
-  | Parsing.Parse_error -> raise Parser.Error  
+  | Parsing.Parse_error -> raise Parser.Error
 
 let parse_prog str = parse Parser.prog str
 let parse_expr str = parse Parser.expr str
