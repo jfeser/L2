@@ -47,7 +47,7 @@ def_body:
  | DEF; i = ID; e = expr; { `Define (i, e) }
 
 lambda_body:
- | LAMBDA; args = sexp(list(typed(ID))); e = expr; { `Lambda (args, e) }
+ | LAMBDA; args = sexp(list(typed(ID))); COLON; ret = typ; e = expr; { `Lambda (args, ret, e) }
 
 apply_body:
  | f = expr; args = list(expr); { `Apply (f, args) }
@@ -77,6 +77,11 @@ typed_list:
        | `Bool _ -> Bool_t
        | `List (_, t) -> List_t t in
      match List.map ~f:typeof_const items with
+     | [] -> 
+        begin
+          printf "Parse error: Expected a non-empty list.\n";
+          raise Parsing.Parse_error
+        end
      | x::xs -> if List.for_all xs ~f:((=) x) then (items, x) else 
                   begin
                     printf "Parse error: Inconsistent types in list.\n";

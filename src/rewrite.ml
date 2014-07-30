@@ -29,7 +29,7 @@ let rec normalize (expr: expr) : expr =
   | `List _
   | `Id _           -> expr
   | `Let (id, v, e) -> `Let (id, normalize v, normalize e)
-  | `Lambda (a, e)  -> `Lambda (a, normalize e)
+  | `Lambda (a, r, e)  -> `Lambda (a, r, normalize e)
   | `Define (id, e) -> `Define (id, normalize e)
   | `Apply (f, a)   -> `Apply (normalize f, normalize_all a)
   | `Op (op, args)  -> 
@@ -45,7 +45,7 @@ let rec normalize (expr: expr) : expr =
      then `Op (op, List.sort ~cmp:compare_expr unsorted_args)
      else `Op (op, unsorted_args)
 
-let rec denormalize expr =
+let rec denormalize (expr: expr) : expr =
   let denormalize_all l = List.map l ~f:denormalize in
   match expr with
   | `Id _
@@ -53,7 +53,7 @@ let rec denormalize expr =
   | `Bool _
   | `List _         -> expr
   | `Let (id, v, e) -> `Let (id, denormalize v, denormalize e)
-  | `Lambda (a, e)  -> `Lambda (a, denormalize e)
+  | `Lambda (a, r, e)  -> `Lambda (a, r, denormalize e)
   | `Define (id, e) -> `Define (id, denormalize e)
   | `Apply (f, a)   -> `Apply (denormalize f, denormalize_all a)
   | `Op (op, args)  ->
@@ -72,7 +72,7 @@ let fold_constants (expr: expr) : expr option =
     | `Bool _
     | `List _         -> expr
     | `Let (id, v, e) -> let fe = fold e in if is_constant fe then fe else `Let (id, fold v, fe)
-    | `Lambda (a, e)  -> let fe = fold e in if is_constant fe then fe else `Lambda (a, fe)
+    | `Lambda (a, r, e)  -> let fe = fold e in if is_constant fe then fe else `Lambda (a, r, fe)
     | `Define (id, e) -> `Define (id, fold e)
     | `Apply (f, a)   -> `Apply (fold f, fold_all a)
     | `Op (op, args)  -> let folded_args = fold_all args in
@@ -91,7 +91,7 @@ let rewrite (expr: expr) : expr option =
     | `Num _
     | `Bool _
     | `List _         -> expr
-    | `Lambda (a, e)  -> `Lambda (a, rewrite_r e)
+    | `Lambda (a, r, e)  -> `Lambda (a, r, rewrite_r e)
     | `Let (id, v, e) -> `Let (id, rewrite_r v, rewrite_r e)
     | `Define (id, e) -> `Define (id, rewrite_r e)
     | `Apply (f, a)   -> `Apply (rewrite_r f, rewrite_all a)

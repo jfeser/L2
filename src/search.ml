@@ -196,12 +196,12 @@ let solve ?(init=[])
           (constraints: constr list) : function_def option =
   (* Extract the name of the target function from the examples. *)
   let target_name = get_target_name examples in
-
   let sig_ = signature examples in
   match sig_ with
-  | Arrow_t (input_types, _) ->
+  | Arrow_t (input_types, ret_typ) ->
      let target_args = List.map input_types
                                 ~f:(fun typ -> (fresh_name ()), typ) in
+     let target_def expr = `Define (target_name, `Lambda (target_args, ret_typ, expr)) in
 
      (* Generate the set of initial expressions from the argument
      names and any provided expressions. *)
@@ -210,12 +210,11 @@ let solve ?(init=[])
 
      (* Generate an oracle function from the examples. *)
      let verify expr =
-       let target_def = `Define (target_name, `Lambda (target_args, expr)) in
-       Verify.verify examples constraints target_def
+       Verify.verify examples constraints (target_def expr)
      in
 
      (match solve_verifier ~max_depth:max_depth initial verify with
-      | Some expr -> Some (`Define (target_name, `Lambda (target_args, expr)))
+      | Some expr -> Some (target_def expr)
       | None -> None)
   | _ -> solve_error "Examples do not represent a function."
 
@@ -270,7 +269,7 @@ let map_bodies (examples: example list)
                (outer_typ_ctx: typ String.Map.t)
                (outer_value_ctxs: const_app String.Map.t list) : body list =
   match signature examples with
-  | Arrow_t (arg_typs, List_t _) ->
+  | Arrow_t (arg_typs, List_t elem_typ) ->
      (* Extract the name of the target function and generate the
         names of the target function's arguments. The types of the
         target function's arguments are available in the type
@@ -312,6 +311,7 @@ let map_bodies (examples: example list)
                                               | _ -> [])
                        |> List.unzip in
                      [`Define (target_name, `Lambda (List.zip_exn arg_names arg_typs,
+                                                     elem_typ,
                                                     `Op (Map, [`Id name; `Id lambda_name])))],
                      lambda_examples,
                      (String.Map.remove typ_ctx name),
@@ -361,6 +361,7 @@ let filter_bodies (examples: example list)
                                               | _ -> [])
                        |> List.unzip in
                      [`Define (target_name, `Lambda (List.zip_exn arg_names arg_typs,
+                                                     Bool_t,
                                                     `Op (Filter, [`Id name; `Id lambda_name])))],
                      lambda_examples,
                      (String.Map.remove typ_ctx name),
@@ -427,12 +428,16 @@ let fold_bodies (examples: example list)
                             let new_typ_ctx = remove_names typ_ctx in
                             let foldr_examples, foldl_examples, new_value_ctxs = Util.unzip3 lambda_examples in
                             [ [`Define (target_name,
-                                       `Lambda (target_args, `Op (Fold, [`Id l_name; `Id lambda_name; `Id i_name])))],
+                                       `Lambda (target_args, 
+                                                res_typ,
+                                                `Op (Fold, [`Id l_name; `Id lambda_name; `Id i_name])))],
                               foldr_examples,
                               new_typ_ctx,
                               new_value_ctxs;
                               [`Define (target_name,
-                                       `Lambda (target_args, `Op (Foldl, [`Id l_name; `Id lambda_name; `Id i_name])))],
+                                       `Lambda (target_args, 
+                                                res_typ,
+                                                `Op (Foldl, [`Id l_name; `Id lambda_name; `Id i_name])))],
                               foldl_examples,
                               new_typ_ctx,
                               new_value_ctxs; ])
@@ -453,15 +458,15 @@ let implement (target: body) (lambda: body) =
 let nest (defines: expr list) : expr =
   match defines with
   | [d] -> d
-  | (`Define (target_name, `Lambda (target_args, target_body)))::ds ->
+  | (`Define (target_name, `Lambda (target_args, target_res, target_body)))::ds ->
      let rec nest' (defines': expr list) : expr -> expr =
        let wrap_let name bound body = `Let (name, bound, body) in
        match defines' with
        | [`Define (name, lambda)] -> wrap_let name lambda
-       | (`Define (name, `Lambda (args, body)))::ds' -> 
-          wrap_let name (`Lambda (args, (nest' ds') body))
+       | (`Define (name, `Lambda (args, res, body)))::ds' -> 
+          wrap_let name (`Lambda (args, res, (nest' ds') body))
      in
-     `Define (target_name, `Lambda (target_args, (nest' ds) target_body))
+     `Define (target_name, `Lambda (target_args, target_res, (nest' ds) target_body))
 
 let solve_catamorphic_looped ?(init=[]) ?(start_depth=3) (examples: example list) : program =
   (* Generate a list of all possible bodies of the target function. *)
@@ -477,8 +482,8 @@ let solve_catamorphic_looped ?(init=[]) ?(start_depth=3) (examples: example list
                             ~f:(fun parent ->
                                 let body, examples, typ_ctx, value_ctxs = parent in
                                 match body with
-                                | (`Define (_, `Lambda (_, `Op (Foldl, _))))::_
-                                | (`Define (_, `Lambda (_, `Op (Fold, _))))::_ -> `Fst parent
+                                | (`Define (_, `Lambda (_, _, `Op (Foldl, _))))::_
+                                | (`Define (_, `Lambda (_, _, `Op (Fold, _))))::_ -> `Fst parent
                                 | _ ->
                                    (match target_bodies examples typ_ctx value_ctxs with
                                     | [] -> `Fst parent
@@ -501,10 +506,12 @@ let solve_catamorphic_looped ?(init=[]) ?(start_depth=3) (examples: example list
         List.find_map bodies
                       ~f:(fun (target, lambda_examples, typ_ctx, _) ->
                           match signature lambda_examples with
-                          | Arrow_t (lambda_arg_typs, _) ->
+                          | Arrow_t (lambda_arg_typs, lambda_res_typ) ->
                              let lambda_name = get_target_name lambda_examples in
                              let lambda_args = List.map lambda_arg_typs ~f:(fun typ -> (fresh_name ()), typ) in
-                             let lambda_def body = `Define (lambda_name, `Lambda (lambda_args, body)) in
+                             let lambda_def body = `Define (lambda_name, `Lambda (lambda_args, 
+                                                                                  lambda_res_typ, 
+                                                                                  body)) in
                              let target_def lambda = lambda::target |> List.rev |> nest in
                              let verify expr =
                                let prog = [target_def (lambda_def expr)] in
@@ -566,7 +573,7 @@ let rec solve_catamorphic ?(init=[]) (examples: example list) : function_def lis
          | None -> []
 
 and solve_fold ?(init=[]) (examples: example list) : function_def list =
-  let Arrow_t ([List_t elem_type], _) = signature examples in
+  let Arrow_t ([List_t elem_type], res_typ) = signature examples in
 
   (* Locate the base case example and extract the initial value for
      the fold. Base case examples are those that look like f([]) -> x. *)
@@ -595,6 +602,7 @@ and solve_fold ?(init=[]) (examples: example list) : function_def list =
       let list_name = fresh_name () in
       lambda_def @
         [`Define (name, `Lambda ([list_name, List_t elem_type],
+                                 res_typ,
                                  `Op (Fold, [`Id list_name; `Id lambda_name; (fold_init :> expr)])))]
    | _ -> solve_error "Multiple return values for the same input.")
 
@@ -613,10 +621,11 @@ and solve_filter ?(init=[]) (examples: example list) : function_def list =
   let list_name = fresh_name () in
   lambda_def @
     [`Define (name, `Lambda ([list_name, List_t elem_type],
+                             Bool_t,
                              `Op (Filter, [`Id list_name; `Id lambda_name])))]
 
 and solve_map ?(init=[]) (examples: example list) : function_def list =
-  let Arrow_t ([List_t elem_type], _) = signature examples in
+  let Arrow_t ([List_t elem_type], List_t res_typ) = signature examples in
   let lambda_name = fresh_name () in
   let map_ex elem ret = (`Apply (`Id lambda_name, [(elem :> const_app)])), ret in
   let (lambda_examples: example list) =
@@ -627,4 +636,5 @@ and solve_map ?(init=[]) (examples: example list) : function_def list =
   let list_name = fresh_name () in
   lambda_def @
     [`Define (name, `Lambda ([list_name, List_t elem_type],
+                             res_typ,
                              `Op (Map, [`Id list_name; `Id lambda_name])))]

@@ -22,14 +22,14 @@ let rec expand (ctx: expr_ctx) (expr: expr) : expr =
   | `Id id -> (match lookup id ctx with Some expr' -> expr' | None -> expr)
   | `Define (id, body) -> `Define (id, expand ctx body)
   | `Let (id, bound, body) -> expand (bind ctx ~key:id ~data:(expand ctx bound)) body
-  | `Lambda (args, body) ->
+  | `Lambda (args, ret, body) ->
      let ctx' = List.fold args ~init:ctx ~f:(fun a (id, _) -> unbind a ~key:id) in
-     `Lambda (args, expand ctx' body)
+     `Lambda (args, ret, expand ctx' body)
   | `Apply (func, args) ->
      let args' = exp_all args in
      let func' = exp func in
      (match func' with
-      | `Lambda (lambda_args, body) ->
+      | `Lambda (lambda_args, _, body) ->
          let ctx' = List.fold2_exn lambda_args args' ~init:ctx
                                    ~f:(fun a (id, _) arg -> bind a ~key:id ~data:arg) in
          expand ctx' body
@@ -115,7 +115,7 @@ let verify_examples (target_prog: program) (examples: example list) : bool =
 
 let verify_constraint (zctx: Z3.context) (target_def: function_def) (constr: constr) : bool = 
   let open Z3.Solver in
-  let `Define (target_name, `Lambda (target_args, target_body)) = target_def in
+  let `Define (target_name, lambda) = target_def in
   let solver = mk_simple_solver zctx in
   let constr_body, constr_ids = constr in
 
@@ -124,7 +124,7 @@ let verify_constraint (zctx: Z3.context) (target_def: function_def) (constr: con
   let constr_body' =
     let ctx = bind (empty_ctx ())
                    ~key:target_name
-                   ~data:(`Lambda (target_args, target_body)) in
+                   ~data:(lambda :> expr) in
     expand ctx constr_body in
 
   (* let _ = Printf.printf "%s\n" (expr_to_string constr_body') in *)

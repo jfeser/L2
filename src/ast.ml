@@ -57,11 +57,11 @@ type expr = [ const
             | `Id of id
             | `Let of id * expr * expr 
             | `Define of id * expr 
-            | `Lambda of typed_id list * expr
+            | `Lambda of typed_id list * typ * expr
             | `Apply of expr * (expr list)
             | `Op of op * (expr list) ] with compare, sexp
 
-type function_def = [ `Define of id * [ `Lambda of typed_id list * expr ] ]
+type function_def = [ `Define of id * [ `Lambda of typed_id list * typ * expr ] ]
 
 type program = expr list
 
@@ -191,7 +191,7 @@ let rec size (e: expr) : int =
   | `List (l, _) -> 1 + (List.fold l ~init:0 ~f:(fun acc c -> acc + size (c :> expr)))
   | `Let (_, a, b) -> 1 + size a + size b
   | `Define (_, a) -> 1 + size a
-  | `Lambda (args, expr) -> 1 + (List.length args) + size expr
+  | `Lambda (args, _, expr) -> 1 + (List.length args) + size expr
   | `Apply (a, l) -> 1 + size a + sum_sizes l
 
 (** Create an S-expression from the provided string list and brackets. *)
@@ -225,9 +225,9 @@ let rec expr_to_string (e: expr) : string =
   | `Let (x, y, z) -> sexp "(" ["let"; x; expr_to_string y; expr_to_string z] ")"
   | `Define (x, y) -> sexp "(" ["define"; x; expr_to_string y] ")"
   | `Apply (x, y)  -> sexp "(" ((expr_to_string x)::(str_all y)) ")"
-  | `Lambda (x, y) -> 
+  | `Lambda (x, y, z) -> 
      let arg_strs l = List.map ~f:(fun (n, t) -> n ^ ":" ^ typ_to_string t) l in
-     sexp "(" ["lambda"; sexp "(" (arg_strs x) ")"; expr_to_string y] ")"
+     sexp "(" ["lambda"; sexp "(" (arg_strs x) ")"; typ_to_string y; expr_to_string z] ")"
 
 let prog_to_string p = List.map p ~f:expr_to_string |> String.concat ~sep:"\n"
 

@@ -62,15 +62,15 @@ let rec eval (env: eval_ctx) (expr: expr) : value =
                        eval env' e
   | `Define _ ->
      raise (RuntimeError "Define is not allowed in eval (use eval_prog).")
-  | `Lambda (args, e) -> `Closure (`Lambda (args, e), env)
+  | `Lambda lambda -> `Closure (`Lambda lambda, env)
   | `Apply (func, args) ->
      (match eval env func with
-      | `Closure (`Lambda (arg_names, e), enclosed_env) ->
+      | `Closure (`Lambda (arg_names, _, e), enclosed_env) ->
          (match List.zip arg_names (eval_all args) with
           | Some bindings ->
-             let new_env = List.fold_left bindings ~init:(enclosed_env)
-                                          ~f:(fun nv ((id, _), v) ->
-                                              bind nv ~key:id ~data:v) in
+             let new_env = List.fold_left bindings 
+                                          ~init:(enclosed_env)
+                                          ~f:(fun nv ((id, _), v) -> bind nv ~key:id ~data:v) in
              eval new_env e
           | None -> argn_error @@ expr_to_string e)
       | _ -> raise (RuntimeError "Tried to apply a non-function."))
@@ -260,10 +260,9 @@ let rec typeof_expr (ctx: type_ctx) (expr: expr) : typ =
      let ctx' = bind ctx ~key:name ~data:(typeof_expr ctx e1) in
      typeof_expr ctx' e2
   | `Define _ -> Unit_t
-  | `Lambda (args, e) ->
-     let ctx' = List.fold_left ~f:(fun c (n, t) -> bind c ~key:n ~data:t)
-                               ~init:ctx args in
-     typeof_expr ctx' e
+  | `Lambda (args, ret_typ, _) -> 
+     let arg_typs = List.map args ~f:(fun (_, typ) -> typ) in
+     Arrow_t (arg_typs, ret_typ)
   | `Apply (e, args) -> 
      (match typeof_expr ctx e with
       | Arrow_t (its, ot) -> 
