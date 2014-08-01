@@ -347,6 +347,67 @@ let test_catamorphic_looped_solve =
                   "(f [0 0 0]) -> 3";
                  ], ["1"]),
       "";
+
+      ("join", ["(f []:[num]) -> []:num";
+                "(f [[]:num [1 0]]) -> [1 0]";
+                "(f [[1 0] []:num]) -> [1 0]";
+                "(f [[1 0] [2 3] [6] [4 5]]) -> [1 0 2 3 6 4 5]";
+               ], []),
+      "";
+
+      ("count", ["(f []:num 1) -> 0";
+                 "(f [1 0] 1) -> 1";
+                 "(f [0 0 1] 0) -> 2";
+                 "(f [1 2 2 2 4 4 5] 2) -> 3";
+                 "(f [1 2 2 2 4 4 5] 4) -> 2";
+                 "(f [1 2 2 2 4 4 5] 5) -> 1";
+                ], ["1"]),
+      "";
+
+      ("member", ["(f []:num 0) -> #f";
+                  "(f [0] 0) -> #t";
+                  "(f [0] 1) -> #f";
+                  "(f [0 1 0] 0) -> #t";
+                  "(f [0 1 0] 1) -> #t";
+                  "(f [1 6 2 5] 2) -> #t";
+                  "(f [5 6 2] 6) -> #t";
+                  "(f [1 2 5] 3) -> #f";
+                 ], []),
+      "";
+
+      ("max", ["(f []:num) -> 0";
+               "(f [0]) -> 0";
+               "(f [0 0 1]) -> 1";
+               "(f [1 6 2 5]) -> 6";
+              ], []),
+      "";
+
+      ("cprod", ["(f []:[num]) -> [[]:num]";
+                 "(f [[]:num]) -> []:[num]";
+                 "(f [[]:num []:num]) -> []:[num]";
+                 "(f [[1 2 3] [4] [5 6]]) -> [[1 4 5] [1 4 6] [2 4 5] [2 4 6] [3 4 5] [3 4 6]]";
+                ], []),
+      "";
+
+
+      (* ("power", ["(f []:num) -> [[]:num]"; *)
+      (*            "(f [0]) -> [[]:num [0]]"; *)
+      (*            "(f [0 1]) -> [[]:num [1] [0] [0 1]]"; *)
+      (*           ], []), *)
+      (* ""; *)
+
+      (* Needs multiple "holes". *)
+      (* ("multfirst", ["(f []:num) -> []:num"; *)
+      (*                "(f [1 0]) -> [1 1]"; *)
+      (*                "(f [0 1 0]) -> [0 0 0]"; *)
+      (*                "(f [2 0 2 3]) -> [2 2 2 2]"; *)
+      (*               ], []), *)
+      (* ""; *)
+
+      (* ("append", ["(f []:num 1) -> [1]"; *)
+      (*             "(f [1 0] 1) -> [1 0 1]"; *)
+      (*            ], []), *)
+      (* ""; *)
     ]
 
 let partition_to_string = List.to_string ~f:(List.to_string ~f:Int.to_string)
@@ -383,19 +444,6 @@ let test_typeof_value =
                 `List ([`List ([`Num 1; `Num 2], Num_t)], List_t Num_t), List_t (List_t Num_t);
               ]
 
-let test_typeof_example =
-  make_tests ~in_f:(fun ex -> ex
-                              |> Util.parse_example
-                              |> Search.typeof_example (Util.empty_ctx ()))
-             ~out_f:identity
-             ~in_str:identity ~out_str:typ_to_string ~res_str:typ_to_string
-             "typeof_example"
-             [ "(f 1) -> 1", Arrow_t ([Num_t], Num_t);
-               "(f 1) -> []:num", Arrow_t ([Num_t], List_t Num_t);
-               "(f 1) -> [1]", Arrow_t ([Num_t], List_t Num_t);
-               "(f 1 #f) -> #f", Arrow_t ([Num_t; Bool_t], Bool_t);
-             ]
-
 let test_typeof_expr =
   make_tests ~in_f:(fun ex -> ex
                               |> Util.parse_expr
@@ -417,6 +465,13 @@ let test_signature =
                ["(f 1) -> 1"; "(f (f 2)) -> 2"], Arrow_t ([Num_t], Num_t);
                ["(f 1 []:num) -> [1]"; "(f 1 (f 2 []:num)) -> [2 1]"],
                Arrow_t ([Num_t; List_t Num_t], (List_t Num_t));
+               ["(f2 [0] 0) -> [0]";
+                "(f2 (f2 [1 0] 1) 0) -> [1 0 0]";
+                "(f2 (f2 (f2 [1 0 2] 1) 2) 0) -> [1 0 2 3 4]";
+                "(f2 [0] 0) -> [0]";
+                "(f2 (f2 [1 0] 1) 0) -> [1 0 0]";
+                "(f2 (f2 (f2 [1 0 2] 1) 0) 2) -> [1 0 2 3 4]";],
+               Arrow_t ([List_t Num_t; Num_t], List_t Num_t);
              ]
 
 let test_expand =
@@ -540,7 +595,6 @@ let () = run_test_tt_main
 
                 test_typeof_expr;
                 test_typeof_value;
-                test_typeof_example;
                 test_signature;
 
                 test_expand;

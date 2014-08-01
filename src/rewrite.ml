@@ -90,7 +90,7 @@ let rewrite (expr: expr) : expr option =
     | `Id _
     | `Num _
     | `Bool _
-    | `List _         -> expr
+    | `List _ -> expr
     | `Lambda (a, r, e)  -> `Lambda (a, r, rewrite_r e)
     | `Let (id, v, e) -> `Let (id, rewrite_r v, rewrite_r e)
     | `Define (id, e) -> `Define (id, rewrite_r e)
