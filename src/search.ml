@@ -4,18 +4,40 @@ open Eval
 open Util
 
 (** A build set is a mapping from integers to sets of typed expressions. *)
-module IntMap = Map.Make(Int)
-module TypedExpr =
-  struct
-    type t = typed_expr
-    let t_of_sexp = typed_expr_of_sexp
-    let sexp_of_t = sexp_of_typed_expr
-    let compare = compare_typed_expr
-  end
-module TypedExprSet = Set.Make(TypedExpr)
-type build_set = TypedExprSet.t IntMap.t
+module BuildSet = struct
+  module IntMap = Map.Make (Int)
+  module TypedExpr =
+    struct
+      type t = typed_expr
+      let t_of_sexp = typed_expr_of_sexp
+      let sexp_of_t = sexp_of_typed_expr
+      let compare = compare_typed_expr
+    end
+  module TypedExprSet = Set.Make (TypedExpr)
+  type t = TypedExprSet.t IntMap.t
 
-type body = program * example list * typ String.Map.t * const_app String.Map.t list
+  let empty = IntMap.empty
+
+  let add set texpr =
+    let (expr, _) = texpr in
+    IntMap.change set
+                  (size expr)
+                  (function
+                    | None -> Some (TypedExprSet.singleton texpr)
+                    | Some xs -> Some (TypedExprSet.add xs texpr))
+                  
+  let mem set texpr =
+    let (expr, _) = texpr in
+    match IntMap.find set (size expr) with
+    | Some size_set -> TypedExprSet.mem size_set texpr
+    | None -> false
+
+  let select set size pred =
+    match IntMap.find set size with
+    | Some exprs -> TypedExprSet.filter exprs ~f:(fun (_, typ) -> pred typ)
+                    |> TypedExprSet.to_list
+    | None -> []
+end
 
 type spec = {
   target: expr -> expr;
@@ -33,19 +55,6 @@ exception SolvedExpr of expr
 exception TimedOut
 
 let solve_error msg = raise (SolveError msg)
-
-(** Add an expression to a build set. *)
-let add (map: build_set) (x: typed_expr) : build_set =
-  let (e, _) = x in
-  IntMap.change map (size e) (function
-                               | None -> Some (TypedExprSet.singleton x)
-                               | Some xs -> Some (TypedExprSet.add xs x))
-
-let contains (map: build_set) (x: typed_expr) =
-  let (e, _) = x in
-  match IntMap.find map (size e) with
-  | Some s -> TypedExprSet.mem s x
-  | None -> false
 
 (** Extract the name of the target function from a list of examples. *)
 let get_target_name (examples: example list) : id =
@@ -106,12 +115,6 @@ let apply_candidate (def: [< `Define of id * expr ]) (inputs: expr list) : value
   let prog = [(def :> expr); app] in
   prog_eval prog
 
-let select (map: build_set) (pred: typ -> bool) (size: int) : typed_expr list =
-  match IntMap.find map size with
-  | Some exprs -> TypedExprSet.filter exprs ~f:(fun (_, t) -> pred t)
-                  |> TypedExprSet.to_list
-  | None -> []
-
 let solve_verifier ?(max_depth=None)
                    (init: typed_expr list)
                    (verify: expr -> Verify.status) : expr option =
@@ -120,7 +123,7 @@ let solve_verifier ?(max_depth=None)
   let ctx = create_ctx init in
 
   (* Create a mutable set to hold expressions sorted by size. *)
-  let build = ref (IntMap.empty) in
+  let build = ref (BuildSet.empty) in
   let i = ref 1 in
 
   (** Check all expressions using the oracle. Raise a Solve exception
@@ -129,7 +132,7 @@ let solve_verifier ?(max_depth=None)
     build :=
       List.fold exprs
                 ~init:(!build)
-                ~f:(fun build_set expr ->
+                ~f:(fun build' expr ->
                     (* Attempt to simplify the
                     expression. Simplification can fail if the
                     expression is found to contain an illegal
@@ -140,27 +143,27 @@ let solve_verifier ?(max_depth=None)
                        the build set, meaning that it has already been
                        checked. *)
                        let typed_expr = simple_expr, typeof_expr ctx expr in
-                       if contains build_set typed_expr
-                       then build_set
+                       if BuildSet.mem build' typed_expr
+                       then build'
                        else (match verify expr with
                              | Verify.Valid -> raise (SolvedExpr expr)
                              | Verify.Invalid ->
                                 if (Rewrite.is_constant simple_expr) && (not ac)
-                                then build_set
-                                else add build_set typed_expr
-                             | Verify.Error -> build_set)
-                    | None -> build_set)
+                                then build'
+                                else BuildSet.add build' typed_expr
+                             | Verify.Error -> build')
+                    | None -> build')
   in
 
   let rec select_children ?prev:(prev=[]) types sizes : expr list list =
     match types, sizes with
     | [], [] -> []
-    | [tp], [s] -> select !build (tp prev) s
+    | [tp], [s] -> BuildSet.select !build s (tp prev)
                    |> List.map ~f:(fun (e, _) -> [Rewrite.complicate e])
     | tp::tps, s::ss ->
        (* Select all possible arguments for this position using the
        type predicate and size parameters. *)
-       let arg_choices = select !build (tp prev) s
+       let arg_choices = BuildSet.select !build s (tp prev)
                          |> List.map ~f:(fun (e, t) -> (Rewrite.complicate e, t)) in
 
        (* For each choice of argument, select all possible remaining
@@ -236,15 +239,15 @@ let get_example_typ_ctx (examples: example list) (arg_names: string list) : typ 
 
 let get_example_value_ctxs (examples: example list) (arg_names: string list) : const_app Ctx.t list =
   List.map examples ~f:(fun ((`Apply (_, inputs)), _) ->
-               let name_value_pairs = List.zip_exn arg_names inputs in
+                        let name_value_pairs = List.zip_exn arg_names inputs in
                         Ctx.of_alist_exn name_value_pairs)
 
 let ctx_merge outer_ctx inner_ctx =
   Ctx.merge outer_ctx inner_ctx ~f:(fun ~key:_ value ->
-                       match value with
-                       | `Both (_, ictx_v) -> Some ictx_v
-                       | `Left octx_v -> Some octx_v
-                       | `Right ictx_v -> Some ictx_v)
+                                    match value with
+                                    | `Both (_, ictx_v) -> Some ictx_v
+                                    | `Left octx_v -> Some octx_v
+                                    | `Right ictx_v -> Some ictx_v)
 
 let const_base_cases typ =
   match typ with
