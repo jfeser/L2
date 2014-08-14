@@ -6,9 +6,6 @@ functions. *)
 exception RuntimeError of string
 exception TypeError of string
 
-(** Raise an unbound variable error. *)
-let unbound_error id = raise (RuntimeError ("Unbound variable " ^ id))
-
 (** Raise a bad argument error. *)
 let arg_error op args =
   raise (RuntimeError (Printf.sprintf "Bad arguments to %s %s."
@@ -22,22 +19,6 @@ let type_error op args =
 
 (** Raise a wrong # of arguments error. *)
 let argn_error id = raise (RuntimeError ("Wrong # of arguments to " ^ id))
-
-(** Look up an id in the provided context. *)
-let lookup id ctx = String.Map.find !ctx id
-let lookup_exn id ctx =
-  match lookup id ctx with
-  | Some v -> v
-  | None -> unbound_error id
-
-(** Bind a type or value to an id, returning a new context. *)
-let bind ctx ~key:k ~data:v = ref (String.Map.add !ctx ~key:k ~data:v)
-
-(** Remove a binding from a context, returning a new context. *)
-let unbind ctx ~key:k = ref (String.Map.remove !ctx k)
-
-(** Bind a type or value to an id, updating the context in place. *)
-let update ctx ~key:k ~data:v = ctx := String.Map.add !ctx ~key:k ~data:v
 
 (** Convert a value to a constant, raising an error if v is a type
 that cannot be converted. *)
@@ -65,7 +46,7 @@ let rec typeof_const (const: const) : typ =
      else raise (TypeError "List contains multiple types.")
 
 (** Get the type of an expression given a type context. *)
-let rec typeof_expr (ctx: type_ctx) (expr: expr) : typ =
+let rec typeof_expr ctx (expr: expr) : typ =
   let typeof_all es = List.map ~f:(typeof_expr ctx) es in
   match expr with
   | `Num x  -> typeof_const (`Num x)
@@ -107,9 +88,9 @@ let rec typeof_expr (ctx: type_ctx) (expr: expr) : typ =
       | Filter -> (match args with
                    | [List_t et1; Arrow_t ([et2], Bool_t)] when et1 = et2 -> List_t et1
                    | _ -> type_error op args))
-  | `Id name -> lookup_exn name ctx
+  | `Id name -> Ctx.lookup_exn ctx name
   | `Let (name, e1, e2) ->
-     let ctx' = bind ctx ~key:name ~data:(typeof_expr ctx e1) in
+     let ctx' = Ctx.bind ctx name (typeof_expr ctx e1) in
      typeof_expr ctx' e2
   | `Define _ -> Unit_t
   | `Lambda (args, ret_typ, _) ->
@@ -138,15 +119,15 @@ and typeof_value (value: value) : typ =
      Arrow_t (arg_typs, ret_typ)
 
 (** Evaluate an expression in the provided context. *)
-let rec eval (env: eval_ctx) (expr: expr) : value =
+let rec eval env (expr: expr) : value =
   let eval_all l = List.map l ~f:(eval env) in
   match expr with
   | `Num x  -> `Num x
   | `Bool x -> `Bool x
   | `List x -> `List x
-  | `Id id  -> lookup_exn id env
-  | `Let (id, v, e) -> let env' = bind env ~key:id ~data:`Unit in
-                       update env' ~key:id ~data:(eval env' v);
+  | `Id id  -> Ctx.lookup_exn env id
+  | `Let (id, v, e) -> let env' = Ctx.bind env id `Unit in
+                       Ctx.update env' id (eval env' v);
                        eval env' e
   | `Define _ ->
      raise (RuntimeError "Define is not allowed in eval (use eval_prog).")
@@ -158,7 +139,7 @@ let rec eval (env: eval_ctx) (expr: expr) : value =
           | Some bindings ->
              let new_env = List.fold_left bindings
                                           ~init:(enclosed_env)
-                                          ~f:(fun nv ((id, _), v) -> bind nv ~key:id ~data:v) in
+                                          ~f:(fun nv ((id, _), v) -> Ctx.bind nv id v) in
              eval new_env e
           | None -> argn_error @@ expr_to_string e)
       | _ -> raise (RuntimeError "Tried to apply a non-function."))
@@ -267,12 +248,12 @@ eval context which contains bindings for each define in the
 program. It then evaluates the last non-define expression and returns
 the result. *)
 let prog_eval prog =
-  let env = prog |> List.fold_left ~init:(Util.empty_ctx ())
+  let env = prog |> List.fold_left ~init:(Ctx.empty ())
                                    ~f:(fun nv def ->
                                        match def with
                                        | `Define (id, ex) ->
-                                          let env' = bind nv ~key:id ~data:`Unit in
-                                          update env' ~key:id ~data:(eval env' ex);
+                                          let env' = Ctx.bind nv id `Unit in
+                                          Ctx.update env' id (eval env' ex);
                                           env'
                                        | _ -> nv) in
   match (prog

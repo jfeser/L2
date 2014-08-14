@@ -78,7 +78,7 @@ let fold_constants (expr: expr) : expr option =
     | `Op (op, args)  -> let folded_args = fold_all args in
                          let new_op = `Op (op, folded_args) in
                          if List.for_all ~f:is_constant folded_args then
-                           (try ((Eval.value_to_const (Eval.eval (Util.empty_ctx ()) new_op)) :> expr) with
+                           (try ((Eval.value_to_const (Eval.eval (Ctx.empty ()) new_op)) :> expr) with
                             | Eval.RuntimeError _ -> new_op)
                          else new_op
   in try Some (fold expr) with Eval.RuntimeError _ -> None

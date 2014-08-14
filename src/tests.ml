@@ -23,7 +23,7 @@ let vals_to_string (res:(value list * value) list) =
   let vals_strs = List.map res ~f:val_to_string in
   Ast.sexp "[" vals_strs "]"
 
-let eval expr = Eval.eval (Util.empty_ctx ()) expr
+let eval expr = Eval.eval (Ctx.empty ()) expr
 
 let make_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name cases =
   name >:::
@@ -447,7 +447,7 @@ let test_typeof_value =
 let test_typeof_expr =
   make_tests ~in_f:(fun ex -> ex
                               |> Util.parse_expr
-                              |> Eval.typeof_expr (Util.empty_ctx ()))
+                              |> Eval.typeof_expr (Ctx.empty ()))
              ~out_f:identity
              ~in_str:identity ~out_str:typ_to_string ~res_str:typ_to_string
              "typeof_expr"
@@ -475,7 +475,7 @@ let test_signature =
              ]
 
 let test_expand =
-  make_tests ~in_f:(fun e -> e |> Util.parse_expr |> Verify.expand (Util.empty_ctx ()))
+  make_tests ~in_f:(fun e -> e |> Util.parse_expr |> Verify.expand (Ctx.empty ()))
              ~out_f:Util.parse_expr
              ~in_str:identity ~out_str:identity ~res_str:expr_to_string
              "expand"
@@ -493,7 +493,7 @@ let test_expr_to_z3 =
 
   make_tests ~in_f:(fun e -> e
                              |> Util.parse_expr
-                             |> Verify.expr_to_z3 zctx (Util.empty_ctx ()))
+                             |> Verify.expr_to_z3 zctx (Ctx.empty ()))
              ~out_f:identity
              ~in_str:identity ~out_str:Z3.Expr.to_string ~res_str:Z3.Expr.to_string
              ~cmp:Z3.Expr.equal

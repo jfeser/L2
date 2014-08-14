@@ -85,5 +85,3 @@ let parse_prog str = parse Parser.prog str
 let parse_expr str = parse Parser.expr str
 let parse_example str = parse Parser.example str
 let parse_constr str = parse Parser.constr str
-
-let empty_ctx () : 'a String.Map.t ref = ref String.Map.empty

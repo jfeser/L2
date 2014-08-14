@@ -1,7 +1,6 @@
 open Core.Std
 open Ast
 open Eval
-open Util
 
 exception VerifyError of string
 
@@ -12,18 +11,18 @@ type status =
   | Valid
   | Error
 
-type expr_ctx = expr String.Map.t ref
-type z3_ctx = Z3.Expr.expr String.Map.t ref
+(* type expr_ctx = expr String.Map.t ref *)
+(* type z3_ctx = Z3.Expr.expr String.Map.t ref *)
 
-let rec expand (ctx: expr_ctx) (expr: expr) : expr =
+let rec expand ctx (expr: expr) : expr =
   let exp e = expand ctx e in
   let exp_all es = List.map ~f:exp es in
   match expr with
-  | `Id id -> (match lookup id ctx with Some expr' -> expr' | None -> expr)
+  | `Id id -> (match Ctx.lookup ctx id with Some expr' -> expr' | None -> expr)
   | `Define (id, body) -> `Define (id, expand ctx body)
-  | `Let (id, bound, body) -> expand (bind ctx ~key:id ~data:(expand ctx bound)) body
+  | `Let (id, bound, body) -> expand (Ctx.bind ctx id (expand ctx bound)) body
   | `Lambda (args, ret, body) ->
-     let ctx' = List.fold args ~init:ctx ~f:(fun a (id, _) -> unbind a ~key:id) in
+     let ctx' = List.fold args ~init:ctx ~f:(fun a (id, _) -> Ctx.unbind a id) in
      `Lambda (args, ret, expand ctx' body)
   | `Apply (func, args) ->
      let args' = exp_all args in
@@ -31,7 +30,7 @@ let rec expand (ctx: expr_ctx) (expr: expr) : expr =
      (match func' with
       | `Lambda (lambda_args, _, body) ->
          let ctx' = List.fold2_exn lambda_args args' ~init:ctx
-                                   ~f:(fun a (id, _) arg -> bind a ~key:id ~data:arg) in
+                                   ~f:(fun a (id, _) arg -> Ctx.bind a id arg) in
          expand ctx' body
       | _ -> verify_error (Printf.sprintf "Tried to apply a non-lambda expression. (%s)" 
                                           (expr_to_string expr)))
@@ -64,12 +63,12 @@ let rec const_to_z3 (zctx: Z3.context) (const: const) : Z3.Expr.expr =
                          let z3_elem = const_to_z3 zctx elem in
                          Z3.FuncDecl.apply cons [z3_elem; acc])  
 
-let rec expr_to_z3 (zctx: Z3.context) (z3ectx: z3_ctx) (expr: expr) =
+let rec expr_to_z3 (zctx: Z3.context) z3ectx (expr: expr) =
   match expr with
   | `Num x -> const_to_z3 zctx (`Num x)
   | `Bool x -> const_to_z3 zctx (`Bool x)
   | `List x -> const_to_z3 zctx (`List x)
-  | `Id x -> (match lookup x z3ectx with
+  | `Id x -> (match Ctx.lookup z3ectx x with
               | Some z3expr -> z3expr
               | None -> verify_error (Printf.sprintf "Looking up identifier \"%s\" failed." x))
   | `Op (op, op_args) ->
@@ -122,9 +121,7 @@ let verify_constraint (zctx: Z3.context) (target_def: function_def) (constr: con
   (* Expand the constraint using a context that contains the
     definition of the target function. *)
   let constr_body' =
-    let ctx = bind (empty_ctx ())
-                   ~key:target_name
-                   ~data:(lambda :> expr) in
+    let ctx = Ctx.bind (Ctx.empty ()) target_name (lambda :> expr) in
     expand ctx constr_body in
 
   (* let _ = Printf.printf "%s\n" (expr_to_string constr_body') in *)
@@ -135,8 +132,8 @@ let verify_constraint (zctx: Z3.context) (target_def: function_def) (constr: con
   (* Convert constraint body to a Z3 expression. *)
   let z3_constr_body = 
     let ctx = List.fold2_exn constr_ids z3_consts 
-                             ~init:(empty_ctx ())
-                             ~f:(fun acc (id, _) z3c -> bind acc ~key:id ~data:z3c) in
+                             ~init:(Ctx.empty ())
+                             ~f:(fun acc (id, _) z3c -> Ctx.bind acc id z3c) in
     expr_to_z3 zctx ctx constr_body' in
 
   (* let _ = Printf.printf "%s\n" (Z3.Expr.to_string z3_constr_body) in *)

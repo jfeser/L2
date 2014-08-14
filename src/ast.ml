@@ -1,5 +1,44 @@
 open Core.Std
 
+type id = string with compare, sexp
+
+module Ctx = struct
+  module StringMap = Map.Make(String)
+  type 'a t = 'a StringMap.t ref
+  exception UnboundError of id
+
+  (** Return an empty context. *)
+  let empty () : 'a t = ref StringMap.empty
+
+  (** Look up an id in a context. *)
+  let lookup ctx id = StringMap.find !ctx id
+  let lookup_exn ctx id = match lookup ctx id with
+    | Some v -> v
+    | None -> raise (UnboundError id)
+
+  (** Bind a type or value to an id, returning a new context. *)
+  let bind ctx id data = ref (StringMap.add !ctx ~key:id ~data:data)
+
+  (** Remove a binding from a context, returning a new context. *)
+  let unbind ctx id = ref (StringMap.remove !ctx id)
+
+  (** Bind a type or value to an id, updating the context in place. *)
+  let update ctx id data = ctx := StringMap.add !ctx ~key:id ~data:data
+
+  (** Remove a binding from a context, updating the context in place. *)
+  let remove ctx id = ctx := StringMap.remove !ctx id
+
+  let merge c1 c2 ~f:f = ref (StringMap.merge !c1 !c2 ~f:f)
+  let filter ctx ~f:f = ref (StringMap.filter !ctx ~f:f)
+  let filter_mapi ctx ~f:f = ref (StringMap.filter_mapi !ctx ~f:f)
+
+  let keys ctx = StringMap.keys !ctx
+
+  let of_alist alist = ref (StringMap.of_alist alist)
+  let of_alist_exn alist = ref (StringMap.of_alist_exn alist)
+  let to_alist ctx = StringMap.to_alist !ctx
+end
+
 (** Represents the type of a value or expression. *)
 type typ =
   | Num_t
@@ -9,7 +48,6 @@ type typ =
   | Arrow_t of (typ list) * typ with compare, sexp
 
 (** Represents identifiers and typed identifiers. *)
-type id = string with compare, sexp
 type typed_id = id * typ with compare, sexp
 
 (** Keys for each built in operator. Operator metadata is stored separately. *)
@@ -68,9 +106,8 @@ type program = expr list
 type constr = expr * (typed_id list)
 
 type value = [ const
-             | `Closure of expr * eval_ctx
+             | `Closure of expr * (value Ctx.t)
              | `Unit ]
-and eval_ctx = value String.Map.t ref with compare, sexp
 
 type typed_expr = expr * typ with compare, sexp
 
