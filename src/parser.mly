@@ -71,9 +71,9 @@ typ:
 
 simple_typ:
  | x = ID                                           { match x with
-                                                      | "num" -> Const_t Num
-                                                      | "bool" -> Const_t Bool
-                                                      | _ -> Var_t (Quant x) }
+                                                      | "num" -> Const_t Num_t
+                                                      | "bool" -> Const_t Bool_t
+                                                      | _ -> Var_t (ref (Quant x)) }
  | x = sexp(typ);                                   { x }
  | constr = ID; LBRACKET; arg = typ; RBRACKET       { App_t (constr, [arg]) }
  | constr = ID; LBRACKET; args = typ_list; RBRACKET { App_t (constr, args) }

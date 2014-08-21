@@ -1,210 +1,172 @@
-open Core.Std 
+open Core.Std
 open Printf
 open Ast
 open Util
 
 exception TypeError of string
 
-module IntSet = Set.Make(Int)
-
-let fresh_quant () = Var_t (Quant (Fresh.name "t"))
-let fresh_free () = Var_t (Free (Fresh.int ()))
-
-let rec free = function
-  | Const_t _
-  | Var_t (Quant _) -> IntSet.empty
-  | Var_t (Free id) -> IntSet.singleton id
-  | App_t (_, args) -> List.map args ~f:free |> IntSet.union_list
-  | Arrow_t (args, ret) -> IntSet.union (List.map args ~f:free |> IntSet.union_list) (free ret)
-
-let rec occurs id typ = match typ with
-  | Const_t _
-  | Var_t (Quant _) -> ()
-  | Var_t (Free id') -> 
-     if id = id' 
-     then raise @@ TypeError (sprintf "Failed occurs check: t%d in %s" id (typ_to_string typ))
-     else ()
-  | App_t (_, args) -> List.iter args ~f:(fun arg -> occurs id arg)
-  | Arrow_t (args, ret) -> List.iter args ~f:(fun arg -> occurs id arg); occurs id ret
+let fresh_free level = Var_t (ref (Free (Fresh.int (), level)))
 
 let normalize typ =
   let count = ref (-1) in
   let fresh_name () = incr count; "t" ^ (Int.to_string !count) in
   let rec norm ctx typ = match typ with
     | Const_t _
-    | Var_t (Free _) -> typ
-    | Var_t (Quant name) ->
+    | Var_t {contents = Free _} -> typ
+    | Var_t {contents = Link typ'} -> norm ctx typ'
+    | Var_t {contents = Quant name} ->
        (match Ctx.lookup ctx name with
-        | Some name' -> Var_t (Quant name')
+        | Some name' -> Var_t (ref (Quant name'))
         | None -> let name' = fresh_name () in
-                  Ctx.update ctx name name'; Var_t (Quant name'))
+                  Ctx.update ctx name name'; Var_t (ref (Quant name')))
     | App_t (const, args) -> App_t (const, List.map args ~f:(norm ctx))
     | Arrow_t (args, ret) -> Arrow_t (List.map args ~f:(norm ctx), norm ctx ret)
   in
   norm (Ctx.empty ()) typ
 
-(** A substitution is a mapping from free type variables to types. *)
-module Sub = struct
-  include Map.Make(Int)
-   
-  (** Check whether a substitution has any entries that fail the
-   occurs check. Raise an exception if any such entries are found. *)
-  let check sub = to_alist sub |> List.iter ~f:(fun (id, typ) -> occurs id typ)
-
-  let bind sub id typ = occurs id typ; add sub ~key:id ~data:typ
-
-  (** Replace all free type variables with their value in the substitution. *)
-  let rec apply sub typ = 
-    check sub;
-    match typ with
-    | Const_t _ 
-    | Var_t (Quant _) -> typ
-    | Var_t (Free id) -> (match find sub id with Some typ' -> typ' | None -> typ)
-    | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(apply sub) args, apply sub ret)
-    | App_t (constr, args) -> App_t (constr, List.map ~f:(apply sub) args)
-
-  let apply_ctx sub ctx =
-    check sub;
-    Ctx.map ctx ~f:(fun typ -> apply sub typ)
-
-  (** Compose sub1 and sub2. Returns a substitution that is equivalent
-   to applying sub1 followed by sub2. *)
-  let compose sub1 sub2 = 
-    check sub1; check sub2;
-    map sub2 ~f:(apply sub1) 
-    |> merge sub1 ~f:(fun ~key:_ value ->
-                      match value with `Both (v, _) | `Left v | `Right v -> Some v)
-end
-
-(** Generalizing a type quantifies all the free type variables that
- are not bound in the context. Effectively, this means that a
- generalized type is made polymorphic over the type variables that are
- not already bound. *)
-let rec generalize ctx typ =
-  let typ_free = free typ in
-  let ctx_free =
-    Ctx.to_alist ctx |> List.map ~f:(fun (_, t) -> free t) |> IntSet.union_list in
-  let general_ids = IntSet.diff typ_free ctx_free in
-  match typ with
+let rec occurs id level typ = match typ with
   | Const_t _
-  | Var_t (Quant _) -> typ
-  | Var_t (Free id) -> 
-     if IntSet.mem general_ids id
-     then Var_t (Quant ("t" ^ (Int.to_string id)))
-     else typ
-  | Arrow_t (args, ret) -> 
-     Arrow_t (List.map ~f:(generalize ctx) args, generalize ctx ret)
-  | App_t (const, args) ->
-     App_t (const, List.map ~f:(generalize ctx) args)
+  | Var_t {contents = Quant _} -> ()
+  | Var_t ({contents = Free (id', level')} as typ') ->
+     if id' = id
+     then raise @@ TypeError (sprintf "Failed occurs check: t%d in %s" id (typ_to_string typ))
+     else 
+       (* The other type is being claimed by the let binding, if it is
+       owned by a lower let. This prevents the free variable from
+       being prematurely generalized. *)
+       if level' > level
+       then typ' := Free (id', level)
+       else ()
+  | Var_t {contents = Link typ'} -> occurs id level typ'
+  | App_t (_, args) -> List.iter args ~f:(fun arg -> occurs id level arg)
+  | Arrow_t (args, ret) -> List.iter args ~f:(fun arg -> occurs id level arg); occurs id level ret
+
+(** The level is associated with the let expression that "owns" a
+particular free type variable. When that let expression is completely
+typed, its free type variables can be generalized. *)
+let rec generalize level typ =
+  match typ with
+  | Var_t {contents = Free (id, level')} when level' > level ->
+     Var_t (ref (Quant ("t" ^ (Int.to_string id))))
+  | Var_t {contents = Link typ'} -> generalize level typ'
+  | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(generalize level) args, generalize level ret)
+  | App_t (const, args) -> App_t (const, List.map ~f:(generalize level) args)
+  | Const_t _ | Var_t {contents = Quant _} | Var_t {contents = Free _} -> typ
 
 (** Instantiating a type replaces all quantified type variables with
  fresh free type variables. *)
-let instantiate typ = 
+let instantiate level typ =
   let rec inst ctx typ =
     match typ with
     | Const_t _
-    | Var_t (Free _) -> typ
-    | Var_t (Quant name) -> 
+    | Var_t {contents = Free _} -> typ
+    | Var_t {contents = Quant name} ->
        (match Ctx.lookup ctx name with
-        | Some id -> Var_t (Free id)
-        | None -> let id = Fresh.int () in
-                  Ctx.update ctx name id;
-                  Var_t (Free id))
+        | Some typ' -> typ'
+        | None -> let typ' = fresh_free level in
+                  Ctx.update ctx name typ'; typ')
+    | Var_t {contents = Link typ'} -> inst ctx typ'
     | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(inst ctx) args, inst ctx ret)
     | App_t (const, args) -> App_t (const, List.map ~f:(inst ctx) args)
   in
   inst (Ctx.empty ()) typ
 
-(* Unify two types and return the substitution that makes the two types the same. *)
-let rec unify t1 t2 = 
+let rec unify t1 t2 =
   let error () = raise @@ TypeError (sprintf "Failed to unify %s and %s."
                                              (typ_to_string t1)
                                              (typ_to_string t2))
   in
-  if t1 = t2 then Sub.empty else
+  if t1 = t2 then () else
     match t1, t2 with
-    | Const_t t1', Const_t t2' when t1' = t2' -> Sub.empty
-    | Var_t (Free id), t 
-    | t, Var_t (Free id) -> Sub.bind Sub.empty id t
+    | Const_t t1', Const_t t2' when t1' = t2' -> ()
+    | Var_t {contents = Link t1'}, t2'
+    | t1', Var_t {contents = Link t2'} -> unify t1' t2'
+    | Var_t {contents = Free (id1, _)}, Var_t {contents = Free (id2, _)} when id1 = id2 -> error ()
+    | Var_t ({contents = Free (id, level)} as t'), t
+    | t, Var_t ({contents = Free (id, level)} as t') -> occurs id level t; t' := Link t
     | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
        (match List.zip args1 args2 with
-        | Some arg_pairs ->
-           let args_sub =
-             List.fold_left arg_pairs 
-                            ~init:Sub.empty 
-                            ~f:(fun sub (a1, a2) -> 
-                                let a1', a2' = (Sub.apply sub a1), (Sub.apply sub a2) in
-                                Sub.compose (unify a1' a2') sub) in
-           let ret1', ret2' = (Sub.apply args_sub ret1), (Sub.apply args_sub ret2) in
-           Sub.compose (unify ret1' ret2') args_sub
-        | None -> error ())
+        | Some args -> List.iter args ~f:(fun (a1, a2) -> unify a1 a2)
+        | None -> error ());
+       unify ret1 ret2
     | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
        (match List.zip args1 args2 with
-        | Some arg_pairs ->
-           List.fold_left arg_pairs 
-                          ~init:Sub.empty 
-                          ~f:(fun sub (a1, a2) -> 
-                              let a1', a2' = (Sub.apply sub a1), (Sub.apply sub a2) in
-                              Sub.compose (unify a1' a2') sub)
+        | Some args -> List.iter args ~f:(fun (a1, a2) -> unify a1 a2)
         | None -> error ())
     | _ -> error ()
 
-let to_string (sub: typ Sub.t) =
-  Sub.to_alist sub
-  |> List.map ~f:(fun (id, typ) -> (typ_to_string (Var_t (Free id))) ^ ": " ^ (typ_to_string typ))
-  |> String.concat ~sep:" "
+(* let to_string (sub: typ Sub.t) = *)
+(*   Sub.to_alist sub *)
+(*   |> List.map ~f:(fun (id, typ) -> (typ_to_string (Var_t (Free id))) ^ ": " ^ (typ_to_string typ)) *)
+(*   |> String.concat ~sep:" " *)
 
-let rec typeof ctx (expr: expr) : typ * typ Sub.t =
+let typ_of_expr = function
+  | Num (_, t) 
+  | Bool (_, t) 
+  | List (_, t) 
+  | Id (_, t) 
+  | Lambda (_, t)
+  | Apply (_, t) 
+  | Op (_, t) 
+  | Let (_, t) -> t
+
+let rec typeof ctx level expr =
+  let rec typeof_func num_args typ =
+    match typ with
+    | Arrow_t (args, ret) -> args, ret
+    | Var_t {contents = Link typ} -> typeof_func num_args typ
+    | Var_t ({contents = Free (_, level)} as typ) ->
+        let args = List.range 0 num_args |> List.map ~f:(fun _ -> fresh_free level) in
+        let ret = fresh_free level in
+        typ := Link (Arrow_t (args, ret));
+        args, ret
+    | _ -> raise @@ TypeError "Not a function."
+  in
   match expr with
-  | `Num _ -> Const_t Num, Sub.empty
-  | `Bool _ -> Const_t Bool, Sub.empty
-  | `List [] -> App_t ("list", [fresh_free ()]), Sub.empty
+  | `Num x -> Num (x, Const_t Num_t)
+  | `Bool x -> Bool (x, Const_t Bool_t)
+  | `List [] -> List ([], App_t ("list", [fresh_free level]))
   | `List elems ->
-     let et, s = List.fold_left elems
-                                ~init:(fresh_free (), Sub.empty)
-                                ~f:(fun (typ, sub) elem ->
-                                    let t, s = typeof (Sub.apply_ctx sub ctx) elem in
-                                    let s = unify (Sub.apply s t) typ in
-                                    t, s) in
-     App_t ("list", [et]), s
-  | `Id name -> instantiate (Ctx.lookup_exn ctx name), Sub.empty
+     List.fold_left elems
+                    ~init:(typeof ctx level (`List []))
+                    ~f:(fun texpr elem ->
+                        match texpr with
+                        | List (elems, App_t ("list", [typ])) ->
+                           let elem' = typeof ctx level elem in
+                           unify typ (typ_of_expr elem');
+                           List (List.append elems [elem'], App_t ("list", [typ]))
+                        | _ -> assert false)
+  | `Id name -> Id (name, instantiate level (Ctx.lookup_exn ctx name))
   | `Lambda (args, body) ->
      (* Generate fresh type variables for each argument and bind them
         into the existing context. *)
      let ctx' = List.fold args
                           ~init:ctx
-                          ~f:(fun ctx' arg -> Ctx.bind ctx' arg (fresh_free ())) in
+                          ~f:(fun ctx' arg -> Ctx.bind ctx' arg (fresh_free level)) in
      let arg_typs = List.map args ~f:(fun arg -> Ctx.lookup_exn ctx' arg) in
-     let t1, s1 = typeof ctx' body in
-     Sub.apply s1 (Arrow_t (arg_typs, t1)), s1
+     let body' = typeof ctx' level body in
+     Lambda ((args, body'), Arrow_t (arg_typs, typ_of_expr body'))
   | `Apply (func, args) ->
-     let t1, s1 = typeof ctx func in
-     let t2s, s2 = List.fold_left args 
-                                  ~init:([], s1) 
-                                  ~f:(fun (ts, sub) arg -> 
-                                      let t, s = typeof (Sub.apply_ctx sub ctx) arg in
-                                      (List.append ts [t]), Sub.compose s sub) in
-     let b = fresh_free () in
-     let s3 = unify (Sub.apply s2 t1) (Arrow_t (t2s, b)) in
-     Sub.apply s3 b, Sub.compose s1 (Sub.compose s2 s3)
+     let func' = typeof ctx level func in
+     let args' = List.map args ~f:(typeof ctx level) in
+     let arg_typs, ret_typ = typeof_func (List.length args) (typ_of_expr func') in
+     (match List.zip arg_typs args' with
+      | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify typ (typ_of_expr arg'))
+      | None -> raise @@ TypeError "Wrong number of arguments.");
+     Apply ((func', args'), ret_typ)
   | `Op (op, args) ->
-     let t1, s1 = instantiate (Op.typ op), Sub.empty in
-     let t2s, s2 = List.fold_left args 
-                                  ~init:([], s1) 
-                                  ~f:(fun (ts, sub) arg -> 
-                                      let t, s = typeof (Sub.apply_ctx sub ctx) arg in
-                                      List.append ts [t], Sub.compose s sub) in
-     let b = fresh_free () in
-     let s3 = unify (Sub.apply s2 t1) (Arrow_t (t2s, b)) in
-     Sub.apply s3 b, Sub.compose s1 (Sub.compose s2 s3)
+     let args' = List.map args ~f:(typeof ctx level) in
+     let arg_typs, ret_typ = typeof_func (List.length args) (instantiate level (Op.typ op)) in
+     (match List.zip arg_typs args' with
+      | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify typ (typ_of_expr arg'))
+      | None -> raise @@ TypeError "Wrong number of arguments.");
+     Op ((op, args'), ret_typ)
   | `Let (name, bound, body) ->
-     let t1, s1 = typeof ctx bound in
-     let t2, s2 =
-       let ctx' = 
-         let ctx'' = (Sub.apply_ctx s1 ctx) in
-         Ctx.bind ctx'' name (generalize ctx'' (Sub.apply s1 t1)) in
-       typeof ctx' body in
-     t2, Sub.compose s1 s2
+     let bound' = typeof ctx (level + 1) bound in
+     let body' =
+       let bound_typ = generalize level (typ_of_expr bound') in
+       typeof (Ctx.bind ctx name bound_typ) level body in
+     Let ((name, bound', body'), typ_of_expr body')
 
 let stdlib_tctx = [
   "foldr", "(list[a], ((b, a) -> b), b) -> b";
@@ -218,5 +180,5 @@ let infer ctx expr =
                        ~f:(fun ~key:_ value ->
                            match value with
                            | `Both (_, v) | `Left v | `Right v -> Some v) in
-  let typ, sub = typeof ctx' expr in 
-  generalize ctx' (Sub.apply sub typ)
+  let expr' = typeof ctx' 0 expr in
+  generalize (-1) (typ_of_expr expr')

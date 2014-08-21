@@ -52,13 +52,14 @@ type typ =
   | Const_t of const_typ
   | App_t of id * typ list
   | Arrow_t of typ list * typ
-  | Var_t of var_typ
-and const_typ = Num | Bool
+  | Var_t of var_typ ref
+and const_typ = Num_t | Bool_t
 
 (** Type variables can be either free or quantified. A type scheme
 cannot contain free type variables. *)
 and var_typ =
-  | Free of int
+  | Free of int * int
+  | Link of typ
   | Quant of string
   with compare, sexp
 
@@ -92,45 +93,47 @@ module Op = struct
     str    : string;
   }
 
-  let metadata_by_op = [
-    Plus,  { typ = Arrow_t ([Const_t Num; Const_t Num], Const_t Num);
+  let metadata_by_op = 
+    let quant name = ref (Quant name) in
+    [
+    Plus,  { typ = Arrow_t ([Const_t Num_t; Const_t Num_t], Const_t Num_t);
              commut = true;  assoc = true;  str = "+"; };
-    Minus, { typ = Arrow_t ([Const_t Num; Const_t Num], Const_t Num);
+    Minus, { typ = Arrow_t ([Const_t Num_t; Const_t Num_t], Const_t Num_t);
              commut = false; assoc = false; str = "-"; };
-    Mul,   { typ = Arrow_t ([Const_t Num; Const_t Num], Const_t Num);
+    Mul,   { typ = Arrow_t ([Const_t Num_t; Const_t Num_t], Const_t Num_t);
              commut = true;  assoc = true;  str = "*"; };
-    Div,   { typ = Arrow_t ([Const_t Num; Const_t Num], Const_t Num);
+    Div,   { typ = Arrow_t ([Const_t Num_t; Const_t Num_t], Const_t Num_t);
              commut = false; assoc = false; str = "/"; };
-    Mod,   { typ = Arrow_t ([Const_t Num; Const_t Num], Const_t Num);
+    Mod,   { typ = Arrow_t ([Const_t Num_t; Const_t Num_t], Const_t Num_t);
              commut = false; assoc = false; str = "%"; };
-    Eq,    { typ = Arrow_t ([Var_t (Quant "a"); Var_t (Quant "a")], Const_t Bool);
+    Eq,    { typ = Arrow_t ([Var_t (quant "a"); Var_t (quant "a")], Const_t Bool_t);
              commut = true;  assoc = false; str = "="; };
-    Neq,   { typ = Arrow_t ([Var_t (Quant "a"); Var_t (Quant "a")], Const_t Bool);
+    Neq,   { typ = Arrow_t ([Var_t (quant "a"); Var_t (quant "a")], Const_t Bool_t);
              commut = true;  assoc = false; str = "!="; };
-    Lt,    { typ = Arrow_t ([Const_t Num; Const_t Num], Const_t Bool);
+    Lt,    { typ = Arrow_t ([Const_t Num_t; Const_t Num_t], Const_t Bool_t);
              commut = false; assoc = false; str = "<"; };
-    Leq,   { typ = Arrow_t ([Const_t Num; Const_t Num], Const_t Bool);
+    Leq,   { typ = Arrow_t ([Const_t Num_t; Const_t Num_t], Const_t Bool_t);
              commut = false; assoc = false; str = "<="; };
-    Gt,    { typ = Arrow_t ([Const_t Num; Const_t Num], Const_t Bool);
+    Gt,    { typ = Arrow_t ([Const_t Num_t; Const_t Num_t], Const_t Bool_t);
              commut = false; assoc = false; str = ">"; };
-    Geq,   { typ = Arrow_t ([Const_t Num; Const_t Num], Const_t Bool);
+    Geq,   { typ = Arrow_t ([Const_t Num_t; Const_t Num_t], Const_t Bool_t);
              commut = false; assoc = false; str = ">="; };
-    And,   { typ = Arrow_t ([Const_t Bool; Const_t Bool], Const_t Bool);
+    And,   { typ = Arrow_t ([Const_t Bool_t; Const_t Bool_t], Const_t Bool_t);
              commut = true;  assoc = true;  str = "&"; };
-    Or,    { typ = Arrow_t ([Const_t Bool; Const_t Bool], Const_t Bool);
+    Or,    { typ = Arrow_t ([Const_t Bool_t; Const_t Bool_t], Const_t Bool_t);
              commut = true;  assoc = true;  str = "|"; };
-    Not,   { typ = Arrow_t ([Const_t Bool], Const_t Bool);
+    Not,   { typ = Arrow_t ([Const_t Bool_t], Const_t Bool_t);
              commut = false; assoc = false; str = "~"; };
-    Cons,  { typ = Arrow_t ([Var_t (Quant "a"); App_t ("list", [Var_t (Quant "a")])], 
-                            App_t ("list", [Var_t (Quant "a")]));
+    Cons,  { typ = Arrow_t ([Var_t (quant "a"); App_t ("list", [Var_t (quant "a")])], 
+                            App_t ("list", [Var_t (quant "a")]));
              commut = false; assoc = false; str = "cons"; };
-    Car,   { typ = Arrow_t ([App_t ("list", [Var_t (Quant "a")])], Var_t (Quant "a"));
+    Car,   { typ = Arrow_t ([App_t ("list", [Var_t (quant "a")])], Var_t (quant "a"));
              commut = false; assoc = false; str = "car"; };
-    Cdr,   { typ = Arrow_t ([App_t ("list", [Var_t (Quant "a")])], 
-                            App_t ("list", [Var_t (Quant "a")]));
+    Cdr,   { typ = Arrow_t ([App_t ("list", [Var_t (quant "a")])], 
+                            App_t ("list", [Var_t (quant "a")]));
              commut = false; assoc = false; str = "cdr"; };
-    If,    { typ = Arrow_t ([Const_t Bool; Var_t (Quant "a"); Var_t (Quant "a")], 
-                            Var_t (Quant "a"));
+    If,    { typ = Arrow_t ([Const_t Bool_t; Var_t (quant "a"); Var_t (quant "a")], 
+                            Var_t (quant "a"));
              commut = false; assoc = false; str = "if"; };
   ]
 
@@ -154,10 +157,6 @@ module Op = struct
   let of_string str = String.Map.find_exn op_by_str str
 end
 
-(** Represents identifiers and typed identifiers. *)
-type typed_id = id * typ with compare, sexp
-
-(** Types for expressions and values. *)
 type expr = 
   [ `Num of int
   | `Bool of bool
@@ -170,25 +169,18 @@ type expr =
   ] with compare, sexp
 
 type typed_expr =
-  [ `Num of int * typ
-  | `Bool of bool * typ
-  | `List of expr list * typ
-  | `Id of id * typ
-  | `Let of id * expr * expr * typ
-  | `Lambda of id list * expr * typ
-  | `Apply of expr * (expr list) * typ
-  | `Op of Op.t * (expr list) * typ
-  ] with compare, sexp
+  | Num of int * typ
+  | Bool of bool * typ
+  | List of typed_expr list * typ
+  | Id of id * typ
+  | Let of (id * typed_expr * typed_expr) * typ
+  | Lambda of (id list * typed_expr) * typ
+  | Apply of (typed_expr * (typed_expr list)) * typ
+  | Op of (Op.t * (typed_expr list)) * typ
+  with compare, sexp
 
 type example = expr * expr with compare, sexp
-
-type function_def = [ `Define of id * [ `Lambda of typed_id list * typ * expr ] ]
-
 type constr = expr * (id list)
-
-type typed_expr = expr * typ with compare, sexp
-
-type type_pred = typ list -> typ -> bool
 
 (** Calculate the size of an expression. *)
 let rec size (e: expr) : int =
@@ -212,10 +204,11 @@ let rec typ_to_string typ =
     typs |> List.map ~f:typ_to_string |> String.concat ~sep:", "
   in
   match typ with
-  | Const_t Num -> "num"
-  | Const_t Bool -> "bool"
-  | Var_t (Free id) -> "ft" ^ (Int.to_string id)
-  | Var_t (Quant name) -> name
+  | Const_t Num_t -> "num"
+  | Const_t Bool_t -> "bool"
+  | Var_t {contents = Free (id, _)} -> "ft" ^ (Int.to_string id)
+  | Var_t {contents = Quant name} -> name
+  | Var_t {contents = Link typ'} -> typ_to_string typ'
   | App_t (id, args) -> 
      Printf.sprintf "%s[%s]" id (tlist_str args)
   | Arrow_t ([arg], ret) -> 

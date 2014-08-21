@@ -28,14 +28,14 @@ let make_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name case
                                                        (out_f output) (in_f input)))
               cases)
 
-let make_solve_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name cases =
-  name >:::
-    (List.map ~f:(fun (input, output) ->
-                  let case_name = Printf.sprintf "%s => %s" (in_str input) (out_str output) in
-                  case_name >:: (fun ctx ->
-                                 skip_if (not (test_solve ctx)) "Skipping solve tests.";
-                                 assert_equal ~printer:res_str ~cmp:cmp (out_f output) (in_f input)))
-              cases)
+(* let make_solve_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name cases = *)
+(*   name >::: *)
+(*     (List.map ~f:(fun (input, output) -> *)
+(*                   let case_name = Printf.sprintf "%s => %s" (in_str input) (out_str output) in *)
+(*                   case_name >:: (fun ctx -> *)
+(*                                  skip_if (not (test_solve ctx)) "Skipping solve tests."; *)
+(*                                  assert_equal ~printer:res_str ~cmp:cmp (out_f output) (in_f input))) *)
+(*               cases) *)
 
 let test_parse_expr =
   let open Op in
@@ -76,7 +76,7 @@ let test_parse_typ =
   make_tests ~in_f:Util.parse_typ ~out_f:identity
               ~in_str:identity ~out_str:typ_to_string ~res_str:typ_to_string
               "parse_typ"
-              [ "num", Const_t Num;
+              [ "num", Const_t Num_t;
               ]
 
 let test_parse_example =
@@ -141,33 +141,6 @@ let test_eval =
                 `List [`Bool true; `Bool false; `Bool true];
               ]
 
-let test_unify =
-  let open Infer in
-  make_tests ~cmp:(Sub.equal (=))
-             ~in_f:(fun (t1, t2) -> unify t1 t2) ~out_f:identity
-             ~in_str:(fun (t1, t2) -> (typ_to_string t1) ^ ", " ^ (typ_to_string t2))
-             ~out_str:to_string ~res_str:to_string
-             "unify"
-             [ 
-               (Const_t Num, Const_t Num), Sub.empty;
-               (Var_t (Free 1), Const_t Num), Sub.singleton 1 (Const_t Num);
-               (Var_t (Free 1), Const_t Num), Sub.singleton 1 (Const_t Num);
-               (Var_t (Free 1), Var_t (Free 1)), Sub.empty;
-               (Var_t (Quant "test"), Var_t (Quant "test")), Sub.empty;
-               (Var_t (Free 1), Var_t (Quant "test")), Sub.singleton 1 (Var_t (Quant "test"));
-               (Arrow_t ([Const_t Num; Const_t Num], Const_t Num),
-                Arrow_t ([Var_t (Free 1); Var_t (Free 2)], Var_t (Free 3))),
-               Sub.of_alist_exn [1, Const_t Num; 2, Const_t Num; 3, Const_t Num];
-               (Arrow_t ([Var_t (Free 1); App_t ("list", [Var_t (Free 1)])], 
-                         App_t ("list", [Var_t (Free 1)])),
-                Arrow_t ([Const_t Num; App_t ("list", [Var_t (Free 2)])], 
-                         App_t ("list", [Var_t (Free 3)]))),
-               Sub.of_alist_exn [1, Const_t Num; 2, Const_t Num; 3, Const_t Num];
-               (App_t ("tuple", [Var_t (Free 1); Var_t (Free 1)]),
-                App_t ("tuple", [Const_t Num; Var_t (Free 2)])),
-               Sub.of_alist_exn [1, Const_t Num; 2, Const_t Num];
-             ]
-
 let test_typeof =
   make_tests 
     ~in_f:(fun str -> Util.parse_expr str |> (Infer.infer (Ctx.empty ())) |> Infer.normalize)
@@ -175,9 +148,12 @@ let test_typeof =
     ~in_str:identity ~out_str:identity
     ~res_str:typ_to_string
     "typeof"
-    [ "1", "num";
+    [ 
+      "1", "num";
       "#t", "bool";
       "#f", "bool";
+      "[]", "list[a]";
+      "[1 2 3]", "list[num]";
       "(+ 1 2)", "num";
       "(< 1 2)", "bool";
       "(cons 1 [])", "list[num]";
@@ -201,6 +177,10 @@ let test_typeof =
       "(let f (lambda (x) x) (let id (lambda (y) y) (= f id)))", "bool";
       "(let apply (lambda (f x) (f x)) apply)", "((a -> b), a) -> b";
       "(lambda (f) (let x (lambda (g y) (let z (g y) (= f g))) x))", "(a -> b) -> (((a -> b), a) -> bool)";
+      "(lambda (f) (let x (lambda (g) (let z (g 1) (= f g))) x))", "(num -> b) -> ((num -> b) -> bool)";
+      "(lambda (f) (lambda (g) (let z (g 1) (= f g))))", "(num -> b) -> ((num -> b) -> bool)";
+      "(lambda (f) (let x (lambda (g) (= f g)) x))", "a -> (a -> bool)";
+      "(lambda (f g) (let z (g 1) (= f g)))", "((num -> a), (num -> a)) -> bool";
       "(lambda (l x) (= [x] l))", "(list[a], a) -> bool";
       "(let a 0 (let b 1 (lambda (x) (cons a [b]))))", "a -> list[num]";
       "(lambda (y) (if (= 0 y) 0 1))", "num -> num";
@@ -276,38 +256,38 @@ let test_denormalize =
       "(+ (* 0 1 2) 3 4)", "(+ (* 0 (* 1 2)) (+ 3 4))";
     ]
 
-let test_straight_solve =
-  make_solve_tests
-    ~in_f:(fun (_, example_strs, init_strs) ->
-           let solution = Search.solve ~init:(List.map init_strs ~f:Util.parse_expr)
-                                       (List.map example_strs ~f:Util.parse_example) [] in
-           (solution :> expr option))
-    ~out_f:(fun res_str -> Some (Util.parse_expr res_str))
-    ~in_str:(fun (name, _, _) -> name) ~out_str:identity
-    ~res_str:(fun res -> match res with
-                         | Some expr -> expr_to_string expr
-                         | None -> "")
-    "straight_solve"
-    [
-      ("plus", ["(f 1 1) -> 2";
-                "(f 2 1) -> 3"], []),
-      "(define f (lambda (x0:num x1:num):num (+ x0 x1)))";
+(* let test_straight_solve = *)
+(*   make_solve_tests *)
+(*     ~in_f:(fun (_, example_strs, init_strs) -> *)
+(*            let solution = Search.solve ~init:(List.map init_strs ~f:Util.parse_expr) *)
+(*                                        (List.map example_strs ~f:Util.parse_example) [] in *)
+(*            (solution :> expr option)) *)
+(*     ~out_f:(fun res_str -> Some (Util.parse_expr res_str)) *)
+(*     ~in_str:(fun (name, _, _) -> name) ~out_str:identity *)
+(*     ~res_str:(fun res -> match res with *)
+(*                          | Some expr -> expr_to_string expr *)
+(*                          | None -> "") *)
+(*     "straight_solve" *)
+(*     [ *)
+(*       ("plus", ["(f 1 1) -> 2"; *)
+(*                 "(f 2 1) -> 3"], []), *)
+(*       "(define f (lambda (x0:num x1:num):num (+ x0 x1)))"; *)
 
-      ("max", ["(f 3 5) -> 5";
-               "(f 5 3) -> 5"], []),
-      "(define f (lambda (x0:num x1:num):num (if (< x0 x1) x1 x0)))";
+(*       ("max", ["(f 3 5) -> 5"; *)
+(*                "(f 5 3) -> 5"], []), *)
+(*       "(define f (lambda (x0:num x1:num):num (if (< x0 x1) x1 x0)))"; *)
 
-      ("second", ["(f [1 2]) -> 2";
-                  "(f [1 3]) -> 3"], []),
-      "(define f (lambda (x0:[num]):num (car (cdr x0))))";
+(*       ("second", ["(f [1 2]) -> 2"; *)
+(*                   "(f [1 3]) -> 3"], []), *)
+(*       "(define f (lambda (x0:[num]):num (car (cdr x0))))"; *)
 
-      ("even", ["(f 1) -> #f";
-                "(f 2) -> #t";
-                "(f 3) -> #f";
-                "(f 4) -> #t";
-               ], ["0"; "2"]),
-      "(define f (lambda (x0:num):bool (= (% x0 2) 0)))";
-    ]
+(*       ("even", ["(f 1) -> #f"; *)
+(*                 "(f 2) -> #t"; *)
+(*                 "(f 3) -> #f"; *)
+(*                 "(f 4) -> #t"; *)
+(*                ], ["0"; "2"]), *)
+(*       "(define f (lambda (x0:num):bool (= (% x0 2) 0)))"; *)
+(*     ] *)
 
 let partition_to_string = List.to_string ~f:(List.to_string ~f:Int.to_string)
 let test_partition =
