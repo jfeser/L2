@@ -1,77 +1,93 @@
 open Core.Std
+open Printf
 open Ast
 open Eval
 
 exception VerifyError of string
 
-let verify_error str = raise (VerifyError str)
+let verify_error str = raise @@ VerifyError str
 
 type status = 
   | Invalid
   | Valid
   | Error
 
-(* type expr_ctx = expr String.Map.t ref *)
-(* type z3_ctx = Z3.Expr.expr String.Map.t ref *)
-
 let rec expand ctx (expr: expr) : expr =
   let exp e = expand ctx e in
   let exp_all es = List.map ~f:exp es in
   match expr with
   | `Id id -> (match Ctx.lookup ctx id with Some expr' -> expr' | None -> expr)
-  | `Define (id, body) -> `Define (id, expand ctx body)
   | `Let (id, bound, body) -> expand (Ctx.bind ctx id (expand ctx bound)) body
-  | `Lambda (args, ret, body) ->
-     let ctx' = List.fold args ~init:ctx ~f:(fun a (id, _) -> Ctx.unbind a id) in
-     `Lambda (args, ret, expand ctx' body)
+  | `Lambda (args, body) ->
+     let ctx' = List.fold args ~init:ctx ~f:(fun ctx' id -> Ctx.unbind ctx' id) in
+     `Lambda (args, expand ctx' body)
   | `Apply (func, args) ->
      let args' = exp_all args in
      let func' = exp func in
      (match func' with
-      | `Lambda (lambda_args, _, body) ->
+      | `Lambda (lambda_args, body) ->
          let ctx' = List.fold2_exn lambda_args args' ~init:ctx
-                                   ~f:(fun a (id, _) arg -> Ctx.bind a id arg) in
+                                   ~f:(fun ctx' id arg -> Ctx.bind ctx' id arg) in
          expand ctx' body
-      | _ -> verify_error (Printf.sprintf "Tried to apply a non-lambda expression. (%s)" 
-                                          (expr_to_string expr)))
+      | _ -> verify_error (sprintf "Tried to apply a non-lambda expression. (%s)"
+                                   (expr_to_string expr)))
   | `Op (op, args) -> `Op (op, exp_all args)
   | `Num _ | `Bool _ | `List _ -> expr
 
-let rec typ_to_z3 (zctx: Z3.context) (typ: typ) : Z3.Sort.sort = 
-  match typ with
-  | Num_t -> Z3.Arithmetic.Integer.mk_sort zctx
-  | Bool_t -> Z3.Boolean.mk_sort zctx
-  | List_t elem_typ -> Z3.Z3List.mk_list_s zctx (typ_to_string typ) (typ_to_z3 zctx elem_typ)
-  | Unit_t
-  | Arrow_t _ -> verify_error "Unit_t and Arrow_t are not supported by Z3."
+let expr_to_value expr : value option =
+  let rec etv = function
+    | `Num x -> `Num x
+    | `Bool x -> `Bool x
+    | `List x -> `List (List.map x ~f:etv)
+    | _ -> verify_error "Not a value."
+  in
+  try Some (etv expr) with VerifyError _ -> None
 
-let typed_id_to_z3 zctx tid = 
+let rec typ_to_z3 (zctx: Z3.context) (typ: typ) : Z3.Sort.sort =
+  match typ with
+  | Const_t Num -> Z3.Arithmetic.Integer.mk_sort zctx
+  | Const_t Bool -> Z3.Boolean.mk_sort zctx
+  | App_t ("list", [elem_typ]) -> Z3.Z3List.mk_list_s zctx (typ_to_string typ) (typ_to_z3 zctx elem_typ)
+  | App_t ("list", _) -> verify_error "Wrong number of arguments to list."
+  | App_t (const, _) -> verify_error (sprintf "Type constructor %s is not supported." const)
+  | Var_t _
+  | Arrow_t _ -> verify_error "Arrow_t are not supported by Z3."
+
+let typed_id_to_z3 zctx tid =
   let id, typ = tid in
   let sort = typ_to_z3 zctx typ in
   Z3.Expr.mk_const_s zctx id sort
 
-let rec const_to_z3 (zctx: Z3.context) (const: const) : Z3.Expr.expr = 
-  match const with
-  | `Num x  -> Z3.Arithmetic.Integer.mk_numeral_i zctx x
-  | `Bool x -> Z3.Boolean.mk_val zctx x
-  | `List (x, t) ->
-     let sort = typ_to_z3 zctx t in
-     let nil = Z3.Z3List.nil sort in
-     let cons = Z3.Z3List.get_cons_decl sort in
-     List.fold_right x ~init:nil
-                     ~f:(fun elem acc -> 
-                         let z3_elem = const_to_z3 zctx elem in
-                         Z3.FuncDecl.apply cons [z3_elem; acc])  
+(* let rec const_to_z3 (zctx: Z3.context) (const: const) : Z3.Expr.expr = *)
+(*   match const with *)
+(*   | `Num x  -> Z3.Arithmetic.Integer.mk_numeral_i zctx x *)
+(*   | `Bool x -> Z3.Boolean.mk_val zctx x *)
+(*   | `List (x, t) -> *)
+     (* let sort = typ_to_z3 zctx t in *)
+     (* let nil = Z3.Z3List.nil sort in *)
+     (* let cons = Z3.Z3List.get_cons_decl sort in *)
+     (* List.fold_right x ~init:nil *)
+     (*                 ~f:(fun elem acc -> *)
+     (*                     let z3_elem = const_to_z3 zctx elem in *)
+     (*                     Z3.FuncDecl.apply cons [z3_elem; acc]) *)
 
 let rec expr_to_z3 (zctx: Z3.context) z3ectx (expr: expr) =
   match expr with
-  | `Num x -> const_to_z3 zctx (`Num x)
-  | `Bool x -> const_to_z3 zctx (`Bool x)
-  | `List x -> const_to_z3 zctx (`List x)
+  | `Num x -> Z3.Arithmetic.Integer.mk_numeral_i zctx x
+  | `Bool x -> Z3.Boolean.mk_val zctx x
+  (* | `List x ->  *)
+  (*    let sort = typ_to_z3 zctx t in *)
+  (*    let nil = Z3.Z3List.nil sort in *)
+  (*    let cons = Z3.Z3List.get_cons_decl sort in *)
+  (*    List.fold_right x ~init:nil *)
+  (*                    ~f:(fun elem acc -> *)
+  (*                        let z3_elem = const_to_z3 zctx elem in *)
+  (*                        Z3.FuncDecl.apply cons [z3_elem; acc]) *)
   | `Id x -> (match Ctx.lookup z3ectx x with
               | Some z3expr -> z3expr
-              | None -> verify_error (Printf.sprintf "Looking up identifier \"%s\" failed." x))
+              | None -> verify_error (sprintf "Looking up identifier \"%s\" failed." x))
   | `Op (op, op_args) ->
+     let open Op in
      (match op, (List.map ~f:(expr_to_z3 zctx z3ectx) op_args) with
       | Plus, z3_args -> Z3.Arithmetic.mk_add zctx z3_args
       | Minus, z3_args-> Z3.Arithmetic.mk_sub zctx z3_args
@@ -98,31 +114,30 @@ let rec expr_to_z3 (zctx: Z3.context) z3ectx (expr: expr) =
                          let tail = Z3.Z3List.get_tail_decl sort in
                          Z3.FuncDecl.apply tail [a]
       | _ -> verify_error "Attempted to convert unsupported operator to Z3.")
+  | `List _
   | `Lambda _ 
   | `Let _ 
-  | `Define _ 
-  | `Apply _ -> verify_error "(lambda, let, define, apply) are not supported by Z3."
+  | `Apply _ -> verify_error "(list, lambda, let, define, apply) are not supported by Z3."
 
-let verify_example (target_prog: program) (example: example) : bool =
-  let (input, result) = example in
-  let test_program = target_prog @ [(input :> expr)] in
-  try (Eval.prog_eval test_program) = (result :> value) with
-    RuntimeError _ -> false
+let verify_example (target: expr -> expr) (example: example) : bool =
+  let input, result = example in
+  match expr_to_value result with
+  | Some result' ->
+     (try (Eval.eval (Ctx.empty ()) (target input)) = result'
+      with RuntimeError _ -> false)
+  | None -> verify_error (sprintf "Example result is not a value. (%s)" 
+                                 (expr_to_string result))
 
-let verify_examples (target_prog: program) (examples: example list) : bool =
-  List.for_all examples ~f:(verify_example target_prog)
+let verify_examples target examples = List.for_all examples ~f:(verify_example target)
 
-let verify_constraint (zctx: Z3.context) (target_def: function_def) (constr: constr) : bool = 
+let verify_constraint (zctx: Z3.context) (target: expr -> expr) (constr: constr) : bool = 
   let open Z3.Solver in
-  let `Define (target_name, lambda) = target_def in
   let solver = mk_simple_solver zctx in
   let constr_body, constr_ids = constr in
 
-  (* Expand the constraint using a context that contains the
-    definition of the target function. *)
-  let constr_body' =
-    let ctx = Ctx.bind (Ctx.empty ()) target_name (lambda :> expr) in
-    expand ctx constr_body in
+  (* Wrap the constraint in a let containing the definition of the
+  target function and then expand. *)
+  let constr_body' = expand (Ctx.empty ()) (target constr_body) in
 
   (* let _ = Printf.printf "%s\n" (expr_to_string constr_body') in *)
   
@@ -145,12 +160,12 @@ let verify_constraint (zctx: Z3.context) (target_def: function_def) (constr: con
   | UNKNOWN -> verify_error "Z3 returned unknown."
   | SATISFIABLE -> false
 
-let verify (examples: example list) (constraints: constr list) (target_def: function_def) : status =
-  if List.for_all examples ~f:(verify_example [(target_def :> expr)])
+let verify (examples: example list) (constraints: constr list) (target: expr -> expr) : status =
+  if verify_examples target examples
   then
     let zctx = Z3.mk_context [] in
     try
-      if List.for_all constraints ~f:(verify_constraint zctx target_def)
+      if List.for_all constraints ~f:(verify_constraint zctx target)
       then Valid
       else Invalid
     with VerifyError msg -> 

@@ -8,20 +8,14 @@
 let white = [' ' '\t' '\n' '\r']+
 let id = ['a'-'z' 'A'-'Z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
 let operator = "+" | "-" | "*" | "/" | "%" | "=" | "!=" | ">" | ">=" | "<" |
-               "<=" | "&" | "|" | "~" | "cons" | "car" | "cdr" | "if" |
-               "fold" | "foldl" | "filter" | "map"
+               "<=" | "&" | "|" | "~" | "cons" | "car" | "cdr" | "if"
 
 rule token = parse
        | white                 { token lexbuf } (* Eat whitespace. *)
-       | "num"                 { NUM_T }
-       | "bool"                { BOOL_T }
-       | "unit"                { UNIT_T }
        | "let"                 { LET }
-       | "define"              { DEF }
        | "lambda"              { LAMBDA }
        | "forall"              { FORALL }
        | "->"                  { ARROW }
-       | ':'                   { COLON }
        | operator as text      { OP text }
        | id as text            { ID text }
        | '-'?['0'-'9']+ as num { NUM (int_of_string num) }
@@ -31,5 +25,6 @@ rule token = parse
        | ')'                   { RPAREN }
        | '['                   { LBRACKET }
        | ']'                   { RBRACKET }
+       | ','                   { COMMA }
        | eof                   { EOF }
        | _                     { syntax_error (Lexing.lexeme lexbuf) }

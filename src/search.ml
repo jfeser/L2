@@ -44,63 +44,36 @@ type spec = {
   examples: example list;
   signature: typ;
   tctx: typ Ctx.t;
-  vctxs: const_app Ctx.t list;
+  vctxs: expr Ctx.t list;
   fold_depth: int;
 }
 
 exception SolveError of string
 
-exception Solved of program
-exception SolvedExpr of expr
+exception Solved of expr
 exception TimedOut
 
 let solve_error msg = raise (SolveError msg)
 
 (** Extract the name of the target function from a list of examples. *)
 let get_target_name (examples: example list) : id =
-  match List.map ~f:(fun ex -> let (`Apply (`Id n, _)), _ = ex in n) examples with
+  let target_names = 
+    List.map examples ~f:(fun ex -> match ex with
+                                    | (`Apply (`Id n, _)), _ -> n
+                                    | _ -> solve_error "Malformed example.")
+  in
+  match target_names with
   | [] -> solve_error "Example list is empty."
   | name::rest -> if List.for_all rest ~f:((=) name) then name
                   else solve_error "Multiple target names in example list."
 
 (** Infer a function signature from input/output examples. *)
 let signature (examples: example list) : typ =
-  (* Extract result type. *)
-  let res_typ =
-    match List.map examples ~f:(fun (_, res) -> typeof_const res) with
-    | x::xs -> if List.for_all xs ~f:((=) x) then x
-               else solve_error "Multiple return types in example list."
-    | [] -> solve_error "Example list is empty."
-  in
-
-  (* Extract argument types. *)
-  let arg_typs =
-    let typeof_arg arg = match arg with
-      | `Apply _ -> res_typ
-      | `Num x -> typeof_const (`Num x)
-      | `Bool x -> typeof_const (`Bool x)
-      | `List x -> typeof_const (`List x)
-    in
-    let args_typs = 
-      List.map examples ~f:(fun (`Apply (_, args), _) -> List.map ~f:typeof_arg args)
-    in
-    match args_typs with
-    | x::xs -> if List.for_all xs ~f:((=) x) then x
-               else solve_error "Multiple types in example argument lists."
-    | [] -> solve_error "Example list is empty."
-  in
-
+  let open Infer in
+  let inputs, results = List.unzip examples in
+  let App_t ("list", [res_typ]) = infer (Ctx.empty ()) (`List results) in
+  let App_t ("list", [Arrow_t (arg_typs, _)]) = infer (Ctx.empty ()) (`List inputs) in
   Arrow_t (arg_typs, res_typ)
-
-let counter =
-  let count = ref (-1) in
-  fun () -> incr count; !count
-
-let fresh_name ?(prefix = "x") () = Printf.sprintf "%s%d" prefix (counter ())
-
-(** Create n fresh variable names. *)
-let fresh_names (n: int) : id list =
-  List.range 0 n |> List.map ~f:(fun _ -> fresh_name ())
 
 (** Create a type context from a list of typed ids. *)
 let create_ctx (vars: typed_expr list) : typ Ctx.t =
@@ -212,7 +185,7 @@ let solve ?(init=[])
   match sig_ with
   | Arrow_t (input_types, ret_typ) ->
      let target_args = List.map input_types
-                                ~f:(fun typ -> (fresh_name ()), typ) in
+                                ~f:(fun typ -> (Fresh.name "x"), typ) in
      let target_def expr = `Define (target_name, `Lambda (target_args, ret_typ, expr)) in
 
      (* Generate the set of initial expressions from the argument
@@ -294,7 +267,7 @@ let map_bodies (spec: spec) : spec list =
         names of the target function's arguments. The types of the
         target function's arguments are available in the type
         signature. *)
-       let arg_names = List.map arg_typs ~f:(fun _ -> fresh_name ()) in
+       let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
        let target_args = List.zip_exn arg_names arg_typs in
 
        (* Generate type and value contexts. There is one overall type
@@ -332,7 +305,7 @@ let map_bodies (spec: spec) : spec list =
        (* Generate a list of new specifications from the selected names. *)
        |> List.map ~f:(fun (list_name, input_elem_typ) ->
                        let lambda_tctx = Ctx.unbind tctx list_name in
-                       let lambda_name = fresh_name ~prefix:"f" () in
+                       let lambda_name = Fresh.name "f" in
                        let lambda_examples,
                            lambda_vctxs = map_examples spec.examples vctxs lambda_name list_name in
                        let lambda_signature = Arrow_t ([input_elem_typ], res_elem_typ) in
@@ -364,7 +337,7 @@ let filter_bodies (spec: spec) : spec list =
   if spec.examples = [] then [] else
     match signature spec.examples with
     | Arrow_t (arg_typs, List_t res_elem_typ) ->
-       let arg_names = List.map arg_typs ~f:(fun _ -> fresh_name ()) in
+       let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
        let target_args = List.zip_exn arg_names arg_typs in
 
        let tctx = ctx_merge (get_example_typ_ctx spec.examples arg_names) spec.tctx in
@@ -397,7 +370,7 @@ let filter_bodies (spec: spec) : spec list =
        |> Ctx.to_alist
        |> List.map ~f:(fun (list_name, input_elem_typ) ->
                        let lambda_tctx = Ctx.unbind tctx list_name in
-                       let lambda_name = fresh_name ~prefix:"f" () in
+                       let lambda_name = Fresh.name "f" in
                        let lambda_examples,
                            lambda_vctxs = filter_examples spec.examples vctxs lambda_name list_name in
                        let lambda_signature = Arrow_t ([input_elem_typ], Bool_t) in
@@ -474,7 +447,7 @@ let fold_bodies (spec: spec) : spec list =
   if spec.examples = [] then [] else
     match signature spec.examples with
     | Arrow_t (arg_typs, res_typ) when spec.fold_depth > 0 ->
-       let target_args = List.map arg_typs ~f:(fun typ -> (fresh_name ()), typ) in
+       let target_args = List.map arg_typs ~f:(fun typ -> (Fresh.name "x"), typ) in
        let arg_names, _ = List.unzip target_args in
 
        let tctx = ctx_merge (get_example_typ_ctx spec.examples arg_names) spec.tctx in
@@ -512,7 +485,7 @@ let fold_bodies (spec: spec) : spec list =
             ~f:(fun ((list_name, input_elem_typ), init_expr) ->
                 let list_expr = ((`Id list_name) :> expr) in
                 let lambda_tctx = remove_names tctx list_name init_expr in
-                let lambda_name = fresh_name ~prefix:"f" () in
+                let lambda_name = Fresh.name "f"  in
                 let lambda_signature = Arrow_t ([res_typ; input_elem_typ], res_typ) in
                 let foldr_examples, foldl_examples, lambda_vctxs =
                   fold_examples spec.examples vctxs lambda_name list_name init_expr in
@@ -564,7 +537,8 @@ let solve_catamorphic_looped ?(init=[]) ?(start_depth=3) (examples: example list
                       ~f:(fun spec ->
                           match spec.signature with
                           | Arrow_t (lambda_arg_typs, lambda_res_typ) ->
-                             let lambda_args = List.map lambda_arg_typs ~f:(fun typ -> (fresh_name ()), typ) in
+                             let lambda_args = List.map lambda_arg_typs 
+                                                        ~f:(fun typ -> (Fresh.name "x"), typ) in
                              let lambda expr = `Lambda (lambda_args, lambda_res_typ, expr) in
                              let verify expr =
                                let prog = [spec.target (lambda expr)] in

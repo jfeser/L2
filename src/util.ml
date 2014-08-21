@@ -1,5 +1,13 @@
 open Core.Std
 
+(** Module for creating fresh names and numbers. *)
+module Fresh = struct
+  let count = ref (-1)
+  let int () = incr count; !count
+  let name prefix = Printf.sprintf "%s%d" prefix (int ())
+  let names prefix num = List.range 0 num |> List.map ~f:(fun _ -> name prefix)
+end
+
 module IntListSet = Set.Make(struct
                               type t = int list
                               let compare = List.compare ~cmp:Int.compare
@@ -74,14 +82,16 @@ let strict_superset l1 l2 =
   (List.length l1) > (List.length l2)
   && List.for_all l2 ~f:(List.mem l1)
 
+exception ParseError of string
+
 let parse parse_f str =
   let lexbuf = Lexing.from_string str in
   try parse_f Lexer.token lexbuf with
-  | Parser.Error -> raise Parser.Error
-  | Lexer.SyntaxError _ -> raise Parser.Error
-  | Parsing.Parse_error -> raise Parser.Error
+  | Parser.Error -> raise (ParseError str)
+  | Lexer.SyntaxError _ -> raise (ParseError str)
+  | Parsing.Parse_error -> raise (ParseError str)
 
-let parse_prog str = parse Parser.prog str
-let parse_expr str = parse Parser.expr str
-let parse_example str = parse Parser.example str
-let parse_constr str = parse Parser.constr str
+let parse_expr str = parse Parser.expr_eof str
+let parse_typ str = parse Parser.typ_eof str
+let parse_example str = parse Parser.example_eof str
+let parse_constr str = parse Parser.constr_eof str

@@ -1,5 +1,6 @@
 open Core.Std
 open Ast
+open Eval
 
 exception RuntimeError of string
 
@@ -18,9 +19,9 @@ let rec eval_fun (exp:expr) =
   | `Op (op, uneval_args) ->
      (let args = List.map ~f:(eval_fun) uneval_args in
       match args with 
-                 | [x; y] -> (concat ["("; operator_to_str op ; " "; x ;" "; y ; ")"])
+                 | [x; y] -> (concat ["("; Op.to_string op; " "; x ;" "; y ; ")"])
                  | _ -> raise (RuntimeError ("Bad argument to " ^ 
-                                           (Ast.operator_to_str op))))
+                                           (Op.to_string op))))
   | `Apply (`Id (id), uneval_args) ->
      (let args = List.map ~f:(eval_fun) uneval_args in
       match args with 
@@ -66,7 +67,7 @@ let find_and_filter_consts args exp =
       (get_consts (List.map ~f:(fun (id,_) -> id) args) exp))
 
 (*Parses values from the value list for assert statement*)
-let rec traverse_assert_vals (values:value list) = match values with
+let rec traverse_assert_vals (values: value list) = match values with
   |[] -> ""
   | `Num(hd)::t1 -> 
     concat [string_of_int hd; " ";traverse_assert_vals t1 ]
@@ -91,7 +92,7 @@ let rec define_tail args =
   | hd::t1 -> concat ["(get-value (";hd;"))\n";define_tail t1 ] (*TODO: Support to be potentially added for types from typed expressions later*)
 
 (*Calls all Z3 generating functions and compiles all Z3 code into one long string*)
-let generate_z3 (lambda:typed_id list * expr) (values:(value list * value) list) = 
+let generate_z3 (lambda:id list * expr) (values:(value list * value) list) = 
   let (args,exp) = lambda in
   let consts = find_and_filter_consts args exp in
   concat [define_consts consts; define_fun args exp; define_asserts values; "(check-sat)\n";define_tail consts]
@@ -149,8 +150,7 @@ let rec find_and_replace vals (exp:expr) =
        (let args = List.map ~f:(find_and_replace vals) uneval_args in
         match args with 
                    | [x; y] -> `Op(op, [x;y])
-                   | _ -> raise (RuntimeError ("Bad argument to " ^ 
-                                             (Ast.operator_to_str op))))
+                   | _ -> raise (RuntimeError ("Bad argument to " ^ (Op.to_string op))))
     | `Apply (id, uneval_args) -> 
       (let args = List.map ~f:(find_and_replace vals) uneval_args in
         match args with 
@@ -172,7 +172,7 @@ let z3_solve raw_z3 =
 (*Main method of this class, calls all Z3 generating functions then evaluates parses and returns*)
 let sat_solve (lambda:expr) (values:(value list * value) list)  =
   match lambda with
-  | `Lambda(args, _, exp) -> 
+  | `Lambda(args, exp) ->
     (let raw_z3 = generate_z3 (args, exp) values in
       find_and_replace (z3_solve raw_z3) exp)
   | _ -> raise (RuntimeError "The value inputted into the Z3 solver was not a '`Lambda' expresssion")
