@@ -41,7 +41,7 @@ module Ctx = struct
   let of_alist_exn alist = ref (StringMap.of_alist_exn alist)
   let to_alist ctx = StringMap.to_alist !ctx
   let to_string ctx (str: 'a -> string) =
-    to_alist ctx 
+    to_alist ctx
     |> List.map ~f:(fun (key, value) -> key ^ ": " ^ (str value))
     |> String.concat ~sep:", "
     |> fun s -> "{ " ^ s ^ " }"
@@ -167,17 +167,6 @@ type expr =
   | `Apply of expr * (expr list)
   | `Op of Op.t * (expr list)
   ] with compare, sexp
-
-type typed_expr =
-  | Num of int * typ
-  | Bool of bool * typ
-  | List of typed_expr list * typ
-  | Id of id * typ
-  | Let of (id * typed_expr * typed_expr) * typ
-  | Lambda of (id list * typed_expr) * typ
-  | Apply of (typed_expr * (typed_expr list)) * typ
-  | Op of (Op.t * (typed_expr list)) * typ
-  with compare, sexp
 
 type example = expr * expr with compare, sexp
 type constr = expr * (id list)

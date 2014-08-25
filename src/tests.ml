@@ -143,7 +143,7 @@ let test_eval =
 
 let test_typeof =
   make_tests 
-    ~in_f:(fun str -> Util.parse_expr str |> (Infer.infer (Ctx.empty ())) |> Infer.normalize)
+    ~in_f:(fun str -> Util.parse_expr str |> (Infer.infer (Ctx.empty ())) |> Infer.typ_of_expr |> Infer.normalize)
     ~out_f:(fun str -> Util.parse_typ str |> Infer.normalize)
     ~in_str:identity ~out_str:identity
     ~res_str:typ_to_string
@@ -256,38 +256,42 @@ let test_denormalize =
       "(+ (* 0 1 2) 3 4)", "(+ (* 0 (* 1 2)) (+ 3 4))";
     ]
 
-(* let test_straight_solve = *)
-(*   make_solve_tests *)
-(*     ~in_f:(fun (_, example_strs, init_strs) -> *)
-(*            let solution = Search.solve ~init:(List.map init_strs ~f:Util.parse_expr) *)
-(*                                        (List.map example_strs ~f:Util.parse_example) [] in *)
-(*            (solution :> expr option)) *)
-(*     ~out_f:(fun res_str -> Some (Util.parse_expr res_str)) *)
-(*     ~in_str:(fun (name, _, _) -> name) ~out_str:identity *)
-(*     ~res_str:(fun res -> match res with *)
-(*                          | Some expr -> expr_to_string expr *)
-(*                          | None -> "") *)
-(*     "straight_solve" *)
-(*     [ *)
-(*       ("plus", ["(f 1 1) -> 2"; *)
-(*                 "(f 2 1) -> 3"], []), *)
-(*       "(define f (lambda (x0:num x1:num):num (+ x0 x1)))"; *)
+let test_straight_solve =
+  make_tests
+    ~in_f:(fun (_, example_strs, init_strs) ->
+           let solution = Search.solve ~init:(List.map init_strs ~f:Util.parse_expr)
+                                       (List.map example_strs ~f:Util.parse_example) [] in
+           match solution with
+           | Some s -> Some (s (`Id "x"))
+           | None -> None)
+    ~out_f:(fun res_str -> Some (Util.parse_expr res_str))
+    ~in_str:(fun (name, _, _) -> name) ~out_str:identity
+    ~res_str:(fun res -> match res with
+                         | Some expr -> expr_to_string expr
+                         | None -> "")
+    "straight_solve"
+    [
+      ("plus", ["(f 1 1) -> 2";
+                "(f 2 1) -> 3"], []),
+      "1";
 
-(*       ("max", ["(f 3 5) -> 5"; *)
-(*                "(f 5 3) -> 5"], []), *)
-(*       "(define f (lambda (x0:num x1:num):num (if (< x0 x1) x1 x0)))"; *)
+      ("max", ["(f 3 5) -> 5";
+               "(f 5 3) -> 5";
+               "(f 0 1) -> 1";
+               "(f 1 1) -> 1";], []),
+      "1";
 
-(*       ("second", ["(f [1 2]) -> 2"; *)
-(*                   "(f [1 3]) -> 3"], []), *)
-(*       "(define f (lambda (x0:[num]):num (car (cdr x0))))"; *)
+      ("second", ["(f [1 2]) -> 2";
+                  "(f [1 3]) -> 3"], []),
+      "(let f (lambda (x33) (car (cdr x33))) x)";
 
-(*       ("even", ["(f 1) -> #f"; *)
-(*                 "(f 2) -> #t"; *)
-(*                 "(f 3) -> #f"; *)
-(*                 "(f 4) -> #t"; *)
-(*                ], ["0"; "2"]), *)
-(*       "(define f (lambda (x0:num):bool (= (% x0 2) 0)))"; *)
-(*     ] *)
+      ("even", ["(f 1) -> #f";
+                "(f 2) -> #t";
+                "(f 3) -> #f";
+                "(f 4) -> #t";
+               ], ["0"; "2"]),
+      "(let f (lambda (x0) (= (% x0 2) 0)) x)";
+    ]
 
 let partition_to_string = List.to_string ~f:(List.to_string ~f:Int.to_string)
 let test_partition =
@@ -313,108 +317,72 @@ let test_m_partition =
                 3, 3, [[1; 1; 1]];
     ])
 
-(* let test_typeof_value = *)
-(*   make_tests ~in_f:Eval.typeof_value ~out_f:identity *)
-(*               ~in_str:value_to_string ~out_str:typ_to_string ~res_str:typ_to_string *)
-(*               "typeof_value" *)
-(*               [ `Num 1, Num_t; *)
-(*                 `Bool true, Bool_t; *)
-(*                 `List ([`Num 1; `Num 2], Num_t), List_t Num_t; *)
-(*                 `List ([`List ([`Num 1; `Num 2], Num_t)], List_t Num_t), List_t (List_t Num_t); *)
-(*               ] *)
+let test_signature =
+  make_tests ~in_f:(fun exs -> exs |> List.map ~f:Util.parse_example |> Search.signature |> Infer.normalize)
+             ~out_f:Util.parse_typ
+             ~in_str:(fun exs -> "[" ^ (String.concat ~sep:"; " exs) ^ "]")
+             ~out_str:identity ~res_str:typ_to_string
+             "signature"
+             [ ["(f 1) -> 1"; "(f 2) -> 2"], "num -> num";
+               ["(f #f 0) -> 1"; "(f #t 5) -> 2"], "(bool, num) -> num";
+               ["(f 1) -> 1"; "(f (f 2)) -> 2"], "num -> num";
+               ["(f 1 []) -> [1]"; 
+                "(f 1 (f 2 [])) -> [2 1]"], "(num, list[num]) -> list[num]";
+               ["(f2 [0] 0) -> [0]";
+                "(f2 (f2 [1 0] 1) 0) -> [1 0 0]";
+                "(f2 (f2 (f2 [1 0 2] 1) 2) 0) -> [1 0 2 3 4]";
+                "(f2 [0] 0) -> [0]";
+                "(f2 (f2 [1 0] 1) 0) -> [1 0 0]";
+                "(f2 (f2 (f2 [1 0 2] 1) 0) 2) -> [1 0 2 3 4]";], "(list[num], num) -> list[num]";
+               ["(f []) -> []";
+                "(f [1]) -> [2]";
+                "(f [1 2]) -> [2 3]";
+                "(f [1 2 3 4]) -> [2 3 4 5]";], "list[num] -> list[num]"
+             ]
 
-(* let test_typeof_expr = *)
-(*   make_tests ~in_f:(fun ex -> ex *)
-(*                               |> Util.parse_expr *)
-(*                               |> Eval.typeof_expr (Ctx.empty ())) *)
-(*              ~out_f:identity *)
-(*              ~in_str:identity ~out_str:typ_to_string ~res_str:typ_to_string *)
-(*              "typeof_expr" *)
-(*              [ "(lambda (x:num y:[num]):[num] (cons x y))", Arrow_t ([Num_t; List_t Num_t], List_t Num_t); *)
-(*              ] *)
+let test_expand =
+  make_tests ~in_f:(fun e -> e |> Util.parse_expr |> Verify.expand (Ctx.empty ()))
+             ~out_f:Util.parse_expr
+             ~in_str:identity ~out_str:identity ~res_str:expr_to_string
+             "expand"
+             [
+               "(let x 2 (+ x 1))", "(+ 2 1)";
+               "(let x 3 (lambda (a:num):num (+ a x)))", "(lambda (a:num):num (+ a 3))";
+               "(let x 3 (lambda (x:num):num (+ 5 x)))", "(lambda (x:num):num (+ 5 x))";
+               "(define y (let a (+ 1 2) (* a 3)))", "(define y (* (+ 1 2) 3))";
+               "(let x 2 (let x 3 (let x 4 x)))", "4";
+               "(let x 2 (let x 3 (let x 4 x)))", "4";
+             ]
 
-(* let test_signature = *)
-(*   make_tests ~in_f:(fun exs -> exs |> List.map ~f:Util.parse_example |> Search.signature) *)
-(*              ~out_f:identity *)
-(*              ~in_str:(fun exs -> "[" ^ (String.concat ~sep:"; " exs) ^ "]") *)
-(*              ~out_str:typ_to_string ~res_str:typ_to_string *)
-(*              "signature" *)
-(*              [ ["(f 1) -> 1"; "(f 2) -> 2"], Arrow_t ([Num_t], Num_t); *)
-(*                ["(f #f 0) -> 1"; "(f #t 5) -> 2"], Arrow_t ([Bool_t; Num_t], Num_t); *)
-(*                ["(f 1) -> 1"; "(f (f 2)) -> 2"], Arrow_t ([Num_t], Num_t); *)
-(*                ["(f 1 []:num) -> [1]"; "(f 1 (f 2 []:num)) -> [2 1]"], *)
-(*                Arrow_t ([Num_t; List_t Num_t], (List_t Num_t)); *)
-(*                ["(f2 [0] 0) -> [0]"; *)
-(*                 "(f2 (f2 [1 0] 1) 0) -> [1 0 0]"; *)
-(*                 "(f2 (f2 (f2 [1 0 2] 1) 2) 0) -> [1 0 2 3 4]"; *)
-(*                 "(f2 [0] 0) -> [0]"; *)
-(*                 "(f2 (f2 [1 0] 1) 0) -> [1 0 0]"; *)
-(*                 "(f2 (f2 (f2 [1 0 2] 1) 0) 2) -> [1 0 2 3 4]";], *)
-(*                Arrow_t ([List_t Num_t; Num_t], List_t Num_t); *)
-(*              ] *)
-
-(* let test_expand = *)
-(*   make_tests ~in_f:(fun e -> e |> Util.parse_expr |> Verify.expand (Ctx.empty ())) *)
-(*              ~out_f:Util.parse_expr *)
-(*              ~in_str:identity ~out_str:identity ~res_str:expr_to_string *)
-(*              "expand" *)
-(*              [ *)
-(*                "(let x 2 (+ x 1))", "(+ 2 1)"; *)
-(*                "(let x 3 (lambda (a:num):num (+ a x)))", "(lambda (a:num):num (+ a 3))"; *)
-(*                "(let x 3 (lambda (x:num):num (+ 5 x)))", "(lambda (x:num):num (+ 5 x))"; *)
-(*                "(define y (let a (+ 1 2) (\* a 3)))", "(define y (\* (+ 1 2) 3))"; *)
-(*                "(let x 2 (let x 3 (let x 4 x)))", "4"; *)
-(*                "(let x 2 (let x 3 (let x 4 x)))", "4"; *)
-(*              ] *)
-
-(* let test_expr_to_z3 = *)
-(*   let zctx = Z3.mk_context [] in *)
-
-(*   make_tests ~in_f:(fun e -> e *)
-(*                              |> Util.parse_expr *)
-(*                              |> Verify.expr_to_z3 zctx (Ctx.empty ())) *)
-(*              ~out_f:identity *)
-(*              ~in_str:identity ~out_str:Z3.Expr.to_string ~res_str:Z3.Expr.to_string *)
-(*              ~cmp:Z3.Expr.equal *)
-(*              "expr_to_z3" *)
-(*              [ *)
-(*                "(+ 1 2)", Z3.Arithmetic.mk_add zctx *)
-(*                                                [ (Z3.Arithmetic.Integer.mk_numeral_i zctx 1); *)
-(*                                                  (Z3.Arithmetic.Integer.mk_numeral_i zctx 2); ]; *)
-(*              ] *)
-
-(* let test_verify = *)
-(*   let status_to_str = function *)
-(*     | Verify.Invalid -> "Invalid" *)
-(*     | Verify.Valid -> "Valid" *)
-(*     | Verify.Error -> "Error" in *)
-(*   make_tests *)
-(*     ~in_f:(fun (fdef_str, cs_strs) -> *)
-(*            let fdef = match Util.parse_expr fdef_str with *)
-(*              | `Define (n, `Lambda l) -> `Define (n, `Lambda l) *)
-(*              | _ -> assert_failure "Not a function definition." in *)
-(*            let cs = List.map cs_strs ~f:Util.parse_constr in *)
-(*            Verify.verify [] cs fdef) *)
-(*     ~out_f:identity *)
-(*     ~in_str:(fun (fdef_str, cs_strs) -> String.concat ~sep:", " (fdef_str::cs_strs)) *)
-(*     ~out_str:status_to_str ~res_str:status_to_str *)
-(*     "verify" *)
-(*     [ *)
-(*       ("(define f (lambda (x:num):num (+ x 1)))", [ "(forall (a:num) (> (f a) a))" ]), Verify.Valid; *)
-(*       ("(define f (lambda (x:num):num (+ x 1)))", [ "(forall (a:num) (= (f a) a))" ]), Verify.Invalid; *)
-(*       ("(define f (lambda (x0:num x1:num):num (if (< x0 x1) x1 x0)))", *)
-(*        [ "(forall (a:num b:num) (>= (f a b) a))"; *)
-(*          "(forall (a:num b:num) (>= (f a b) b))" ]), Verify.Valid; *)
-(*       ("(define f (lambda (x0:num x1:num):num (if (< x0 x1) x1 x0)))", *)
-(*        [ "(forall (a:num b:num) (>= (f a b) a))"; *)
-(*          "(forall (a:num b:num) (>= (f a b) b))"; *)
-(*          "(forall (a:num b:num) (= (f a b) b))"; *)
-(*       ]), Verify.Invalid; *)
-(*       ("(define f (lambda (x:num):bool (= (% x 2) 0)))", *)
-(*        [ "(forall (a:num) (= (f (\* 2 a)) #t))" ]), Verify.Valid; *)
-(*       ("(define f (lambda (x:num y:[num]):[num] (cons x y)))", *)
-(*        [ "(forall (a:num b:[num]) (= (car (f a b)) a))" ]), Verify.Valid; *)
-(*     ] *)
+let test_verify =
+  let status_to_str = function
+    | Verify.Invalid -> "Invalid"
+    | Verify.Valid -> "Valid"
+    | Verify.Error -> "Error" in
+  make_tests
+    ~in_f:(fun (lambda_str, cs_strs) ->
+           let lambda = Util.parse_expr lambda_str in
+           let target expr = `Let ("f", lambda, expr) in
+           let constraints = List.map cs_strs ~f:Util.parse_constr in
+           Verify.verify [] constraints target)
+    ~out_f:identity
+    ~in_str:(fun (fdef_str, cs_strs) -> String.concat ~sep:", " (fdef_str::cs_strs))
+    ~out_str:status_to_str ~res_str:status_to_str
+    "verify"
+    [
+      ("(lambda (x) (+ x 1))", [ "(forall (a) (> (f a) a))" ]), Verify.Valid;
+      ("(lambda (x) (+ x 1))", [ "(forall (a) (= (f a) a))" ]), Verify.Invalid;
+      ("(lambda (x0 x1) (if (< x0 x1) x1 x0))",
+       [ "(forall (a b) (>= (f a b) a))"; 
+         "(forall (a b) (>= (f a b) b))" ]), Verify.Valid;
+      ("(lambda (x0 x1) (if (< x0 x1) x1 x0))",
+       [ "(forall (a b) (>= (f a b) a))";
+         "(forall (a b) (>= (f a b) b))";
+         "(forall (a b) (= (f a b) b))";
+      ]), Verify.Invalid;
+      ("(lambda (x) (= (% x 2) 0))", [ "(forall (a) (= (f (* 2 a)) #t))" ]), Verify.Valid;
+      ("(lambda (x y) (cons x y))", [ "(forall (a b) (= (car (f a b)) a))" ]), Verify.Valid;
+    ]
 
 (* let test_sat_solver = *)
 (*   make_tests *)
@@ -471,11 +439,11 @@ let () = run_test_tt_main
                 test_eval;
                 (* test_unify; *)
                 test_typeof;
-                (* test_signature; *)
+                test_signature;
 
                 (* test_expand; *)
                 (* test_expr_to_z3; *)
-                (* test_verify; *)
+                test_verify;
 
                 test_partition;
                 test_m_partition;
@@ -488,5 +456,5 @@ let () = run_test_tt_main
                 (* test_sat_solver; *)
                 (* test_symb_solver; *)
 
-                (* test_straight_solve; *)
+                test_straight_solve;
            ]);

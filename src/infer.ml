@@ -3,6 +3,38 @@ open Printf
 open Ast
 open Util
 
+type typed_id = id * typ
+type typed_expr =
+  | Num of int * typ
+  | Bool of bool * typ
+  | List of typed_expr list * typ
+  | Id of id * typ
+  | Let of (id * typed_expr * typed_expr) * typ
+  | Lambda of (id list * typed_expr) * typ
+  | Apply of (typed_expr * (typed_expr list)) * typ
+  | Op of (Op.t * (typed_expr list)) * typ
+  with compare, sexp
+
+let rec map f texpr = match texpr with
+  | Num (x, t) -> Num (x, f t)
+  | Bool (x, t) -> Bool (x, f t) 
+  | List (x, t) -> List (List.map x ~f:(map f), f t)
+  | Id (x, t) -> Id (x, f t)
+  | Lambda ((x, y), t) -> Lambda ((x, map f y), f t)
+  | Apply ((x, y), t) -> Apply ((map f x, List.map y ~f:(map f)), f t)
+  | Op ((x, y), t) -> Op ((x, List.map y ~f:(map f)), f t)
+  | Let ((x, y, z), t) -> Let ((x, map f y, map f z), f t)
+
+let rec expr_of_texpr = function
+  | Num (x, _) -> `Num x
+  | Bool (x, _) -> `Bool x 
+  | Id (x, _) -> `Id x
+  | List (x, _) -> `List (List.map x ~f:(expr_of_texpr))
+  | Lambda ((x, y), _) -> `Lambda (x, expr_of_texpr y)
+  | Apply ((x, y), _) -> `Apply (expr_of_texpr x, List.map y ~f:(expr_of_texpr))
+  | Op ((x, y), _) -> `Op (x, List.map y ~f:(expr_of_texpr))
+  | Let ((x, y, z), _) -> `Let (x, expr_of_texpr y, expr_of_texpr z)
+
 exception TypeError of string
 
 let fresh_free level = Var_t (ref (Free (Fresh.int (), level)))
@@ -44,8 +76,7 @@ let rec occurs id level typ = match typ with
 (** The level is associated with the let expression that "owns" a
 particular free type variable. When that let expression is completely
 typed, its free type variables can be generalized. *)
-let rec generalize level typ =
-  match typ with
+let rec generalize level typ = match typ with
   | Var_t {contents = Free (id, level')} when level' > level ->
      Var_t (ref (Quant ("t" ^ (Int.to_string id))))
   | Var_t {contents = Link typ'} -> generalize level typ'
@@ -54,10 +85,9 @@ let rec generalize level typ =
   | Const_t _ | Var_t {contents = Quant _} | Var_t {contents = Free _} -> typ
 
 (** Instantiating a type replaces all quantified type variables with
- fresh free type variables. *)
+fresh free type variables. *)
 let instantiate level typ =
-  let rec inst ctx typ =
-    match typ with
+  let rec inst ctx typ = match typ with
     | Const_t _
     | Var_t {contents = Free _} -> typ
     | Var_t {contents = Quant name} ->
@@ -81,7 +111,8 @@ let rec unify t1 t2 =
     | Const_t t1', Const_t t2' when t1' = t2' -> ()
     | Var_t {contents = Link t1'}, t2'
     | t1', Var_t {contents = Link t2'} -> unify t1' t2'
-    | Var_t {contents = Free (id1, _)}, Var_t {contents = Free (id2, _)} when id1 = id2 -> error ()
+    | Var_t {contents = Free (id1, _)}, Var_t {contents = Free (id2, _)} when id1 = id2 -> 
+       raise (TypeError "Free variable occurred in both types.")
     | Var_t ({contents = Free (id, level)} as t'), t
     | t, Var_t ({contents = Free (id, level)} as t') -> occurs id level t; t' := Link t
     | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
@@ -95,10 +126,26 @@ let rec unify t1 t2 =
         | None -> error ())
     | _ -> error ()
 
-(* let to_string (sub: typ Sub.t) = *)
-(*   Sub.to_alist sub *)
-(*   |> List.map ~f:(fun (id, typ) -> (typ_to_string (Var_t (Free id))) ^ ": " ^ (typ_to_string typ)) *)
-(*   |> String.concat ~sep:" " *)
+let rec implements pt ct =
+  match pt, ct with
+    | Const_t t1', Const_t t2' when t1' = t2' -> true
+    | Var_t {contents = Link t1'}, t2'
+    | t1', Var_t {contents = Link t2'} -> implements t1' t2'
+    | Var_t {contents = Free (id1, _)}, Var_t {contents = Free (id2, _)} when id1 = id2 -> 
+       raise (TypeError "Free variable occurred in both types.")
+    | Var_t ({contents = Quant _}), _
+    | Var_t ({contents = Free _}), _ -> true
+    | _, Var_t ({contents = Quant _})
+    | _, Var_t ({contents = Free _}) -> false
+    | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
+       (match List.zip args1 args2 with
+        | Some args -> List.for_all args ~f:(fun (a1, a2) -> implements a1 a2) && implements ret1 ret2
+        | None -> false)
+    | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
+       (match List.zip args1 args2 with
+        | Some args -> List.for_all args ~f:(fun (a1, a2) -> implements a1 a2)
+        | None -> false)
+    | _ -> false
 
 let typ_of_expr = function
   | Num (_, t) 
@@ -175,10 +222,12 @@ let stdlib_tctx = [
   "filter", "(list[a], (a -> bool)) -> list[a]";
 ] |> List.map ~f:(fun (name, str) -> name, Util.parse_typ str) |> Ctx.of_alist_exn
 
+(** Infer the type of an expression in context. Returns an expression
+tree annotated with types. *)
 let infer ctx expr =
   let ctx' = Ctx.merge stdlib_tctx ctx
                        ~f:(fun ~key:_ value ->
                            match value with
                            | `Both (_, v) | `Left v | `Right v -> Some v) in
   let expr' = typeof ctx' 0 expr in
-  generalize (-1) (typ_of_expr expr')
+  map (generalize (-1)) expr'
