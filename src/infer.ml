@@ -101,7 +101,7 @@ let instantiate level typ =
   in
   inst (Ctx.empty ()) typ
 
-let rec unify t1 t2 =
+let rec unify_exn t1 t2 =
   let error () = raise @@ TypeError (sprintf "Failed to unify %s and %s."
                                              (typ_to_string t1)
                                              (typ_to_string t2))
@@ -110,42 +110,24 @@ let rec unify t1 t2 =
     match t1, t2 with
     | Const_t t1', Const_t t2' when t1' = t2' -> ()
     | Var_t {contents = Link t1'}, t2'
-    | t1', Var_t {contents = Link t2'} -> unify t1' t2'
+    | t1', Var_t {contents = Link t2'} -> unify_exn t1' t2'
     | Var_t {contents = Free (id1, _)}, Var_t {contents = Free (id2, _)} when id1 = id2 -> 
        raise (TypeError "Free variable occurred in both types.")
     | Var_t ({contents = Free (id, level)} as t'), t
     | t, Var_t ({contents = Free (id, level)} as t') -> occurs id level t; t' := Link t
     | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
        (match List.zip args1 args2 with
-        | Some args -> List.iter args ~f:(fun (a1, a2) -> unify a1 a2)
+        | Some args -> List.iter args ~f:(fun (a1, a2) -> unify_exn a1 a2)
         | None -> error ());
-       unify ret1 ret2
+       unify_exn ret1 ret2
     | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
        (match List.zip args1 args2 with
-        | Some args -> List.iter args ~f:(fun (a1, a2) -> unify a1 a2)
+        | Some args -> List.iter args ~f:(fun (a1, a2) -> unify_exn a1 a2)
         | None -> error ())
     | _ -> error ()
 
-let rec implements pt ct =
-  match pt, ct with
-    | Const_t t1', Const_t t2' when t1' = t2' -> true
-    | Var_t {contents = Link t1'}, t2'
-    | t1', Var_t {contents = Link t2'} -> implements t1' t2'
-    | Var_t {contents = Free (id1, _)}, Var_t {contents = Free (id2, _)} when id1 = id2 -> 
-       raise (TypeError "Free variable occurred in both types.")
-    | Var_t ({contents = Quant _}), _
-    | Var_t ({contents = Free _}), _ -> true
-    | _, Var_t ({contents = Quant _})
-    | _, Var_t ({contents = Free _}) -> false
-    | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
-       (match List.zip args1 args2 with
-        | Some args -> List.for_all args ~f:(fun (a1, a2) -> implements a1 a2) && implements ret1 ret2
-        | None -> false)
-    | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
-       (match List.zip args1 args2 with
-        | Some args -> List.for_all args ~f:(fun (a1, a2) -> implements a1 a2)
-        | None -> false)
-    | _ -> false
+let unify t1 t2 = try Some (unify_exn t1 t2) with TypeError _ -> None
+let is_unifiable t1 t2 = Option.is_some (unify (instantiate 0 t1) (instantiate 0 t2))
 
 let typ_of_expr = function
   | Num (_, t) 
@@ -180,7 +162,7 @@ let rec typeof ctx level expr =
                         match texpr with
                         | List (elems, App_t ("list", [typ])) ->
                            let elem' = typeof ctx level elem in
-                           unify typ (typ_of_expr elem');
+                           unify_exn typ (typ_of_expr elem');
                            List (List.append elems [elem'], App_t ("list", [typ]))
                         | _ -> assert false)
   | `Id name -> Id (name, instantiate level (Ctx.lookup_exn ctx name))
@@ -198,14 +180,14 @@ let rec typeof ctx level expr =
      let args' = List.map args ~f:(typeof ctx level) in
      let arg_typs, ret_typ = typeof_func (List.length args) (typ_of_expr func') in
      (match List.zip arg_typs args' with
-      | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify typ (typ_of_expr arg'))
+      | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (typ_of_expr arg'))
       | None -> raise @@ TypeError "Wrong number of arguments.");
      Apply ((func', args'), ret_typ)
   | `Op (op, args) ->
      let args' = List.map args ~f:(typeof ctx level) in
      let arg_typs, ret_typ = typeof_func (List.length args) (instantiate level (Op.typ op)) in
      (match List.zip arg_typs args' with
-      | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify typ (typ_of_expr arg'))
+      | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (typ_of_expr arg'))
       | None -> raise @@ TypeError "Wrong number of arguments.");
      Op ((op, args'), ret_typ)
   | `Let (name, bound, body) ->
