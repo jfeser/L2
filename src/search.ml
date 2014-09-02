@@ -4,37 +4,198 @@ open Ast
 open Infer
 open Util
 
-(** A build set is a mapping from integers to sets of (expression, type) pairs. *)
-module BuildSet = struct
-  module IntMap = Map.Make (Int)
-  module TypedExpr =
-    struct
-      type t = expr * typ with sexp, compare
-    end
-  module TypedExprSet = Set.Make (TypedExpr)
-  type t = TypedExprSet.t IntMap.t
+exception SolveError of string
 
-  let empty = IntMap.empty
+exception Solved of expr
+exception SolvedTarget of (expr -> expr)
+exception TimedOut
 
-  let add set texpr =
-    IntMap.change set
-                  (let expr, _ = texpr in size expr)
-                  (function
-                    | None -> Some (TypedExprSet.singleton texpr)
-                    | Some xs -> Some (TypedExprSet.add xs texpr))
-                  
-  let mem set texpr =
-    match IntMap.find set (let expr, _ = texpr in size expr) with
-    | Some size_set -> TypedExprSet.mem size_set texpr
-    | None -> false
+let solve_error msg = raise (SolveError msg)
 
-  let select set size typ =
-    match IntMap.find set size with
-    | Some exprs -> 
-       TypedExprSet.filter exprs ~f:(fun (_, typ') -> implements typ typ')
-       |> TypedExprSet.to_list
-    | None -> []
+module Stream = struct
+  include Stream
+
+  type 'a stream = 'a t
+  type 'a matrix = ('a list) stream
+
+  (* Concatenate two streams together. The second stream will not be
+  inspected until the first stream is exhausted. *)
+  let concat s1 s2 =
+    from (fun _ ->
+          match peek s1 with
+          | Some _ -> Some (next s1)
+          | None -> (match peek s2 with
+                     | Some _ -> Some (next s2)
+                     | None -> None))
+
+  (* Map a function over a stream. *)
+  let map s ~f = from (fun _ -> try Some (f (next s)) with Failure -> None)
+  let map_matrix s ~f = map s ~f:(List.map ~f:f)
+
+  (* Create an infinite stream of 'value'. *)
+  let repeat (value: 'a) : 'a stream = from (fun _ -> Some value)
+
+  (* Create a finite stream of 'value' of length 'n'. *)
+  let repeat_n (n: int) (value: 'a) : 'a stream =
+    List.range 0 n |> List.map ~f:(fun _ -> value) |> of_list
+
+  let trans : (('a stream) list -> ('a list) stream) = function
+    | [] -> repeat []
+    | ss -> from (fun _ -> Some (List.map ss ~f:next))
+
+  let diag (s: ('a stream) stream) : (('a list) stream) =
+    from (fun i -> Some (List.map (npeek (i + 1) s) ~f:next))
+
+  let join (x: ('a matrix) matrix) : 'a matrix =
+    x |> map ~f:trans |> diag |> map ~f:(fun y -> y |> List.concat |> List.concat)
+
+  let compose (f: 'a -> 'b matrix) (g: 'b -> 'c matrix) (x: 'a) : 'c matrix =
+    x |> f |> (map ~f:(List.map ~f:g)) |> join
+
+  let group s ~break =
+    from (fun _ ->
+          let rec collect () =
+            match npeek 2 s with
+            | [] -> None
+            | [_] -> Some [next s]
+            | [x; y] -> if break x y then Some [next s] else collect ()
+            | _ -> failwith "Stream.npeek returned a larger list than expected."
+          in collect ())
+
+  let merge (ss: ('a matrix) list) : 'a matrix =
+    from (fun _ ->
+          Some (ss
+                |> List.filter_map ~f:(fun s -> try Some (next s) with Failure -> None)
+                |> List.concat))
+
+  let rec drop s ~f = match peek s with
+    | Some x -> if f x then (junk s; drop s ~f:f) else ()
+    | None -> ()
+
+  let flatten (m: 'a matrix) : 'a stream =
+    let current = ref [] in
+    from (fun _ -> match !current with
+                   | x::xs -> current := xs; Some x
+                   | [] -> drop m ~f:((=) []);
+                           (try (match next m with
+                                 | [] -> failwith "Failed to drop empty rows."
+                                 | x::xs -> current := xs; Some x)
+                            with Failure -> None))
 end
+
+module MemoStream = struct
+  module Typ = struct type t = typ with compare, sexp end
+  module TypMap = Map.Make(Typ)
+
+  type memo_stream = {
+    index: int ref;
+    head: typed_expr list Int.Table.t;
+    stream: typed_expr Stream.matrix;
+  }
+
+  type t = memo_stream TypMap.t ref
+
+  let empty () = ref TypMap.empty
+
+  (* Get access to a stream of results for 'typ'. *)
+  let get memo typ stream : typed_expr Stream.matrix =
+    let mstream = match TypMap.find !memo typ with
+      | Some s -> s
+      | None ->
+         let s = { index = ref 0; head = Int.Table.create (); stream = stream (); } in
+         memo := TypMap.add !memo ~key:typ ~data:s; s
+    in
+    Stream.from
+      (fun i -> 
+       let sc = i + 1 in
+       if sc <= !(mstream.index) then Some (Int.Table.find_exn mstream.head sc)
+       else (List.range ~stop:`inclusive (!(mstream.index) + 1) sc
+             |> List.iter
+                  ~f:(fun j ->
+                      try Int.Table.add_exn mstream.head ~key:j ~data:(Stream.next mstream.stream);
+                          incr mstream.index;
+                      with Stream.Failure -> ());
+             if sc = !(mstream.index) then Some (Int.Table.find_exn mstream.head sc) else None))
+end
+
+let rec enumerate memo init typ : typed_expr Stream.matrix =
+  let open Stream in
+  let arrow_error () = solve_error "Operator is not of type Arrow_t." in
+
+  (* printf "enumerate %s %s.\n" *)
+  (*        (List.to_string init ~f:(fun e -> expr_to_string (expr_of_texpr e))) *)
+  (*        (typ_to_string typ); *)
+
+  (* Init is finite, so we can construct an init stream by breaking
+  init into a list of size classes and returning that list as a
+  stream. *)
+  let (init_matrix: typed_expr matrix) =
+    let init_sizes =
+      List.filter init ~f:(fun e -> is_unifiable typ (typ_of_expr e))
+      |> List.map ~f:(fun e -> e, size (expr_of_texpr e))
+    in
+    let max_size = List.fold_left init_sizes ~init:0 ~f:(fun x (_, y) -> if x > y then x else y) in
+    List.range ~stop:`inclusive 1 max_size
+    |> List.map ~f:(fun s ->
+                    List.filter_map init_sizes ~f:(fun (e, s') -> if s = s' then Some e else None))
+    |> of_list
+  in
+
+  (* Generate an argument list matrix that conforms to the provided list of types. *)
+  let args_matrix = function
+    | arg_typ::arg_typs ->
+       let choose typ (prev_args: typed_expr list) : (typed_expr list) matrix =
+         (* Generate the argument matrix lazily so that it will not be
+         created until the prefix classes are exhausted. *)
+         slazy (fun () -> map_matrix (MemoStream.get memo typ (fun () -> enumerate memo init typ))
+                                     ~f:(fun arg -> prev_args @ [arg]))
+       in
+       let choose_all =
+         List.fold_left arg_typs
+                        ~init:(choose arg_typ)
+                        ~f:(fun choose' arg_typ' -> compose choose' (choose arg_typ')) in
+       choose_all []
+    | [] -> solve_error "Cannot generate args matrix with no arguments."
+  in
+
+  let op_matrix op op_typ = match op_typ with
+    | Arrow_t (arg_typs, _) ->
+       (* The args matrix will start at size 1. Wrapping with an
+       operator increases the size by 1, so the first size class will
+       be empty, since it would correspond to an operator with no
+       arguments. *)
+       let prefix = repeat_n (List.length arg_typs) [] in
+       let matrix =
+         slazy (fun () -> map_matrix (args_matrix arg_typs) ~f:(fun args -> Op ((op, args), op_typ)))
+       in
+       concat prefix matrix
+    | _ -> arrow_error ()
+  in
+
+  (* The op stream is infinite, so it needs more careful handling. *)
+  let op_matrices =
+    Op.metadata_by_op
+    (* Filter all operators that can return the correct type. *)
+    |> List.filter ~f:(fun (_, meta) ->
+                       match meta.Op.typ with
+                       | Arrow_t (_, ret_typ) -> is_unifiable typ ret_typ
+                       | _ -> arrow_error ())
+
+    (* Unify the return type of the operator with the input type. By
+    the side effects of unify, all the other free type variables in
+    the operator type will reflect the substitution. Now we have
+    correct types for the arguments. *)
+    |> List.map ~f:(fun (op, meta) ->
+                    match instantiate 0 typ, instantiate 0 meta.Op.typ with
+                    | typ', (Arrow_t (_, ret_typ) as op_typ) ->
+                       unify_exn typ' ret_typ;
+                       op, normalize (generalize (-1) op_typ)
+                    | _ -> arrow_error ())
+
+    (* Generate a matrix for each operator. *)
+    |> List.map ~f:(fun (op, op_typ) -> op_matrix op op_typ)
+  in
+  merge ([init_matrix] @ op_matrices)
 
 type spec = {
   target: expr -> expr -> expr;
@@ -45,17 +206,9 @@ type spec = {
   fold_depth: int;
 }
 
-exception SolveError of string
-
-exception Solved of expr
-exception SolvedTarget of (expr -> expr)
-exception TimedOut
-
-let solve_error msg = raise (SolveError msg)
-
 (** Extract the name of the target function from a list of examples. *)
 let get_target_name (examples: example list) : id =
-  let target_names = 
+  let target_names =
     List.map examples ~f:(fun ex -> match ex with
                                     | (`Apply (`Id n, _)), _ -> n
                                     | _ -> solve_error "Malformed example.")
@@ -75,7 +228,7 @@ let signature ?(ctx=Ctx.empty ()) (examples: example list) : typ =
   in
   let typ =
     match inputs with
-    | (`Apply (_, args))::_ -> 
+    | (`Apply (_, args))::_ ->
        let num_args = List.length args in
        Arrow_t (List.range 0 num_args |> List.map ~f:(fun _ -> fresh_free 0), res_typ)
     | _ -> solve_error (sprintf "Malformed example inputs.")
@@ -86,146 +239,15 @@ let signature ?(ctx=Ctx.empty ()) (examples: example list) : typ =
   in
   List.iter inputs ~f:(fun input -> let _ = infer ctx input in ()); typ
 
-let solve_verifier ?(max_depth=None) 
-                   (init: (expr * typ) list) 
-                   (verify: expr -> Verify.status) : expr option =
-  (* Create initial context containing the expressions in init. *)
-  let ctx = List.fold init
-                      ~init:(Ctx.empty ())
-                      ~f:(fun ctx (expr, typ) -> 
-                          match expr with
-                          | `Id name -> Ctx.bind ctx name typ
-                          | _ -> ctx)
-  in
-
-  (* Create a mutable set to hold expressions sorted by size. *)
-  let build = ref (BuildSet.empty) in
-  let i = ref 1 in
-
-  (** Check all expressions using the oracle. Raise a Solve exception
-  if a solution is found. *)
-  let check_exprs ?allow_const:(ac = false) (exprs: expr list) : unit =
-    build :=
-      List.fold exprs
-                ~init:(!build)
-                ~f:(fun build' expr ->
-                    (* printf "%s\n" (expr_to_string expr); *)
-                    try
-                      let typ = typ_of_expr (infer ctx expr) in
-                      (* Attempt to simplify the
-                    expression. Simplification can fail if the
-                    expression is found to contain an illegal
-                    operation. *)
-                      match Rewrite.simplify expr with
-                      | Some simple_expr ->
-                         (* Check whether the expression is already in
-                       the build set, meaning that it has already been
-                       checked. *)
-                         let typed_expr = simple_expr, typ in
-                         if BuildSet.mem build' typed_expr
-                         then build'
-                         else (match verify expr with
-                               | Verify.Valid -> raise (Solved expr)
-                               | Verify.Invalid ->
-                                  if (Rewrite.is_constant simple_expr) && (not ac)
-                                  then build'
-                                  else BuildSet.add build' typed_expr
-                               | Verify.Error -> build')
-                      | None -> build'
-                    with Infer.TypeError _ -> build'
-                   )
-  in
-
-  let rec select_children types sizes : expr list list =
-    match types, sizes with
-    | [], [] -> []
-    | [typ], [size] ->
-       BuildSet.select !build size typ |> List.map ~f:(fun (e, _) -> [Rewrite.complicate e])
-    | t::ts, s::ss ->
-       (* Select all possible arguments for this position using the
-       type predicate and size parameters. *)
-       let arg_choices = 
-         BuildSet.select !build s t |> List.map ~f:(fun (e, t) -> Rewrite.complicate e, t) in
-
-       let rec replace_quant name typ qtyp = match qtyp with
-         | Var_t {contents = Quant name'} when name = name' -> typ
-         | Var_t {contents = Link qtyp'} -> replace_quant name typ qtyp'
-         | Arrow_t (args, ret) -> 
-            Arrow_t (List.map args ~f:(replace_quant name typ), replace_quant name typ ret)
-         | App_t (const, args) -> App_t (const, List.map ~f:(replace_quant name typ) args)
-       in
-
-       (* For each choice of argument, select all possible remaining arguments. *)
-       List.map arg_choices
-                ~f:(fun (arg, arg_typ) -> 
-                    (* If the current argument is polymorphic, set all
-                    other instances of the type variable to the
-                    selected type. *)
-                    let ts = match t with
-                      | App_t ("list", [Var_t {contents = Quant name}]) -> 
-                         List.map ts ~f:(replace_quant name arg_typ)
-                      | Var_t {contents = Quant name} -> List.map ts ~f:(replace_quant name arg_typ)
-                      | _ -> ts
-                    in
-                    select_children ts ss |> List.map ~f:(fun args -> arg::args))
-       |> List.concat_no_order
-    | _ -> solve_error "Mismatched operator arity and type predicates." in
-
-  let arg_sizes depth arity : int list list =
-    m_partition depth arity |> List.map ~f:permutations |> List.concat |> uniq
-  in
-
-  try
-    begin
-      (* Check all initial expressions and add them to the build set. *)
-      init |> List.map ~f:(fun (e, _) -> e) |> check_exprs ~allow_const:true;
-
-      while true do
-        (* Derive all expressions of size i from each operator. *)
-        List.iter Op.metadata_by_op
-                  ~f:(fun (op, meta) ->
-                      let Arrow_t (inputs, _) = meta.Op.typ in
-                      List.iter (arg_sizes !i (Op.arity op))
-                                ~f:(fun sizes ->
-                                    select_children inputs sizes
-                                    |> List.map ~f:(fun args -> `Op (op, args))
-                                    |> check_exprs));
-        Int.incr i;
-        match max_depth with
-        | Some max -> if !i >= max then raise TimedOut else ()
-        | None -> ()
-      done;
-      solve_error "Completed solve loop without finding solution.";
-    end
-  with
-  | Solved expr -> Some expr
-  | TimedOut -> None
-
-let solve ?(init=[])
-          ?(max_depth=None)
-          (examples: example list)
-          (constraints: constr list) : (expr -> expr) option =
-  (* Extract the name of the target function from the examples. *)
-  let name = get_target_name examples in
-  let sig_ = signature examples in
-  match sig_ with
-  | Arrow_t (input_types, _) ->
-     let args = List.map input_types ~f:(fun typ -> (Fresh.name "x"), typ) in
-     let arg_names = List.map args ~f:(fun (name, _) -> name) in
-     let target body expr = `Let (name, `Lambda (arg_names, body), expr) in
-
-     (* Generate the set of initial expressions from the argument
-     names and any provided expressions. *)
-     let initial = (List.map init ~f:(fun expr -> expr, typ_of_expr (infer (Ctx.empty ()) expr)))
-                   @ (List.map args ~f:(fun (name, typ) -> `Id name, typ)) in
-
-     (* Generate an oracle function from the examples. *)
-     let verify body = Verify.verify examples constraints (target body) in
-
-     (match solve_verifier ~max_depth:max_depth initial verify with
-      | Some body -> Some (target body)
-      | None -> None)
-  | _ -> solve_error "Examples do not represent a function."
+let solve_verifier init typ verify =
+  let strm = enumerate (MemoStream.empty ()) init typ
+             |> Stream.flatten
+             |> Stream.map ~f:expr_of_texpr in
+  Stream.from
+    (fun _ ->
+     Option.map (Stream.peek strm) ~f:(fun expr -> if verify expr
+                                                   then Some (Stream.next strm)
+                                                   else (Stream.junk strm; None)))
 
 let get_example_typ_ctx (examples: example list) (arg_names: string list) : typ Ctx.t =
   match signature examples with
@@ -258,7 +280,7 @@ let create_spec target examples signature tctx vctxs fold_depth =
     tctx = tctx; vctxs = vctxs; fold_depth = fold_depth; }
 
 let dedup_examples spec =
-  let examples, vctxs = 
+  let examples, vctxs =
     List.zip_exn spec.examples spec.vctxs
     |> List.dedup ~compare:(fun (e1, _) (e2, _) -> compare_example e1 e2)
     |> List.unzip
@@ -441,7 +463,7 @@ let fold_bodies (spec: spec) : spec list =
       | _ -> solve_error "Bad constant."
     in
     List.zip_exn vctxs examples
-    |> List.filter_map 
+    |> List.filter_map
          ~f:(fun (vctx, (_, result)) ->
              let vctx' = remove_names vctx list_name init_expr in
              match lookup vctx init_expr, lookup vctx list_expr with
@@ -467,16 +489,16 @@ let fold_bodies (spec: spec) : spec list =
 
        let lists =
          tctx
-         |> Ctx.filter_mapi ~f:(fun ~key:_ ~data:typ -> 
+         |> Ctx.filter_mapi ~f:(fun ~key:_ ~data:typ ->
                                 match typ |> normalize with
-                                | App_t ("list", [elem_typ]) -> Some elem_typ 
+                                | App_t ("list", [elem_typ]) -> Some elem_typ
                                 | _ -> None)
          |> Ctx.to_alist
        in
 
        let init_exprs =
          tctx
-         |> Ctx.filter ~f:(fun ~key:_ ~data:typ -> implements res_typ typ)
+         |> Ctx.filter ~f:(fun ~key:_ ~data:typ -> is_unifiable res_typ typ)
          |> Ctx.keys
          |> List.map ~f:(fun name -> `Id name)
        in
@@ -501,28 +523,28 @@ let fold_bodies (spec: spec) : spec list =
                   spec.target (`Lambda (arg_names, `Apply (`Id "foldr", [list_expr; lambda; init_expr]))) in
                 let foldl_target lambda =
                   spec.target (`Lambda (arg_names, `Apply (`Id "foldl", [list_expr; lambda; init_expr]))) in
-                [ create_spec foldr_target foldr_examples lambda_signature lambda_tctx lambda_vctxs 
+                [ create_spec foldr_target foldr_examples lambda_signature lambda_tctx lambda_vctxs
                               (spec.fold_depth - 1);
-                  create_spec foldl_target foldl_examples lambda_signature lambda_tctx lambda_vctxs 
+                  create_spec foldl_target foldl_examples lambda_signature lambda_tctx lambda_vctxs
                               (spec.fold_depth - 1); ])
        |> List.map ~f:dedup_examples
     | _ -> []
 
-let solve_catamorphic_looped ?(init=[]) ?(start_depth=3) (examples: example list) : expr -> expr =
+let solve_catamorphic_looped ?(init=[]) (examples: example list) : expr -> expr =
   let target_name = get_target_name examples in
   let initial_spec = create_spec (fun body expr -> `Let (target_name, body, expr))
                                  examples
                                  (signature examples)
                                  (Ctx.empty ())
                                  (List.map examples ~f:(fun _ -> Ctx.empty ()))
-                                 3
+                                 1
   in
 
   let rec generate_specs (specs: spec list) : spec list =
     match specs with
     | [] -> []
     | specs ->
-       let child_specs = List.concat_map specs 
+       let child_specs = List.concat_map specs
                                          ~f:(fun parent ->
                                              (map_bodies parent)
                                              @ (filter_bodies parent)
@@ -533,44 +555,53 @@ let solve_catamorphic_looped ?(init=[]) ?(start_depth=3) (examples: example list
 
   let specs = generate_specs [initial_spec] in
 
+  (* print_endline "Completed structure analysis. Inferred structures:"; *)
   (* let _ = List.iter specs *)
   (*                   ~f:(fun spec -> *)
-  (*                       Printf.printf "%s %s\n" *)
-  (*                                     (expr_to_string (spec.target (`Id "lambda") (`Id "x"))) *)
-  (*                                     (String.concat ~sep:" " (List.map ~f:example_to_string spec.examples)))  *)
+  (*                       printf "%s\n\t%s\n" *)
+  (*                              (expr_to_string (spec.target (`Id "lambda") (`Id "_"))) *)
+  (*                              (String.concat ~sep:" " (List.map ~f:example_to_string spec.examples))) *)
   (* in *)
-  
-  let depth = ref start_depth in
+  (* print_newline (); *)
+
+  (* Create a solver from a specification. A solver is a verification
+  function paired with a stream of candidates. *)
+  let create_solver spec = match spec.signature with
+    | Arrow_t (arg_typs, ret_typ) ->
+       let args = List.map arg_typs ~f:(fun typ -> Fresh.name "x", typ) in
+       let arg_names, _ = List.unzip args in
+       let init' =
+         (Ctx.to_alist spec.tctx |> List.map ~f:(fun (name, typ) -> Id (name, typ)))
+         @ (List.map init ~f:(fun expr -> infer (Ctx.empty ()) expr))
+         @ (List.map args ~f:(fun (name, typ) -> Id (name, typ)))
+       in
+       let strm =
+         enumerate (MemoStream.empty ()) init' ret_typ
+         |> Stream.flatten
+         |> Stream.map ~f:expr_of_texpr
+       in
+       let target expr = spec.target (`Lambda (arg_names, expr)) in
+       let verify target = Verify.verify_examples target examples in
+       strm, target, verify
+    | _ -> solve_error "Lambda examples do not represent a function."
+  in
+  let solvers = List.map specs ~f:create_solver in
+
+  (* print_endline "Starting search..."; *)
   try
     while true do
-      let solution_m =
-        List.find_map specs
-                      ~f:(fun spec ->
-                          match spec.signature with
-                          | Arrow_t (lambda_arg_typs, _) ->
-                             let lambda_args = List.map lambda_arg_typs ~f:(fun _ -> Fresh.name "x") in
-                             let lambda body = `Lambda (lambda_args, body) in
-                             let verify expr =
-                               (* let _ = Printf.printf "%s\n" (List.to_string prog ~f:expr_to_string) in *)
-                               match Verify.verify_examples (spec.target (lambda expr)) examples with
-                               | true -> Verify.Valid
-                               | false -> Verify.Invalid
-                             in
-                             let init' = (Ctx.to_alist spec.tctx
-                                          |> List.map ~f:(fun (name, typ) -> `Id name, typ))
-                                         @ (List.map init ~f:(fun expr -> 
-                                                              expr, typ_of_expr (infer (Ctx.empty ()) expr)))
-                                         @ (List.map2_exn lambda_args 
-                                                          lambda_arg_typs 
-                                                          ~f:(fun name typ -> `Id name, typ)) in
-                             (match solve_verifier ~max_depth:(Some !depth) init' verify with
-                              | Some expr -> Some (spec.target (lambda expr))
-                              | None -> None)
-                          | _ -> solve_error "Lambda examples do not represent a function.") in
-      Int.incr depth;
-      match solution_m with
-      | Some solution -> raise (SolvedTarget solution)
-      | None -> ()
+      let strm, target, verify =
+        List.reduce_exn solvers
+                        ~f:(fun ((s1, _, _) as x1)  ((s2, _, _) as x2) ->
+                            match (Stream.peek s1), (Stream.peek s2) with
+                            | Some e1, Some e2 -> if (size e1) < (size e2) then x1 else x2
+                            | Some _, None -> x1
+                            | None, Some _ -> x2
+                            | None, None -> solve_error "All streams exhausted.")
+      in
+      let expr = Stream.next strm in
+      (* printf "CAND %d %d %s\n" (Stream.count strm) (size expr) (expr_to_string (target expr (`Id "_"))); *)
+      if verify (target expr) then raise (SolvedTarget (target expr)) else ()
     done;
     solve_error "Exited solve loop without finding a solution."
   with

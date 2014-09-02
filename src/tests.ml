@@ -256,43 +256,6 @@ let test_denormalize =
       "(+ (* 0 1 2) 3 4)", "(+ (* 0 (* 1 2)) (+ 3 4))";
     ]
 
-let test_straight_solve =
-  make_tests
-    ~in_f:(fun (_, example_strs, init_strs) ->
-           let solution = Search.solve ~init:(List.map init_strs ~f:Util.parse_expr)
-                                       (List.map example_strs ~f:Util.parse_example) [] in
-           match solution with
-           | Some s -> Some (s (`Id "x"))
-           | None -> None)
-    ~out_f:(fun res_str -> Some (Util.parse_expr res_str))
-    ~in_str:(fun (name, _, _) -> name) ~out_str:identity
-    ~res_str:(fun res -> match res with
-                         | Some expr -> expr_to_string expr
-                         | None -> "")
-    "straight_solve"
-    [
-      ("plus", ["(f 1 1) -> 2";
-                "(f 2 1) -> 3"], []),
-      "1";
-
-      ("max", ["(f 3 5) -> 5";
-               "(f 5 3) -> 5";
-               "(f 0 1) -> 1";
-               "(f 1 1) -> 1";], []),
-      "1";
-
-      ("second", ["(f [1 2]) -> 2";
-                  "(f [1 3]) -> 3"], []),
-      "(let f (lambda (x33) (car (cdr x33))) x)";
-
-      ("even", ["(f 1) -> #f";
-                "(f 2) -> #t";
-                "(f 3) -> #f";
-                "(f 4) -> #t";
-               ], ["0"; "2"]),
-      "(let f (lambda (x0) (= (% x0 2) 0)) x)";
-    ]
-
 let partition_to_string = List.to_string ~f:(List.to_string ~f:Int.to_string)
 let test_partition =
   make_tests ~in_f:Util.partition ~out_f:identity
@@ -455,6 +418,4 @@ let () = run_test_tt_main
 
                 (* test_sat_solver; *)
                 (* test_symb_solver; *)
-
-                test_straight_solve;
            ]);
