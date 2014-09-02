@@ -1,6 +1,8 @@
 open Core.Std
 open Ast
 open Eval
+open Verify
+open Util
 
 exception RuntimeError of string
 
@@ -132,18 +134,16 @@ match List.hd split_res with
 | _ -> raise (RuntimeError "Z3 error, Z3 input was not valid")
 
 (*Returns the value that coresponds to a perticular ID*)
-let lookup id vals = 
+let lookup id vals   = 
   match List.filter ~f:(fun pair -> let (e, _) = pair in e = id) vals with
-  | [(_,v)] -> `Num((int_of_string v))
-  | [] -> `Id(id)
+  | [(_,v)] -> (v :> expr)
+  | [] -> (`Id(id) :> expr)
   | _ -> assert false
 
 (*goes the the expression exp and replaces all constants with values which have been solved for by z3*)
-let rec find_and_replace vals (exp:expr) = 
-  match vals with 
-  | Some v ->
-    (match exp with 
-    | `Id id               ->  (lookup id v)
+let rec find_and_replace (vals:(id*const)list) (exp:expr) = 
+    match exp with 
+    | `Id id               ->  (lookup id vals)
     | `Num x               -> `Num(x)
     | `Bool x              -> `Bool(x)
     | `Op (op, uneval_args) ->
@@ -156,8 +156,7 @@ let rec find_and_replace vals (exp:expr) =
         match args with 
                    | [x; y] -> `Apply(id, [x;y])
                    | _ -> raise (RuntimeError "Poor number of args for function CHANGE THIS!!"))
-    | _ -> raise (RuntimeError "Invalid input expression (used an unsupported element of 'typ'."))
-  | None -> raise (RuntimeError "The expression was unsatisfiable")
+    | _ -> raise (RuntimeError "Invalid input expression (used an unsupported element of 'typ'.")
 
 (*Evaluates Z3 input string and returns constants found*)
 let z3_solve raw_z3 = 
@@ -165,11 +164,12 @@ let z3_solve raw_z3 =
   let (file_name, oc) = Filename.open_temp_file prefix suffix in
       Printf.fprintf oc "%s\n" raw_z3;   
       close_out_noerr oc;
-      let z3_out = syscall (concat ["Z3 -smt2 ";file_name]) in
+      let z3_out = syscall (concat ["z3 -smt2 ";file_name]) in
       let _ = syscall (concat ["rm "; file_name]) in
       parse_z3_out (String.split ~on:'\n' z3_out)
-
+(*
 (*Main method of this class, calls all Z3 generating functions then evaluates parses and returns*)
+(*NOTE: Sat solve and any other method based on comand shell based z3 may no longer work due to changes in find_and_replace and other mehtods, look to newer versions of these methods*)
 let sat_solve (lambda:expr) (values:(value list * value) list)  =
   match lambda with
   | `Lambda(args, exp) ->
@@ -216,3 +216,50 @@ let symb_solve (lambda:expr) (constraints:expr list) (values:(value list * value
     | _ -> raise (RuntimeError "The value inputted into the Z3 solver was not a '`Lambda' expresssion")
 
 ;;
+*)
+let new_sat_solve (target_def: function_def) (target_constants: typed_id list)  (examples: example list) = 
+	let open Z3.Solver in
+	let zctx = Z3.mk_context [] in
+	let `Define (target_name, `Lambda (target_args, target_body)) = target_def in
+	let solver = mk_simple_solver zctx in
+	(*Find all constants to be solved for in the target function*)
+	(*Convert all found constants to z3 and add them to the z3 context*)
+	let z3_constant = List.map target_constants ~f:(fun c -> typed_id_to_z3 zctx c) in
+	(*Create a context with the target function bound*)
+	let expanded_examples = 
+		let ctx = bind (empty_ctx ())
+        		~key:target_name
+                 	~data:(`Lambda (target_args, target_body)) in
+	List.map examples ~f:(fun (ex,v) -> (expand ctx (ex :> expr), v)) in
+	(*Apply the binding to each example, putting the target function into each example and then convert to z3*)
+	let zctx2 = List.fold2_exn target_constants z3_constant 
+        ~init:(empty_ctx ())
+        ~f:(fun acc (id, _) z3c -> bind acc ~key:id ~data:z3c) in	
+	let example_bodies = List.map expanded_examples ~f:(fun (ex,v) -> (expr_to_z3 zctx zctx2 ex,const_to_z3 zctx v)) in
+	(*Add each example to the solver*)
+	let _ = (List.map example_bodies ~f:(fun (ex,v) -> add solver [Z3.Boolean.mk_eq zctx ex v])) in
+	(*Run the solver*)
+	let handle_model model  =
+		let peel_option var = (match var with
+		| Some var -> var
+		| None -> assert false) in 
+		let const_to_emPair exp = 
+			let z3_expr = (peel_option (Z3.Model.get_const_interp_e model exp)) in
+			let name_string = Z3.Expr.to_string exp in
+			let val_string = Z3.Expr.to_string z3_expr in
+			match Z3.Sort.to_string (Z3.Expr.get_sort z3_expr) with
+			| "Int" -> ((name_string), (`Num (int_of_string val_string) :> const))
+			| "Bool" -> ((name_string), (`Bool (bool_of_string val_string) :> const))
+			| _ ->raise (RuntimeError " List to string or z3 to list not yet implement TODO!") in
+	 	List.map z3_constant ~f:(const_to_emPair) in
+	match check solver [] with
+	| UNSATISFIABLE -> raise (RuntimeError "Z3 was unsatisfiable while sat solving")
+	| SATISFIABLE -> (match get_model solver with
+		| None -> assert false
+		| Some model -> find_and_replace (handle_model model) target_body)
+	| UNKNOWN -> raise (RuntimeError "Z3 error, failed to solve")
+	(*Insert the solve constant values into the function as needed*)
+(*This method is independent of the other methdos and is a different implementation of the symb solver which is a wrapper around Jack Feser's Verify method*)
+(*let ss_solve (examples: example list) (constraints: constr list) (target_def: function_def) =
+*)
+
