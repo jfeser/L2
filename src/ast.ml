@@ -1,5 +1,25 @@
 open Core.Std
 
+module Tree = struct
+  type 'a t =
+    | Empty
+    | Node of 'a * 'a t list
+    with compare, sexp
+    
+  let rec to_string t ~str =
+    match t with
+    | Empty -> "<>"
+    | Node (x, y) -> sprintf "<%s %s>" (str x) (String.concat ~sep:" " (List.map y ~f:(to_string ~str:str)))
+
+  let rec size = function
+    | Empty -> 1
+    | Node (_, c) -> List.fold ~init:1 (List.map c ~f:size) ~f:(+)
+
+  let rec map (t: 'a t) ~f : 'b t = match t with
+    | Empty -> Empty
+    | Node (x, children) -> Node (f x, List.map children ~f:(map ~f:f))
+end
+
 type id = string with compare, sexp
 
 module Ctx = struct
@@ -58,10 +78,11 @@ and const_typ = Num_t | Bool_t
 (** Type variables can be either free or quantified. A type scheme
 cannot contain free type variables. *)
 and var_typ =
-  | Free of int * int
+  | Free of int * level
   | Link of typ
   | Quant of string
-  with compare, sexp
+and level = int
+with compare, sexp
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
@@ -80,10 +101,14 @@ module Op = struct
     | And
     | Or
     | Not
+    | If 
     | Cons
     | Car
     | Cdr
-    | If with compare, sexp
+    | Tree
+    | Value
+    | Children
+    with compare, sexp
 
   (** Type for storing operator metadata. *)
   type metadata = {
@@ -124,17 +149,23 @@ module Op = struct
              commut = true;  assoc = true;  str = "|"; };
     Not,   { typ = Arrow_t ([Const_t Bool_t], Const_t Bool_t);
              commut = false; assoc = false; str = "~"; };
+    If,    { typ = Arrow_t ([Const_t Bool_t; Var_t (quant "a"); Var_t (quant "a")], Var_t (quant "a"));
+             commut = false; assoc = false; str = "if"; };
     Cons,  { typ = Arrow_t ([Var_t (quant "a"); App_t ("list", [Var_t (quant "a")])], 
                             App_t ("list", [Var_t (quant "a")]));
              commut = false; assoc = false; str = "cons"; };
     Car,   { typ = Arrow_t ([App_t ("list", [Var_t (quant "a")])], Var_t (quant "a"));
              commut = false; assoc = false; str = "car"; };
-    Cdr,   { typ = Arrow_t ([App_t ("list", [Var_t (quant "a")])], 
-                            App_t ("list", [Var_t (quant "a")]));
+    Cdr,   { typ = Arrow_t ([App_t ("list", [Var_t (quant "a")])], App_t ("list", [Var_t (quant "a")]));
              commut = false; assoc = false; str = "cdr"; };
-    If,    { typ = Arrow_t ([Const_t Bool_t; Var_t (quant "a"); Var_t (quant "a")], 
-                            Var_t (quant "a"));
-             commut = false; assoc = false; str = "if"; };
+    Tree,  { typ = Arrow_t ([Var_t (quant "a"); App_t ("list", [App_t ("tree", [Var_t (quant "a")])])],
+                            App_t ("tree", [Var_t (quant "a")]));
+             commut = false; assoc = false; str = "tree"};
+    Children, { typ = Arrow_t ([App_t ("tree", [Var_t (quant "a")])],
+                               App_t ("list", [App_t ("tree", [Var_t (quant "a")])]));
+                commut = false; assoc = false; str = "children" };
+    Value, { typ = Arrow_t ([App_t ("tree", [Var_t (quant "a")])], Var_t (quant "a"));
+             commut = false; assoc = false; str = "value" };
   ]
 
   let op_by_str = metadata_by_op
@@ -161,6 +192,7 @@ type expr =
   [ `Num of int
   | `Bool of bool
   | `List of expr list
+  | `Tree of expr Tree.t
   | `Id of id
   | `Let of id * expr * expr
   | `Lambda of id list * expr
@@ -173,16 +205,17 @@ type constr = expr * (id list)
 
 (** Calculate the size of an expression. *)
 let rec size (e: expr) : int =
-  let sum_sizes = List.fold_left ~init:0 ~f:(fun acc e -> acc + size e) in
+  let sum = List.fold_left ~init:0 ~f:(+) in
   match e with
   | `Id _
   | `Num _
   | `Bool _ -> 1
-  | `Op (_, args) -> 1 + sum_sizes args
-  | `List l -> 1 + (List.fold l ~init:0 ~f:(fun acc c -> acc + size (c :> expr)))
+  | `Op (_, args) -> 1 + (sum (List.map args ~f:size))
+  | `List l -> 1 + (sum (List.map l ~f:size))
+  | `Tree t -> Tree.size t
   | `Let (_, a, b) -> 1 + size a + size b
   | `Lambda (args, body) -> 1 + (List.length args) + size body
-  | `Apply (a, l) -> 1 + size a + sum_sizes l
+  | `Apply (a, l) -> 1 + size a + (sum (List.map l ~f:size))
 
 (** Create an S-expression from the provided string list and brackets. *)
 let sexp lb strs rb = lb ^ (String.concat ~sep:" " strs) ^ rb
@@ -213,6 +246,7 @@ let rec expr_to_string (expr: expr) : string =
   | `Bool true -> "#t"
   | `Bool false -> "#f"
   | `List x -> sexp "[" (List.map ~f:expr_to_string x) "]"
+  | `Tree x -> Tree.to_string x ~str:expr_to_string
   | `Id x -> x
   | `Op (op, args) -> sexp "(" ((Op.to_string op)::(str_all args)) ")"
   | `Let (x, y, z) -> sexp "(" ["let"; x; expr_to_string y; expr_to_string z] ")"

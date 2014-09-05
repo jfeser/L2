@@ -8,6 +8,7 @@ type typed_expr =
   | Num of int * typ
   | Bool of bool * typ
   | List of typed_expr list * typ
+  | Tree of typed_expr Tree.t * typ
   | Id of id * typ
   | Let of (id * typed_expr * typed_expr) * typ
   | Lambda of (id list * typed_expr) * typ
@@ -19,6 +20,7 @@ let rec map f texpr = match texpr with
   | Num (x, t) -> Num (x, f t)
   | Bool (x, t) -> Bool (x, f t) 
   | List (x, t) -> List (List.map x ~f:(map f), f t)
+  | Tree (x, t) -> Tree (Tree.map x ~f:(map f), f t)
   | Id (x, t) -> Id (x, f t)
   | Lambda ((x, y), t) -> Lambda ((x, map f y), f t)
   | Apply ((x, y), t) -> Apply ((map f x, List.map y ~f:(map f)), f t)
@@ -30,6 +32,7 @@ let rec expr_of_texpr = function
   | Bool (x, _) -> `Bool x 
   | Id (x, _) -> `Id x
   | List (x, _) -> `List (List.map x ~f:(expr_of_texpr))
+  | Tree (x, _) -> `Tree (Tree.map x ~f:(expr_of_texpr))
   | Lambda ((x, y), _) -> `Lambda (x, expr_of_texpr y)
   | Apply ((x, y), _) -> `Apply (expr_of_texpr x, List.map y ~f:(expr_of_texpr))
   | Op ((x, y), _) -> `Op (x, List.map y ~f:(expr_of_texpr))
@@ -133,13 +136,14 @@ let typ_of_expr = function
   | Num (_, t) 
   | Bool (_, t) 
   | List (_, t) 
+  | Tree (_, t)
   | Id (_, t) 
   | Lambda (_, t)
   | Apply (_, t) 
   | Op (_, t) 
   | Let (_, t) -> t
 
-let rec typeof ctx level expr =
+let rec typeof ctx level (expr: expr) : typed_expr =
   let rec typeof_func num_args typ =
     match typ with
     | Arrow_t (args, ret) -> args, ret
@@ -151,9 +155,20 @@ let rec typeof ctx level expr =
         args, ret
     | _ -> raise @@ TypeError "Not a function."
   in
+  let rec typeof_tree t : typed_expr Tree.t * typ =
+    let open Tree in
+    match t with
+    | Empty -> Empty, App_t ("tree", [fresh_free level])
+    | Node (x, y) ->
+       let x' = typeof ctx level x in
+       let typ = App_t ("tree", [typ_of_expr x']) in
+       let y', y_typs = List.map y ~f:typeof_tree |> List.unzip in
+       List.iter y_typs ~f:(unify_exn typ); Node (x', y'), typ
+  in
   match expr with
   | `Num x -> Num (x, Const_t Num_t)
   | `Bool x -> Bool (x, Const_t Bool_t)
+  | `Tree x -> let x', typ = typeof_tree x in Tree (x', typ)
   | `List [] -> List ([], App_t ("list", [fresh_free level]))
   | `List elems ->
      List.fold_left elems
@@ -206,7 +221,7 @@ let stdlib_tctx = [
 
 (** Infer the type of an expression in context. Returns an expression
 tree annotated with types. *)
-let infer ctx expr =
+let infer ctx (expr: expr) : typed_expr =
   let ctx' = Ctx.merge stdlib_tctx ctx
                        ~f:(fun ~key:_ value ->
                            match value with

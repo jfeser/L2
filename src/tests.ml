@@ -39,6 +39,7 @@ let make_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name case
 
 let test_parse_expr =
   let open Op in
+  let open Tree in
   make_tests ~in_f:Util.parse_expr ~out_f:identity
               ~in_str:identity ~out_str:expr_to_string ~res_str:expr_to_string
               "parse_expr"
@@ -70,6 +71,9 @@ let test_parse_expr =
                 "(f 1 2)", `Apply (`Id "f", [`Num 1; `Num 2]);
                 "(> (f 1 2) 3)", `Op (Gt, [`Apply (`Id "f", [`Num 1; `Num 2]); `Num 3]);
                 "(map x7 f6)", `Apply (`Id "map", [`Id "x7"; `Id "f6"]);
+                "{}", `Tree Empty;
+                "{1}", `Tree (Node (`Num 1, []));
+                "{1 {}}", `Tree (Node (`Num 1, [Empty]));
               ]
 
 let test_parse_typ =
@@ -89,9 +93,11 @@ let test_parse_example =
               ]
 
 let test_eval =
-  make_tests ~in_f:(fun str -> str |> Util.parse_expr |> (Eval.eval (Ctx.empty ())))
+  let open Eval in
+  let open Tree in
+  make_tests ~in_f:(fun str -> str |> Util.parse_expr |> (eval (Ctx.empty ())))
              ~out_f:identity
-              ~in_str:identity ~out_str:Eval.value_to_string ~res_str:Eval.value_to_string
+              ~in_str:identity ~out_str:value_to_string ~res_str:value_to_string
               "eval"
               [ "1", `Num 1;
                 "#t", `Bool true;
@@ -137,8 +143,15 @@ let test_eval =
                 "(map [] (lambda (e) (+ e 1)))", `List [];
                 "(map [1] (lambda (e) (+ e 1)))", `List [`Num 2];
                 "(map [1 2] (lambda (e) (+ e 1)))", `List [`Num 2; `Num 3];
-                "(map [0 1 0] (lambda (e) (= e 0)))",
-                `List [`Bool true; `Bool false; `Bool true];
+                "(map [0 1 0] (lambda (e) (= e 0)))", `List [`Bool true; `Bool false; `Bool true];
+                "{}", `Tree (Empty);
+                "(tree 1 [])", `Tree (Node (`Num 1, []));
+                "(tree 1 [(tree 1 [])])", `Tree (Node (`Num 1, [Node (`Num 1, [])]));
+                "(value (tree 1 [(tree 1 [])]))", `Num 1;
+                "(value (tree 1 []))", `Num 1;
+                "(mapt (tree 1 []) (lambda (e) (+ e 1)))", `Tree (Node (`Num 2, []));
+                "(mapt (tree 1 [(tree 1 [])]) (lambda (e) (+ e 1)))", `Tree (Node (`Num 2, [Node (`Num 2, [])]));
+                "(mapt {1 {1}} (lambda (e) (+ e 1)))", `Tree (Node (`Num 2, [Node (`Num 2, [])]));
               ]
 
 let test_typeof =
@@ -185,6 +198,11 @@ let test_typeof =
       "(let a 0 (let b 1 (lambda (x) (cons a [b]))))", "a -> list[num]";
       "(lambda (y) (if (= 0 y) 0 1))", "num -> num";
       "(lambda (y) (= y 1))", "num -> bool";
+      "{}", "tree[a]";
+      "{1}", "tree[num]";
+      "{1 {2}}", "tree[num]";
+      "(value {1})", "num";
+      "(children {1 {2} {3}})", "list[tree[num]]";
     ]
 
 let test_fold_constants =
@@ -300,52 +318,55 @@ let test_signature =
                ["(f []) -> []";
                 "(f [1]) -> [2]";
                 "(f [1 2]) -> [2 3]";
-                "(f [1 2 3 4]) -> [2 3 4 5]";], "list[num] -> list[num]"
+                "(f [1 2 3 4]) -> [2 3 4 5]";], "list[num] -> list[num]";
+               ["(f {}) -> {}";
+                "(f {1}) -> {2}";
+                "(f {1 {2}}) -> {2 {3}}";], "tree[num] -> tree[num]";
              ]
 
-let test_expand =
-  make_tests ~in_f:(fun e -> e |> Util.parse_expr |> Verify.expand (Ctx.empty ()))
-             ~out_f:Util.parse_expr
-             ~in_str:identity ~out_str:identity ~res_str:expr_to_string
-             "expand"
-             [
-               "(let x 2 (+ x 1))", "(+ 2 1)";
-               "(let x 3 (lambda (a:num):num (+ a x)))", "(lambda (a:num):num (+ a 3))";
-               "(let x 3 (lambda (x:num):num (+ 5 x)))", "(lambda (x:num):num (+ 5 x))";
-               "(define y (let a (+ 1 2) (* a 3)))", "(define y (* (+ 1 2) 3))";
-               "(let x 2 (let x 3 (let x 4 x)))", "4";
-               "(let x 2 (let x 3 (let x 4 x)))", "4";
-             ]
+(* let test_expand = *)
+(*   make_tests ~in_f:(fun e -> e |> Util.parse_expr |> Verify.expand (Ctx.empty ())) *)
+(*              ~out_f:Util.parse_expr *)
+(*              ~in_str:identity ~out_str:identity ~res_str:expr_to_string *)
+(*              "expand" *)
+(*              [ *)
+(*                "(let x 2 (+ x 1))", "(+ 2 1)"; *)
+(*                "(let x 3 (lambda (a:num):num (+ a x)))", "(lambda (a:num):num (+ a 3))"; *)
+(*                "(let x 3 (lambda (x:num):num (+ 5 x)))", "(lambda (x:num):num (+ 5 x))"; *)
+(*                "(define y (let a (+ 1 2) (\* a 3)))", "(define y (\* (+ 1 2) 3))"; *)
+(*                "(let x 2 (let x 3 (let x 4 x)))", "4"; *)
+(*                "(let x 2 (let x 3 (let x 4 x)))", "4"; *)
+(*              ] *)
 
-let test_verify =
-  let status_to_str = function
-    | Verify.Invalid -> "Invalid"
-    | Verify.Valid -> "Valid"
-    | Verify.Error -> "Error" in
-  make_tests
-    ~in_f:(fun (lambda_str, cs_strs) ->
-           let lambda = Util.parse_expr lambda_str in
-           let target expr = `Let ("f", lambda, expr) in
-           let constraints = List.map cs_strs ~f:Util.parse_constr in
-           Verify.verify [] constraints target)
-    ~out_f:identity
-    ~in_str:(fun (fdef_str, cs_strs) -> String.concat ~sep:", " (fdef_str::cs_strs))
-    ~out_str:status_to_str ~res_str:status_to_str
-    "verify"
-    [
-      ("(lambda (x) (+ x 1))", [ "(forall (a) (> (f a) a))" ]), Verify.Valid;
-      ("(lambda (x) (+ x 1))", [ "(forall (a) (= (f a) a))" ]), Verify.Invalid;
-      ("(lambda (x0 x1) (if (< x0 x1) x1 x0))",
-       [ "(forall (a b) (>= (f a b) a))"; 
-         "(forall (a b) (>= (f a b) b))" ]), Verify.Valid;
-      ("(lambda (x0 x1) (if (< x0 x1) x1 x0))",
-       [ "(forall (a b) (>= (f a b) a))";
-         "(forall (a b) (>= (f a b) b))";
-         "(forall (a b) (= (f a b) b))";
-      ]), Verify.Invalid;
-      ("(lambda (x) (= (% x 2) 0))", [ "(forall (a) (= (f (* 2 a)) #t))" ]), Verify.Valid;
-      ("(lambda (x y) (cons x y))", [ "(forall (a b) (= (car (f a b)) a))" ]), Verify.Valid;
-    ]
+(* let test_verify = *)
+(*   let status_to_str = function *)
+(*     | Verify.Invalid -> "Invalid" *)
+(*     | Verify.Valid -> "Valid" *)
+(*     | Verify.Error -> "Error" in *)
+(*   make_tests *)
+(*     ~in_f:(fun (lambda_str, cs_strs) -> *)
+(*            let lambda = Util.parse_expr lambda_str in *)
+(*            let target expr = `Let ("f", lambda, expr) in *)
+(*            let constraints = List.map cs_strs ~f:Util.parse_constr in *)
+(*            Verify.verify [] constraints target) *)
+(*     ~out_f:identity *)
+(*     ~in_str:(fun (fdef_str, cs_strs) -> String.concat ~sep:", " (fdef_str::cs_strs)) *)
+(*     ~out_str:status_to_str ~res_str:status_to_str *)
+(*     "verify" *)
+(*     [ *)
+(*       ("(lambda (x) (+ x 1))", [ "(forall (a) (> (f a) a))" ]), Verify.Valid; *)
+(*       ("(lambda (x) (+ x 1))", [ "(forall (a) (= (f a) a))" ]), Verify.Invalid; *)
+(*       ("(lambda (x0 x1) (if (< x0 x1) x1 x0))", *)
+(*        [ "(forall (a b) (>= (f a b) a))";  *)
+(*          "(forall (a b) (>= (f a b) b))" ]), Verify.Valid; *)
+(*       ("(lambda (x0 x1) (if (< x0 x1) x1 x0))", *)
+(*        [ "(forall (a b) (>= (f a b) a))"; *)
+(*          "(forall (a b) (>= (f a b) b))"; *)
+(*          "(forall (a b) (= (f a b) b))"; *)
+(*       ]), Verify.Invalid; *)
+(*       ("(lambda (x) (= (% x 2) 0))", [ "(forall (a) (= (f (\* 2 a)) #t))" ]), Verify.Valid; *)
+(*       ("(lambda (x y) (cons x y))", [ "(forall (a b) (= (car (f a b)) a))" ]), Verify.Valid; *)
+(*     ] *)
 
 (* let test_sat_solver = *)
 (*   make_tests *)
@@ -406,7 +427,7 @@ let () = run_test_tt_main
 
                 (* test_expand; *)
                 (* test_expr_to_z3; *)
-                test_verify;
+                (* test_verify; *)
 
                 test_partition;
                 test_m_partition;

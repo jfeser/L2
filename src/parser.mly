@@ -2,7 +2,6 @@
 open Ast
 %}
 
-%token <string> OP
 %token <string> ID
 %token <int> NUM
 %token <bool> BOOL
@@ -13,6 +12,8 @@ open Ast
 %token RPAREN
 %token LBRACKET
 %token RBRACKET
+%token LCBRACKET
+%token RCBRACKET
 %token COMMA
 %token ARROW
 %token EOF
@@ -39,11 +40,15 @@ expr:
  | x = ID                { `Id x }
  | x = sexp(let_body)    { x }
  | x = sexp(lambda_body) { x }
- | x = sexp(apply_body)  { x }
- | x = sexp(op_body)     { x }
+ | x = sexp(call_body)   { x }
+ | x = BOOL              { `Bool x }
+ | x = NUM               { `Num x }
+ | x = tree;             { `Tree x }
  | LBRACKET; x = list(expr); RBRACKET; { `List x }
- | x = BOOL                            { `Bool x }
- | x = NUM                             { `Num x }
+
+tree:
+ | LCBRACKET; RCBRACKET;                           { Tree.Empty }
+ | LCBRACKET; x = expr; y = list(tree); RCBRACKET; { Tree.Node (x, y) }
 
 let_body:
  | LET; i = ID; b = expr; e = expr; { `Let (i, b, e) }
@@ -51,11 +56,11 @@ let_body:
 lambda_body:
  | LAMBDA; args = sexp(list(ID)); body = expr; { `Lambda (args, body) }
 
-apply_body:
- | f = expr; args = list(expr); { `Apply (f, args) }
-
-op_body:
- | op_str = OP; args = list(expr); { `Op (Op.of_string op_str, args) }
+call_body:
+ | f = expr; args = list(expr); { match f with
+                                  | `Id f_id -> (try let op = Op.of_string f_id in `Op (op, args)
+                                                 with Not_found -> `Apply (f, args))
+                                  | _ -> `Apply (f, args) }
 
 constr:
  | LPAREN; FORALL; vars = sexp(list(ID)); body = expr; RPAREN { (body, vars) }

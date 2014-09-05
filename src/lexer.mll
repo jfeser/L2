@@ -6,9 +6,8 @@
 }
 
 let white = [' ' '\t' '\n' '\r']+
-let id = ['a'-'z' 'A'-'Z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
-let operator = "+" | "-" | "*" | "/" | "%" | "=" | "!=" | ">" | ">=" | "<" |
-               "<=" | "&" | "|" | "~" | "cons" | "car" | "cdr" | "if"
+let id = ['a'-'z' 'A'-'Z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']* 
+       | "+" | "-" | "*" | "/" | "%" | "=" | "!=" | ">" | ">=" | "<" | "<=" | "&" | "|" | "~"
 
 rule token = parse
        | white                 { token lexbuf } (* Eat whitespace. *)
@@ -16,9 +15,8 @@ rule token = parse
        | "lambda"              { LAMBDA }
        | "forall"              { FORALL }
        | "->"                  { ARROW }
-       | operator as text      { OP text }
-       | id as text            { ID text }
-       | '-'?['0'-'9']+ as num { NUM (int_of_string num) }
+       | '{'                   { LCBRACKET }
+       | '}'                   { RCBRACKET }
        | "#t"                  { BOOL true }
        | "#f"                  { BOOL false }
        | '('                   { LPAREN }
@@ -26,5 +24,7 @@ rule token = parse
        | '['                   { LBRACKET }
        | ']'                   { RBRACKET }
        | ','                   { COMMA }
+       | id as text            { ID text }
+       | '-'?['0'-'9']+ as num { NUM (int_of_string num) }
        | eof                   { EOF }
        | _                     { syntax_error (Lexing.lexeme lexbuf) }

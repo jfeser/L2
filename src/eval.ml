@@ -7,13 +7,17 @@ exception RuntimeError of string
 type value = [ `Num of int
              | `Bool of bool
              | `List of value list
+             | `Tree of value Tree.t
              | `Closure of expr * (value Ctx.t)
              | `Unit ]
 
-let rec value_to_string = function
+let rec value_to_string v =
+  let join = String.concat ~sep:" " in
+  match v with
   | `Num x  -> expr_to_string (`Num x)
   | `Bool x -> expr_to_string (`Bool x)
-  | `List x -> "[" ^ (String.concat ~sep:" " (List.map x ~f:value_to_string)) ^ "]"
+  | `Tree x -> Tree.to_string x ~str:value_to_string
+  | `List x -> "[" ^ (join (List.map x ~f:value_to_string)) ^ "]"
   | `Closure (e, _) -> expr_to_string e
   | `Unit -> "unit"
 
@@ -34,29 +38,39 @@ let stdlib = [
              (if (f (car l))
              (cons (car l) (filter (cdr l) f))
              (filter (cdr l) f))))";
+  "mapt", "(lambda (t f)
+           (if (= t {}) {}
+           (tree (f (value t)) (map (children t) (lambda (c) (mapt c f))))))";
+  (* "filtert", "(lambda (t f) *)
+  (*             (let c (children t)  *)
+  (*             (if (= c []) *)
+  (*             (root (f (value t))) *)
+  (*             (node (f (value t)) *)
+  (*             (map c (lambda (ch) (mapt ch f)))))))"; *)
 ] |> List.map ~f:(fun (name, str) -> name, Util.parse_expr str)
 
 let (stdlib_vctx: value Ctx.t) =
-  List.fold stdlib 
-            ~init:(Ctx.empty ())
-            ~f:(fun ctx (name, lambda) ->
-                let ctx' = Ctx.bind (Ctx.empty ()) name `Unit in
-                let value = `Closure (lambda, ctx') in
-                Ctx.update ctx' name value;
-                Ctx.bind ctx name value)
+  List.fold_left stdlib 
+                 ~init:(Ctx.empty ())
+                 ~f:(fun ctx (name, lambda) ->
+                     let ctx' = Ctx.bind ctx name `Unit in
+                     let value = `Closure (lambda, ctx') in
+                     Ctx.update ctx' name value;
+                     Ctx.bind ctx name value)
 
 (** Evaluate an expression in the provided context. *)
-let eval ctx expr =
+let eval ctx expr : value =
   let ctx' =
     Ctx.merge stdlib_vctx ctx ~f:(fun ~key:_ value ->
                                   match value with
                                   | `Both (_, v) | `Left v | `Right v -> Some v) in
-  let rec ev ctx expr =
+  let rec ev ctx expr : value =
     let ev_all = List.map ~f:(ev ctx) in
     match expr with
     | `Num x  -> `Num x
     | `Bool x -> `Bool x
     | `List x -> `List (ev_all x)
+    | `Tree x -> `Tree (Tree.map x ~f:(ev ctx))
     | `Id id  -> Ctx.lookup_exn ctx id
     | `Let (name, bound, body) -> 
        let ctx' = Ctx.bind ctx name `Unit in
@@ -73,10 +87,7 @@ let eval ctx expr =
                                     ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value) in
                ev ctx' body
             | None -> argn_error @@ expr_to_string body)
-        | _ -> 
-           print_endline (Ctx.to_string ctx value_to_string);
-           raise @@ RuntimeError (sprintf "Tried to apply a non-function: %s"
-                                          (expr_to_string expr)))
+        | _ -> raise @@ RuntimeError (sprintf "Tried to apply a non-function: %s" (expr_to_string expr)))
     | `Op (op, args) ->
        let open Op in
        (match op with
@@ -133,6 +144,18 @@ let eval ctx expr =
         | Cons -> (match ev_all args with
                    | [x; `List y] -> `List (x :: y)
                    | _ -> arg_error op args)
+        | Tree -> (match ev_all args with
+                   | [x; `List y] ->
+                      let (y': value Tree.t list) = List.map y ~f:(fun e -> match e with `Tree t -> t | _ -> arg_error op args) in
+                      `Tree (Tree.Node (x, y'))
+                   | _ -> arg_error op args)
+        | Value -> (match ev_all args with
+                    | [`Tree (Tree.Node (x, _))] -> x
+                    | _ -> arg_error op args)
+        | Children -> (match ev_all args with
+                       | [`Tree Tree.Empty] -> `List []
+                       | [`Tree (Tree.Node (_, x))] -> `List (List.map x ~f:(fun e -> `Tree e))
+                       | _ -> arg_error op args)
         | If -> (match args with
                  | [ux; uy; uz] -> (match ev ctx ux with
                                     | `Bool x -> if x then ev ctx uy
