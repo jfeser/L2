@@ -8,8 +8,9 @@ module Tree = struct
     
   let rec to_string t ~str =
     match t with
-    | Empty -> "<>"
-    | Node (x, y) -> sprintf "<%s %s>" (str x) (String.concat ~sep:" " (List.map y ~f:(to_string ~str:str)))
+    | Empty -> "{}"
+    | Node (x, []) -> sprintf "{%s}" (str x)
+    | Node (x, y) -> sprintf "{%s %s}" (str x) (String.concat ~sep:" " (List.map y ~f:(to_string ~str:str)))
 
   let rec size = function
     | Empty -> 1
@@ -18,6 +19,20 @@ module Tree = struct
   let rec map (t: 'a t) ~f : 'b t = match t with
     | Empty -> Empty
     | Node (x, children) -> Node (f x, List.map children ~f:(map ~f:f))
+
+  let rec equal t1 t2 ~cmp = match t1, t2 with
+    | Empty, Empty -> true
+    | Node (x1, c1), Node (x2, c2) -> 
+       if cmp x1 x2
+       then (match List.zip c1 c2 with
+             | Some pairs -> List.for_all pairs ~f:(fun (ce1, ce2) -> equal ce1 ce2 ~cmp:cmp)
+             | None -> false)
+       else false
+    | _ -> false
+
+  let rec flatten (t: 'a t) : 'a list = match t with
+    | Empty -> []
+    | Node (x, y) -> [x] @ List.concat_map y ~f:flatten
 end
 
 type id = string with compare, sexp

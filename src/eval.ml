@@ -41,6 +41,7 @@ let stdlib = [
   "mapt", "(lambda (t f)
            (if (= t {}) {}
            (tree (f (value t)) (map (children t) (lambda (c) (mapt c f))))))";
+  "foldt", "(lambda (t f i) (if (= t {}) i (f (map (children t) (lambda (ct) (foldt ct f i))) (value t))))";
   (* "filtert", "(lambda (t f) *)
   (*             (let c (children t)  *)
   (*             (if (= c []) *)

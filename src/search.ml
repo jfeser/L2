@@ -136,8 +136,7 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
     in
     let max_size = List.fold_left init_sizes ~init:0 ~f:(fun x (_, y) -> if x > y then x else y) in
     List.range ~stop:`inclusive 1 max_size
-    |> List.map ~f:(fun s ->
-                    List.filter_map init_sizes ~f:(fun (e, s') -> if s = s' then Some e else None))
+    |> List.map ~f:(fun s -> List.filter_map init_sizes ~f:(fun (e, s') -> if s = s' then Some e else None))
     |> of_list
   in
 
@@ -160,10 +159,6 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
 
   let op_matrix op op_typ = match op_typ with
     | Arrow_t (arg_typs, _) ->
-       (* The args matrix will start at size 1. Wrapping with an
-       operator increases the size by 1, so the first size class will
-       be empty, since it would correspond to an operator with no
-       arguments. *)
        let prefix = repeat_n (List.length arg_typs) [] in
        let matrix =
          slazy (fun () -> map_matrix (args_matrix arg_typs) ~f:(fun args -> Op ((op, args), op_typ)))
@@ -195,7 +190,7 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
     (* Generate a matrix for each operator. *)
     |> List.map ~f:(fun (op, op_typ) -> op_matrix op op_typ)
   in
-  merge ([init_matrix] @ op_matrices)
+  merge (init_matrix::op_matrices)
 
 type spec = {
   target: expr -> expr -> expr;
@@ -293,20 +288,61 @@ let map_bodies (spec: spec) : spec list =
   let map_example lambda_name input result =
     (`Apply (`Id lambda_name, [input])), result
   in
-  let map_examples examples vctxs lambda_name list_name =
+  let map_examples examples vctxs lambda_name lambda_arg_name =
     List.map2_exn vctxs examples
                   ~f:(fun vctx (_, result) ->
-                      let vctx' = Ctx.unbind vctx list_name in
-                      match (Ctx.lookup_exn vctx list_name), result with
-                      | `List x, `List y ->
-                         List.map2_exn x y ~f:(fun i o -> (map_example lambda_name i o), vctx')
-                      | _ -> [])
+                      let vctx' = Ctx.unbind vctx lambda_arg_name in
+                      let io_pairs = match (Ctx.lookup_exn vctx lambda_arg_name), result with
+                        | `List x, `List y -> List.zip_exn x y
+                        | `Tree x, `Tree y -> List.zip_exn (Tree.flatten x) (Tree.flatten y)
+                        | _ -> []
+                      in
+                      List.map io_pairs ~f:(fun (i, o) -> map_example lambda_name i o, vctx'))
     |> List.concat
     |> List.unzip
   in
 
   if spec.examples = [] then [] else
     match signature spec.examples with
+    | Arrow_t (arg_typs, App_t ("tree", [res_elem_typ])) ->
+       let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
+       let tctx = ctx_merge (get_example_typ_ctx spec.examples arg_names) spec.tctx in
+       let vctxs = List.map2_exn (get_example_value_ctxs spec.examples arg_names) spec.vctxs
+                                 ~f:(fun ivctx ovctx -> ctx_merge ivctx ovctx) in
+
+       tctx
+       |> Ctx.filter_mapi
+            ~f:(fun ~key:name ~data:typ ->
+                match typ |> normalize with
+                | App_t ("tree", [elem_typ]) ->
+                   if List.for_all2_exn vctxs spec.examples
+                                        ~f:(fun vctx (_, result) ->
+                                            match Ctx.lookup_exn vctx name, result with
+                                            | `Tree x, `Tree y -> Tree.equal x y ~cmp:(fun _ _ -> true)
+                                            | `Apply _, `Tree _ -> true
+                                            | _ -> solve_error "Examples do not have a consistent type.")
+                      && List.exists2_exn vctxs spec.examples
+                                          ~f:(fun vctx (_, result) ->
+                                              match (Ctx.lookup_exn vctx name), result with
+                                              | `Tree x, `Tree y -> x <> y
+                                              | `Apply _, `List _ -> false
+                                              | _ -> solve_error "Examples do not have a consistent type.")
+                   then Some elem_typ
+                   else None
+                | _ -> None)
+       |> Ctx.to_alist
+
+       (* Generate a list of new specifications from the selected names. *)
+       |> List.map ~f:(fun (list_name, input_elem_typ) ->
+                       let lambda_tctx = Ctx.unbind tctx list_name in
+                       let lambda_name = Fresh.name "f" in
+                       let lambda_examples, lambda_vctxs =
+                         map_examples spec.examples vctxs lambda_name list_name in
+                       let lambda_signature = Arrow_t ([input_elem_typ], res_elem_typ) in
+                       let target lambda =
+                         spec.target (`Lambda (arg_names, `Apply (`Id "mapt", [`Id list_name; lambda]))) in
+                       create_spec target lambda_examples lambda_signature lambda_tctx lambda_vctxs spec.fold_depth)
+       |> List.map ~f:dedup_examples
     | Arrow_t (arg_typs, App_t ("list", [res_elem_typ])) ->
        (* Extract the name of the target function and generate the
         names of the target function's arguments. The types of the
@@ -422,36 +458,36 @@ let filter_bodies (spec: spec) : spec list =
        |> List.map ~f:(dedup_examples)
     | _ -> []
 
+let extract_base_cases (examples: example list) signature : expr list =
+  let base_cases =
+    examples
+    |> List.filter_map ~f:(function
+                            | (`Apply (_, [`List []]), result)
+                            | (`Apply (_, [`Tree Tree.Empty]), result) -> Some result
+                            | _ -> None)
+    |> List.dedup
+  in
+  match base_cases with
+  | [] -> (match signature with
+           | Arrow_t (_, Const_t Num_t) -> [`Num 0; `Num 1]
+           | Arrow_t (_, Const_t Bool_t) -> [`Bool true; `Bool false]
+           | Arrow_t (_, App_t ("list", [_])) -> [`List []]
+           | Arrow_t (_, App_t ("tree", [_])) -> [`Tree Tree.Empty]
+           | _ -> solve_error "Examples do not represent a function.")
+  | [base] -> [base]
+  | _::_::_ -> solve_error "Examples contain multiple base cases."
+
+let remove_names ctx list_name init_expr =
+  let ctx' = Ctx.unbind ctx list_name in
+  match init_expr with
+  | `Id init_name -> Ctx.unbind ctx' init_name
+  | _ -> ctx'
+
 (* Foldl and foldr are the most general functions. They are
  appropriate whenever one of the inputs is a list. If another of the
  arguments can act as a base case, it is used. Otherwise, a default
  base case is used for each type. *)
 let fold_bodies (spec: spec) : spec list =
-  let extract_base_cases (examples: example list) : expr list =
-    let base_cases =
-      examples
-      |> List.filter_map ~f:(function
-                              | (`Apply (_, [`List []]), result) -> Some result
-                              | _ -> None)
-      |> List.dedup
-    in
-    match base_cases with
-    | [] -> (match signature examples with
-             | Arrow_t (_, Const_t Num_t) -> [`Num 0; `Num 1]
-             | Arrow_t (_, Const_t Bool_t) -> [`Bool true; `Bool false]
-             | Arrow_t (_, App_t ("list", [_])) -> [`List []]
-             | _ -> solve_error "Examples do not represent a function.")
-    | [base] -> [base]
-    | _::_::_ -> solve_error "Examples contain multiple base cases."
-  in
-
-  let remove_names ctx list_name init_expr =
-    let ctx' = Ctx.unbind ctx list_name in
-    match init_expr with
-      | `Id init_name -> Ctx.unbind ctx' init_name
-      | _ -> ctx'
-  in
-
   let fold_examples examples vctxs lambda_name list_name init_expr =
     let list_expr = `Id list_name in
     let apply_lambda acc elem = `Apply (`Id lambda_name, [acc; elem]) in
@@ -479,19 +515,69 @@ let fold_bodies (spec: spec) : spec list =
     |> Util.unzip3
   in
 
+  match spec.signature with
+  | Arrow_t (arg_typs, res_typ) when spec.fold_depth > 0 ->
+     let args = List.map arg_typs ~f:(fun typ -> Fresh.name "x", typ) in
+     let arg_names, _ = List.unzip args in
+     let tctx = ctx_merge (Ctx.of_alist_exn args) spec.tctx in
+     let vctxs = List.map2_exn (get_example_value_ctxs spec.examples arg_names) spec.vctxs
+                               ~f:(fun ivctx ovctx -> ctx_merge ivctx ovctx) in
+
+     let lists =
+       tctx
+       |> Ctx.filter_mapi ~f:(fun ~key:_ ~data:typ ->
+                              match typ |> normalize with
+                              | App_t ("list", [elem_typ]) -> Some elem_typ
+                              | _ -> None)
+       |> Ctx.to_alist
+     in
+
+     let init_exprs =
+       tctx
+       |> Ctx.filter ~f:(fun ~key:_ ~data:typ -> is_unifiable res_typ typ)
+       |> Ctx.keys
+       |> List.map ~f:(fun name -> `Id name)
+     in
+
+     let base_exprs = extract_base_cases spec.examples spec.signature in
+
+     (* Each list argument needs to be paired with an initial
+        value. The initial value must be an expression, since it could
+        be either an argument or a constant. *)
+     List.cartesian_product lists (init_exprs @ base_exprs)
+
+     (* Take each argument pair and generate a body for each of foldl, foldr. *)
+     |> List.concat_map
+          ~f:(fun ((list_name, input_elem_typ), init_expr) ->
+              let list_expr = `Id list_name in
+              let lambda_tctx = remove_names tctx list_name init_expr in
+              let lambda_name = Fresh.name "f"  in
+              let lambda_signature = Arrow_t ([res_typ; input_elem_typ], res_typ) in
+              let foldr_examples, foldl_examples, lambda_vctxs =
+                fold_examples spec.examples vctxs lambda_name list_name init_expr in
+              let foldr_target lambda =
+                spec.target (`Lambda (arg_names, `Apply (`Id "foldr", [list_expr; lambda; init_expr]))) in
+              let foldl_target lambda =
+                spec.target (`Lambda (arg_names, `Apply (`Id "foldl", [list_expr; lambda; init_expr]))) in
+              [ create_spec foldr_target foldr_examples lambda_signature lambda_tctx lambda_vctxs
+                            (spec.fold_depth - 1);
+                create_spec foldl_target foldl_examples lambda_signature lambda_tctx lambda_vctxs
+                            (spec.fold_depth - 1); ])
+     |> List.map ~f:dedup_examples
+  | _ -> []
+
+let foldt_bodies (spec: spec) : spec list =
   if spec.examples = [] then [] else
     match signature spec.examples with
     | Arrow_t (arg_typs, res_typ) when spec.fold_depth > 0 ->
        let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
        let tctx = ctx_merge (get_example_typ_ctx spec.examples arg_names) spec.tctx in
-       let vctxs = List.map2_exn (get_example_value_ctxs spec.examples arg_names) spec.vctxs
-                                 ~f:(fun ivctx ovctx -> ctx_merge ivctx ovctx) in
 
-       let lists =
+       let trees =
          tctx
          |> Ctx.filter_mapi ~f:(fun ~key:_ ~data:typ ->
                                 match typ |> normalize with
-                                | App_t ("list", [elem_typ]) -> Some elem_typ
+                                | App_t ("tree", [elem_typ]) -> Some elem_typ
                                 | _ -> None)
          |> Ctx.to_alist
        in
@@ -503,30 +589,22 @@ let fold_bodies (spec: spec) : spec list =
          |> List.map ~f:(fun name -> `Id name)
        in
 
-       let base_exprs = extract_base_cases spec.examples in
+       let base_exprs = extract_base_cases spec.examples spec.signature in
 
        (* Each list argument needs to be paired with an initial
         value. The initial value must be an expression, since it could
         be either an argument or a constant. *)
-       List.cartesian_product lists (init_exprs @ base_exprs)
+       List.cartesian_product trees (init_exprs @ base_exprs)
 
        (* Take each argument pair and generate a body for each of foldl, foldr. *)
-       |> List.concat_map
-            ~f:(fun ((list_name, input_elem_typ), init_expr) ->
-                let list_expr = `Id list_name in
-                let lambda_tctx = remove_names tctx list_name init_expr in
-                let lambda_name = Fresh.name "f"  in
-                let lambda_signature = Arrow_t ([res_typ; input_elem_typ], res_typ) in
-                let foldr_examples, foldl_examples, lambda_vctxs =
-                  fold_examples spec.examples vctxs lambda_name list_name init_expr in
-                let foldr_target lambda =
-                  spec.target (`Lambda (arg_names, `Apply (`Id "foldr", [list_expr; lambda; init_expr]))) in
-                let foldl_target lambda =
-                  spec.target (`Lambda (arg_names, `Apply (`Id "foldl", [list_expr; lambda; init_expr]))) in
-                [ create_spec foldr_target foldr_examples lambda_signature lambda_tctx lambda_vctxs
-                              (spec.fold_depth - 1);
-                  create_spec foldl_target foldl_examples lambda_signature lambda_tctx lambda_vctxs
-                              (spec.fold_depth - 1); ])
+       |> List.map
+            ~f:(fun ((tree_name, input_elem_typ), init_expr) ->
+                let tree_expr = `Id tree_name in
+                let lambda_tctx = remove_names tctx tree_name init_expr in
+                let lambda_signature = Arrow_t ([App_t ("list", [res_typ]); input_elem_typ], res_typ) in
+                let target lambda =
+                  spec.target (`Lambda (arg_names, `Apply (`Id "foldt", [tree_expr; lambda; init_expr]))) in
+                create_spec target [] lambda_signature lambda_tctx [] (spec.fold_depth - 1))
        |> List.map ~f:dedup_examples
     | _ -> []
 
@@ -537,7 +615,7 @@ let solve_catamorphic_looped ?(init=[]) (examples: example list) : expr -> expr 
                                  (signature examples)
                                  (Ctx.empty ())
                                  (List.map examples ~f:(fun _ -> Ctx.empty ()))
-                                 1
+                                 2
   in
 
   let rec generate_specs (specs: spec list) : spec list =
@@ -548,7 +626,9 @@ let solve_catamorphic_looped ?(init=[]) (examples: example list) : expr -> expr 
                                          ~f:(fun parent ->
                                              (map_bodies parent)
                                              @ (filter_bodies parent)
-                                             @ (fold_bodies parent))
+                                             @ (fold_bodies parent)
+                                             @ (foldt_bodies parent)
+                                            )
        in
        specs @ (generate_specs child_specs)
   in
@@ -558,8 +638,9 @@ let solve_catamorphic_looped ?(init=[]) (examples: example list) : expr -> expr 
   (* print_endline "Completed structure analysis. Inferred structures:"; *)
   (* let _ = List.iter specs *)
   (*                   ~f:(fun spec -> *)
-  (*                       printf "%s\n\t%s\n" *)
+  (*                       printf "%s: %s\n\t%s\n" *)
   (*                              (expr_to_string (spec.target (`Id "lambda") (`Id "_"))) *)
+  (*                              (typ_to_string (spec.signature)) *)
   (*                              (String.concat ~sep:" " (List.map ~f:example_to_string spec.examples))) *)
   (* in *)
   (* print_newline (); *)
