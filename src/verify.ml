@@ -1,5 +1,4 @@
 open Core.Std
-open Printf
 open Ast
 open Eval
 open Infer
@@ -124,9 +123,11 @@ type typed_constr = typed_expr * typed_id list
 
 let verify_example target (example: example) : bool =
   let input, result = example in
-  let eval expr = Eval.eval (Ctx.empty ()) expr in
+  let eval expr = Eval.eval ~recursion_limit:10 (Ctx.empty ()) expr in
   (try (eval (target input)) = (eval (target result))
-   with RuntimeError _ -> false)
+   with 
+   | RuntimeError _ -> false
+   | Ast.Ctx.UnboundError name -> (* printf "Unbound %s in %s\n" name (expr_to_string (target input)); *) false)
 
 let verify_examples target examples = List.for_all examples ~f:(verify_example target)
 

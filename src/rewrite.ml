@@ -109,6 +109,7 @@ let rewrite (expr: expr) : expr option =
     | `Id _
     | `Num _
     | `Bool _
+    | `Tree _
     | `List _ -> expr
     | `Lambda (a, e)  -> `Lambda (a, rewrite_r e)
     | `Let (id, v, e) -> `Let (id, rewrite_r v, rewrite_r e)
@@ -119,17 +120,22 @@ let rewrite (expr: expr) : expr option =
        (match op with
         | Plus -> (match args with
                    | [`Num 0; x] | [x; `Num 0] -> x
-                   | [`Op (Minus, [x; y]); z] when y = z -> x
+                   | [`Op (Minus, [x; y]); z]
+                   | [z; `Op (Minus, [x; y])] when y = z -> x
                    | _ -> `Op (op, args))
         | Minus -> (match args with
                     | [x; `Num 0] -> x
-                    | [`Op (Plus, [x; y]); z] when y = z -> x
                     | [`Op (Plus, [x; y]); z] when x = z -> y
+                    | [`Op (Plus, [x; y]); z] when y = z -> x
+                    | [z; `Op (Plus, [x; y])] when x = z -> `Op (Minus, [`Num 0; y])
+                    | [z; `Op (Plus, [x; y])] when y = z -> `Op (Minus, [`Num 0; x])
                     | [x; y] when x = y -> `Num 0
                     | _ -> `Op (op, args))
         | Mul -> (match args with
                   | [`Num 0; _] | [_; `Num 0] -> `Num 0
                   | [`Num 1; x] | [x; `Num 1] -> x
+                  | [x; `Op (Div, [y; z])]
+                  | [`Op (Div, [y; z]); x] when x = z -> y
                   | _ -> `Op (op, args))
         | Div -> (match args with
                   | [`Num 0; _] -> `Num 0
@@ -147,12 +153,14 @@ let rewrite (expr: expr) : expr option =
                  | [`Bool true; x] | [x; `Bool true] -> x
                  | [`Bool false; x]
                  | [x; `Bool false] -> rewrite_r (`Op (Not, [x]))
+                  | [x; `Op (Cdr, [y])] | [`Op (Cdr, [y]); x] when x = y -> `Bool false
                  | _ -> `Op (op, args))
         | Neq -> (match args with
                   | [x; y] when x = y -> `Bool false
                   | [`Bool true; x]
                   | [x; `Bool true] -> rewrite_r (`Op (Not, [x]))
                   | [`Bool false; x] | [x; `Bool false] -> x
+                  | [x; `Op (Cdr, [y])] | [`Op (Cdr, [y]); x] when x = y -> `Bool true
                   | _ -> `Op (op, args))
         | Lt
         | Gt -> (match args with
@@ -163,12 +171,22 @@ let rewrite (expr: expr) : expr option =
                   | [x; y] when x = y -> `Bool true
                   | _ -> `Op (op, args))
         | And -> (match args with
+                  | [x; y] when x = y -> x
                   | [`Bool true; x] | [x; `Bool true] -> x
                   | [`Bool false; _] | [_; `Bool false] -> `Bool false
+                  | [x; `Op (Not, [y])] | [`Op (Not, [y]); x] when x = y -> `Bool false
+                  (* DeMorgan's law. *)
+                  | [`Op (Not, [x]); `Op (Not, [y])] -> `Op (Not, [`Op (Or, [x; y])])
+                  (* Distributivity. *)
+                  | [`Op (Or, [a; b]); `Op (Or, [c; d])] when a = c -> `Op (Or, [a; `Op (And, [b; d])])
                   | _ -> `Op (op, args))
         | Or -> (match args with
+                 | [x; y] when x = y -> x
                  | [`Bool false; x] | [x; `Bool false] -> x
                  | [`Bool true; _] | [_; `Bool true] -> `Bool true
+                 | [x; `Op (Not, [y])] | [`Op (Not, [y]); x] when x = y -> `Bool true
+                 | [`Op (Not, [x]); `Op (Not, [y])] -> `Op (Not, [`Op (And, [x; y])])
+                 | [`Op (And, [a; b]); `Op (And, [c; d])] when a = c -> `Op (And, [a; `Op (Or, [b; d])])
                  | _ -> `Op (op, args))
         | Not -> (match args with
                   | [`Op (Not, [x])] -> x
@@ -180,18 +198,33 @@ let rewrite (expr: expr) : expr option =
                   | [`Op (Neq, [x; y])] -> `Op (Eq, [x; y])
                   | _ -> `Op (op, args))
         | Cons -> (match args with
-                   | [x; `List []] -> `List [x]
-                   | [x; `List xs] -> `List (x::xs)
+                   | [`Op (Car, [x]); `Op (Cdr, [y])] when x = y -> x
+                   (* | [x; `List []] -> `List [x] *)
+                   (* | [x; `List xs] -> `List (x::xs) *)
                    | _ -> `Op (op, args))
-        | Car
-        | Cdr -> `Op (op, args)
+        | Car -> (match args with
+                  | [`List []] -> raise BadExpression
+                  | [`Op (Cons, [x; _])] -> x
+                  | _ -> `Op (op, args))
+        | Cdr -> (match args with
+                  | [`List []] -> raise BadExpression
+                  | [`Op (Cons, [_; x])] -> x
+                  | _ -> `Op (op, args))
         | If -> (match args with
                  | [`Bool true; x; _] -> x
                  | [`Bool false; _; x] -> x
                  | [x; `Bool true; `Bool false] -> x
                  | [x; `Bool false; `Bool true] -> `Op (Not, [x])
                  | [_; x; y] when x = y -> x
-                 | _ -> `Op (op, args)))
+                 | _ -> `Op (op, args))
+        | Value -> (match args with
+                    | [`Op (Tree, [x; _])] -> x
+                    | _ -> `Op (op, args))
+        | Children -> (match args with
+                       | [`Op (Tree, [_; x])] -> x
+                       | _ -> `Op (op, args))
+        | Tree -> (match args with
+                   | _ -> `Op (op, args)))
   in try Some (rewrite_r expr) with BadExpression -> None
 
 let simplify expr = expr |> fold_constants >>= rewrite >>= fold_constants >>| normalize

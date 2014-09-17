@@ -8,8 +8,8 @@ ocamlbuild \
     -syntax camlp4o \
     -pkg core \
     -pkg Z3 \
-    -pkg sexplib.syntax,comparelib.syntax,fieldslib.syntax,variantslib.syntax \
-    -pkg bin_prot.syntax \
+    -pkg camlp4.lib \
+    -pkg sexplib.syntax,comparelib.syntax,fieldslib.syntax,variantslib.syntax,bin_prot.syntax \
     -tag thread \
     -tag debug \
     -tag annot \
@@ -18,5 +18,5 @@ ocamlbuild \
     -cflags "-w A-4-44" \
     -cflags -strict-sequence \
     -use-menhir \
-    -j 8 \
+    -j 4 \
     $@
