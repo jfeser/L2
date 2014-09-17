@@ -89,7 +89,7 @@ let rec generalize level typ = match typ with
 
 (** Instantiating a type replaces all quantified type variables with
 fresh free type variables. *)
-let instantiate level typ =
+let instantiate ?ctx:(ctx = Ctx.empty ()) level typ =
   let rec inst ctx typ = match typ with
     | Const_t _
     | Var_t {contents = Free _} -> typ
@@ -102,7 +102,7 @@ let instantiate level typ =
     | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(inst ctx) args, inst ctx ret)
     | App_t (const, args) -> App_t (const, List.map ~f:(inst ctx) args)
   in
-  inst (Ctx.empty ()) typ
+  inst ctx typ
 
 let rec unify_exn t1 t2 =
   let error () = raise @@ TypeError (sprintf "Failed to unify %s and %s."
