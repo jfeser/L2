@@ -166,14 +166,21 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
     | [] -> failwith "Cannot generate args matrix with no arguments."
   in
 
-  let op_matrix op op_typ = match op_typ with
+  let callable_matrix apply_callable callable_typ = match callable_typ with
     | Arrow_t (arg_typs, ret_typ) ->
        let prefix = repeat_n (List.length arg_typs) [] in
        let matrix =
-         slazy (fun () -> map_matrix (args_matrix arg_typs) ~f:(fun args -> Op ((op, args), ret_typ)))
+         slazy (fun () -> map_matrix (args_matrix arg_typs) 
+                                     ~f:(fun args -> apply_callable args ret_typ))
        in
        concat prefix matrix
     | _ -> arrow_error ()
+  in
+  let op_matrix op op_typ =
+    callable_matrix (fun args ret_typ -> Op ((op, args), ret_typ)) op_typ
+  in
+  let apply_matrix func func_typ =
+    callable_matrix (fun args ret_typ -> Apply ((func, args), ret_typ)) func_typ
   in
 
   (* The op stream is infinite, so it needs more careful handling. *)
@@ -199,7 +206,22 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
     (* Generate a matrix for each operator. *)
     |> List.map ~f:(fun (op, op_typ) -> op_matrix op op_typ)
   in
-  merge (init_matrix::op_matrices)
+
+  let apply_matrices =
+    init
+    |> List.filter ~f:(fun texpr -> 
+                       match typ_of_expr texpr with
+                       | Arrow_t (_, ret_typ) -> is_unifiable typ ret_typ
+                       | _ -> false)
+    |> List.map ~f:(fun texpr ->
+                    match instantiate 0 typ, instantiate 0 (typ_of_expr texpr) with
+                    | typ', (Arrow_t (_, ret_typ) as func_typ) ->
+                       unify_exn typ' ret_typ;
+                       texpr, normalize (generalize (-1) func_typ)
+                    | _ -> arrow_error ())
+    |> List.map ~f:(fun (func, func_typ) -> apply_matrix func func_typ)
+  in
+  merge (init_matrix::(op_matrices @ apply_matrices))
   |> map ~f:(List.filter ~f:(fun x ->
                              let e = expr_of_texpr x in
                              match Rewrite.rewrite e with
@@ -207,7 +229,9 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
                              | None -> false))
   (* |> map ~f:(List.map ~f:(fun e -> print_endline (expr_to_string (expr_of_texpr e)); e)) *)
 
-let solve_catamorphic_looped ?(init=[]) (examples: example list) : expr -> expr =
+let solve_single ?(init=[])
+                 ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
+                 (examples: example list) =
   let initial_spec =
     let target_name = get_target_name examples in
     let target ctx expr =
@@ -215,11 +239,14 @@ let solve_catamorphic_looped ?(init=[]) (examples: example list) : expr -> expr 
       `Let (target_name, body, expr)
     in
     { target;
-      holes = Ctx.of_alist_exn [(target_name, { signature = signature examples;
-                                                examples = List.map examples ~f:(fun e -> e, Ctx.empty ());
-                                                tctx = Ctx.empty ();
-                                                depth = 2;
-                               })];
+      holes = Ctx.of_alist_exn [
+                  target_name, 
+                  { examples = List.map examples ~f:(fun ex -> ex, Ctx.empty ());
+                    signature = signature examples;
+                    tctx = Ctx.empty ();
+                    depth = 2;
+                  };
+                ];
     }
   in
 
@@ -233,7 +260,7 @@ let solve_catamorphic_looped ?(init=[]) (examples: example list) : expr -> expr 
                                              @ (filter_bodies parent)
                                              @ (fold_bodies parent)
                                              @ (foldt_bodies parent)
-                                             @ (recurs_bodies parent)
+                                             (* @ (recurs_bodies parent) *)
                                             )
        in
        specs @ (generate_specs child_specs)
@@ -255,8 +282,7 @@ let solve_catamorphic_looped ?(init=[]) (examples: example list) : expr -> expr 
 
   let matrix_of_hole hole =
     let init' =
-      (Ctx.to_alist hole.tctx |> List.map ~f:(fun (name, typ) -> Id (name, typ)))
-      @ (List.map init ~f:(infer (Ctx.empty ())))
+      (Ctx.to_alist hole.tctx |> List.map ~f:(fun (name, typ) -> Id (name, typ))) @ init
     in
     match hole.signature with
     | Arrow_t (arg_typs, ret_typ) ->
@@ -291,10 +317,11 @@ let solve_catamorphic_looped ?(init=[]) (examples: example list) : expr -> expr 
            (Ctx.empty ())
     in
     ctx_matrix
-    |> Stream.map_matrix ~f:(fun ctx -> let target = spec.target ctx in
-                                        print_endline (expr_to_string (target (`Id "_")));
-                                        if Verify.verify_examples target examples
-                                        then Some target else None)
+    |> Stream.map_matrix ~f:(fun ctx -> 
+                             let target = spec.target ctx in
+                             (* print_endline (expr_to_string (target (`Id "_"))); *)
+                             if verify target examples
+                             then Some target else None)
   in
 
   let solutions = List.map specs ~f:solver_of_spec |> Stream.merge |> Stream.flatten in
@@ -318,3 +345,50 @@ let solve_catamorphic_looped ?(init=[]) (examples: example list) : expr -> expr 
        Int.incr depth;
      done;
      failwith "Exited solve loop without finding a solution.")
+
+let solve ?(init=[]) (examples: example list) : expr Ctx.t =
+  (* Split examples into separate functions. *)
+  let func_examples =
+    List.map examples 
+             ~f:(fun ex -> 
+                 match ex with
+                 | ((`Apply (`Id n, _)), _) -> n, ex
+                 | _ -> failwith (sprintf "Malformed example: %s" (example_to_string ex)))
+    |> List.group ~break:(fun (n1, _) (n2, _) -> n1 <> n2)
+    |> List.map ~f:(fun exs -> 
+                    let (name, _)::_ = exs in
+                    name, List.map exs ~f:Tuple.T2.get2)
+  in
+
+  (* Check that each set of examples represents a function. *)
+  if List.for_all func_examples
+                  ~f:(fun (_, exs) ->
+                      let exs' = List.map exs ~f:(fun ex -> ex, Ctx.empty ()) in
+                      check_examples exs')
+  then
+    let ectx, _, _, _ =
+      List.fold_left
+        func_examples
+        ~init:(Ctx.empty (), 
+               Eval.stdlib_vctx,
+               Ctx.empty (), 
+               List.map init ~f:(infer (Ctx.empty ())))
+        ~f:(fun (ectx, vctx, tctx, init) (name, exs) ->
+            let verify = Verify.verify_examples ~ctx:vctx in
+            let result = (solve_single ~init:init ~verify:verify exs) (`Id "_") in
+            (* printf "Solved %s: %s\n" name (expr_to_string result); *)
+            match result with
+            | `Let (_, body, _) ->
+               let ectx' = Ctx.bind ectx name body in
+               let vctx' =
+                 let vctx'' = Ctx.bind vctx name `Unit in
+                 let value = `Closure (body, vctx'') in
+                 Ctx.update vctx'' name value; vctx''
+               in
+               let typ = typ_of_expr (infer (Ctx.bind tctx name (fresh_free 0)) body) in
+               let tctx' = Ctx.bind tctx name typ in
+               let init' = (Id (name, typ))::init in
+               ectx', vctx', tctx', init'
+            | _ -> failwith (sprintf "Bad result from solve_single %s" (expr_to_string result)))
+    in ectx
+  else failwith "Some example group does not represent a function."

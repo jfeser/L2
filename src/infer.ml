@@ -215,7 +215,9 @@ let rec typeof ctx level (expr: expr) : typed_expr =
 let stdlib_tctx = [
   "foldr", "(list[a], ((b, a) -> b), b) -> b";
   "foldl", "(list[a], ((b, a) -> b), b) -> b";
+  "foldt", "(tree[a], ((list[b], a) -> b), b) -> b";
   "map", "(list[a], (a -> b)) -> list[b]";
+  "mapt", "(tree[a], (a -> b)) -> tree[b]";
   "filter", "(list[a], (a -> bool)) -> list[a]";
 ] |> List.map ~f:(fun (name, str) -> name, Util.parse_typ str) |> Ctx.of_alist_exn
 

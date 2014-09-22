@@ -59,11 +59,15 @@ let ctx_merge outer_ctx inner_ctx =
                                     | `Right ictx_v -> Some ictx_v)
 
 let check_examples (examples: (example * expr Ctx.t) list) : bool =
-  not (List.exists examples
-                   ~f:(fun ((lhs, rhs), vctx) ->
-                       List.exists examples
-                                   ~f:(fun ((lhs', rhs'), vctx') -> 
-                                       Ctx.equal equal_expr vctx vctx' && lhs = lhs' && rhs <> rhs')))
+  (* Is there a pair of examples such that the outer contexts and LHSs
+  are equal, but the RHSs are not? *)
+  not (List.exists
+         examples
+         ~f:(fun ((lhs, rhs), vctx) ->
+             List.exists 
+               examples
+               ~f:(fun ((lhs', rhs'), vctx') -> 
+                   Ctx.equal equal_expr vctx vctx' && lhs = lhs' && rhs <> rhs')))
 
 (* Map is an appropriate implementation when one of the inputs is a
    list and the output is a list of the same length. *)
@@ -174,13 +178,12 @@ let filter_bodies (spec: spec) : spec list =
     let ex = 
       List.concat_map examples
                       ~f:(fun ((_, result), vctx) ->
-                          let vctx' = Ctx.unbind vctx list_name in
                           match Ctx.lookup_exn vctx list_name, result with
                           | `List x, `List y ->
                              let retained, removed = List.partition_tf x ~f:(List.mem y) in
                              List.map retained ~f:(fun i -> filter_example lambda_name i true)
                              @ List.map removed ~f:(fun i -> filter_example lambda_name i false)
-                             |> List.map ~f:(fun ex -> ex, vctx')
+                             |> List.map ~f:(fun ex -> ex, vctx)
                           | _ -> [])
       |> List.dedup
     in if check_examples ex then Some ex else None
@@ -225,9 +228,8 @@ let filter_bodies (spec: spec) : spec list =
                   match filter_examples examples lambda_name input_name with
                   | Some examples -> 
                      let hole' = { 
-                       examples;
+                       examples; tctx;
                        signature = Arrow_t ([input_elem_typ], Const_t Bool_t);
-                       tctx = Ctx.unbind tctx input_name;
                        depth = hole.depth - 1;
                      } in
                      let target ctx =
@@ -504,10 +506,15 @@ let recurs_bodies (spec: spec) : spec list =
                   let base = Ctx.lookup_exn ctx base_name in
                   let recurs = Ctx.lookup_exn ctx recurs_name in
                   let expr =
-                    `Lambda (arg_names, `Op (If, [`Op (Eq, [`Id input_name; `List []]); 
-                                                  base; 
-                                                  `Apply (recurs, [`Op (Car, [`Id input_name]); 
-                                                                   `Op (Cdr, [`Id input_name])])]))
+                    `Lambda (arg_names,
+                             `Let (recurs_name,
+                                   `Lambda (arg_names, 
+                                            `Op (If, [`Op (Eq, [`Id input_name; `List []]); 
+                                                      base; 
+                                                      `Apply (recurs, [`Op (Car, [`Id input_name]); 
+                                                                       `Op (Cdr, [`Id input_name])])])),
+                                   `Apply (`Id recurs_name, [`Id input_name])))
+                    
                   in
                   let ctx' = Ctx.bind ctx name expr in
                   spec.target ctx'

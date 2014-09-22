@@ -41,7 +41,10 @@ let stdlib = [
   "mapt", "(lambda (t f)
            (if (= t {}) {}
            (tree (f (value t)) (map (children t) (lambda (c) (mapt c f))))))";
-  "foldt", "(lambda (t f i) (if (= t {}) i (f (map (children t) (lambda (ct) (foldt ct f i))) (value t))))";
+  "foldt", "(lambda (t f i) 
+            (if (= t {}) i 
+            (f (map (children t) (lambda (ct) (foldt ct f i)))
+            (value t))))";
   (* "filtert", "(lambda (t f) *)
   (*             (let c (children t)  *)
   (*             (if (= c []) *)
@@ -50,14 +53,15 @@ let stdlib = [
   (*             (map c (lambda (ch) (mapt ch f)))))))"; *)
 ] |> List.map ~f:(fun (name, str) -> name, Util.parse_expr str)
 
-let (stdlib_vctx: value Ctx.t) =
-  List.fold_left stdlib 
-                 ~init:(Ctx.empty ())
+let eval_ctx_of_alist =
+  List.fold_left ~init:(Ctx.empty ())
                  ~f:(fun ctx (name, lambda) ->
                      let ctx' = Ctx.bind ctx name `Unit in
                      let value = `Closure (lambda, ctx') in
                      Ctx.update ctx' name value;
-                     Ctx.bind ctx name value)
+                     Ctx.bind ctx name value)  
+
+let (stdlib_vctx: value Ctx.t) = eval_ctx_of_alist stdlib
 
 (** Evaluate an expression in the provided context. *)
 let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
@@ -66,7 +70,9 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
                                   match value with
                                   | `Both (_, v) | `Left v | `Right v -> Some v) in
   let rec ev ctx lim expr : value =
-    if lim = 0 then raise (RuntimeError "Exceeded recursion limit.") else
+    if lim = 0 
+    then raise (RuntimeError (sprintf "Exceeded recursion limit: %s" (expr_to_string expr)))
+    else
       let ev_all = List.map ~f:(ev ctx lim) in
       match expr with
       | `Num x  -> `Num x

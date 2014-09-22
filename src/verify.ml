@@ -121,15 +121,23 @@ type typed_constr = typed_expr * typed_id list
 (*   | Let _ *)
 (*   | Apply _ -> verify_error "(lambda, let, apply) are not supported by Z3." *)
 
-let verify_example target (example: example) : bool =
+let verify_example ?(ctx=Ctx.empty ())
+                   ?(limit=100)
+                   (target: expr -> expr)
+                   (example: example) : bool =
   let input, result = example in
-  let eval expr = Eval.eval ~recursion_limit:10 (Ctx.empty ()) expr in
-  (try (eval (target input)) = (eval (target result))
-   with 
-   | RuntimeError _ -> false
-   | Ast.Ctx.UnboundError name -> (* printf "Unbound %s in %s\n" name (expr_to_string (target input)); *) false)
+  let eval expr = Eval.eval ~recursion_limit:limit ctx expr in
+  (try (eval (target input)) = (eval (target result)) with
+   | RuntimeError msg ->
+      (* printf "Runtime error \"%s\" in %s\n" msg (expr_to_string (target input)); *) false
+   | Ast.Ctx.UnboundError name ->
+      printf "Unbound %s in %s\n" name (expr_to_string (target input)); false)
 
-let verify_examples target examples = List.for_all examples ~f:(verify_example target)
+let verify_examples ?(ctx=Ctx.empty ())
+                    ?(limit=100)
+                    target
+                    examples =
+  List.for_all examples ~f:(verify_example ~ctx:ctx ~limit:limit target)
 
 (* let verify_constraint (zctx: Z3.context) (target: expr -> expr) (constr: constr) : bool = *)
 (*   let open Z3.Solver in *)
