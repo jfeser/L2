@@ -37,8 +37,8 @@ end
 
 type id = string with compare, sexp
 
+module SMap = Map.Make(String)
 module Ctx = struct
-  module SMap = Map.Make(String)
   type 'a t = 'a SMap.t ref
   exception UnboundError of id
 
@@ -234,6 +234,40 @@ let rec size (e: expr) : int =
   | `Let (_, a, b) -> 1 + size a + size b
   | `Lambda (args, body) -> 1 + (List.length args) + size body
   | `Apply (a, l) -> 1 + size a + (sum (List.map l ~f:size))
+
+let normalize_expr (expr: expr) : expr = 
+  let count = ref (-1) in
+  let fresh_name () =
+    let n = incr count; !count in
+    let prefix = Char.of_int_exn ((n mod 26) + 97) in
+    let suffix = if n >= 26 then Int.to_string ((n - 26) mod 26) else "" in
+    Printf.sprintf "%c%s" prefix suffix in
+  let rec norm ctx e =
+    let norm_all = List.map ~f:(norm ctx) in
+    match e with
+    | `Num _
+    | `Bool _ -> e
+    | `Id x ->
+       (match Ctx.lookup ctx x with
+        | Some x' -> `Id x'
+        | None -> `Id x)
+    | `List x -> `List (norm_all x)
+    | `Tree x -> `Tree (Tree.map x ~f:(norm ctx))
+    | `Op (op, args) -> `Op (op, norm_all args)
+    | `Apply (func, args) -> `Apply (norm ctx func, norm_all args)
+    | `Let (name, x, y) ->
+       let name' = fresh_name () in
+       let ctx' = Ctx.bind ctx name name' in
+       `Let (name', norm ctx' x, norm ctx' y)
+    | `Lambda (args, body) ->
+       let ctx', args' =
+         List.fold_right args
+                         ~init:(ctx, [])
+                         ~f:(fun arg (ctx', args') ->
+                             let arg' = fresh_name () in
+                             Ctx.bind ctx' arg arg', arg'::args')
+       in `Lambda (args', norm ctx' body)
+  in norm (Ctx.empty ()) expr
 
 (** Create an S-expression from the provided string list and brackets. *)
 let sexp lb strs rb = lb ^ (String.concat ~sep:" " strs) ^ rb

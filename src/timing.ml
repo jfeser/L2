@@ -197,11 +197,18 @@ let time_solve ((name, example_strs, init_strs), _) =
   let init = List.map init_strs ~f:Util.parse_expr in
   begin
     let start_time = Time.now () in
-    let solution = Search.solve_catamorphic_looped examples ~init:init in
+    let solutions = Search.solve examples ~init:init in
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
+    let solutions_str =
+      Ast.Ctx.to_alist solutions
+      |> List.map ~f:(fun (name, lambda) ->
+                      let lambda = Ast.normalize_expr lambda in
+                      "\t\t" ^ (Ast.expr_to_string (`Let (name, lambda, `Id "_"))))
+      |> String.concat ~sep:"\n"
+    in
     Printf.printf "Solved %s in %s.\n" name (Time.Span.to_short_string solve_time);
-    Printf.printf "\tSolution: %s\n\n" (Ast.expr_to_string (solution (`Id "_")));
+    Printf.printf "\tSolutions:\n%s\n\n" solutions_str;
     flush stdout;
   end
 
