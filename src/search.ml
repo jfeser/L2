@@ -2,7 +2,6 @@ open Core.Std
 open Printf
 
 open Ast
-open Expr
 open Infer
 open Structure
 open Util
@@ -120,7 +119,7 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
   let arrow_error () = failwith "Operator is not of type Arrow_t." in
 
   (* printf "enumerate %s %s.\n" *)
-  (*        (List.to_string init ~f:(fun e -> expr_to_string (expr_of_texpr e))) *)
+  (*        (List.to_string init ~f:(fun e -> Expr.to_string (expr_of_texpr e))) *)
   (*        (typ_to_string typ); *)
 
   (* Init is finite, so we can construct an init stream by breaking
@@ -129,7 +128,7 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
   let (init_matrix: typed_expr matrix) =
     let init_sizes =
       List.filter init ~f:(fun e -> is_unifiable typ (typ_of_expr e))
-      |> List.map ~f:(fun e -> e, size (expr_of_texpr e))
+      |> List.map ~f:(fun e -> e, Expr.size (expr_of_texpr e))
     in
     let max_size = List.fold_left init_sizes ~init:0 ~f:(fun x (_, y) -> if x > y then x else y) in
     List.range ~stop:`inclusive 1 max_size
@@ -151,7 +150,7 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
       List.iter2_exn prev_args prev_typs
                      ~f:(fun parg ptyp ->
                          (* printf "%s %s %s\n" *)
-                         (*        (expr_to_string (expr_of_texpr parg))  *)
+                         (*        (Expr.to_string (expr_of_texpr parg))  *)
                          (*        (typ_to_string (typ_of_expr parg))  *)
                          (*        (typ_to_string ptyp); *)
                          unify_exn (instantiate (-1) (typ_of_expr parg) ~ctx:ctx) ptyp);
@@ -186,10 +185,10 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
 
   (* The op stream is infinite, so it needs more careful handling. *)
   let op_matrices =
-    Op.metadata_by_op
+    Expr.Op.metadata_by_op
     (* Filter all operators that can return the correct type. *)
     |> List.filter ~f:(fun (_, meta) ->
-                       match meta.Op.typ with
+                       match meta.Expr.Op.typ with
                        | Arrow_t (_, ret_typ) -> is_unifiable typ ret_typ
                        | _ -> arrow_error ())
 
@@ -198,7 +197,7 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
     the operator type will reflect the substitution. Now we have
     correct types for the arguments. *)
     |> List.map ~f:(fun (op, meta) ->
-                    match instantiate 0 typ, instantiate 0 meta.Op.typ with
+                    match instantiate 0 typ, instantiate 0 meta.Expr.Op.typ with
                     | typ', (Arrow_t (_, ret_typ) as op_typ) ->
                        unify_exn typ' ret_typ;
                        op, normalize (generalize (-1) op_typ)
@@ -228,7 +227,7 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
                              match Rewrite.rewrite e with
                              | Some e' -> e = e'
                              | None -> false))
-  (* |> map ~f:(List.map ~f:(fun e -> print_endline (expr_to_string (expr_of_texpr e)); e)) *)
+  (* |> map ~f:(List.map ~f:(fun e -> print_endline (Expr.to_string (expr_of_texpr e)); e)) *)
 
 let solve_single ?(init=[])
                  ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
@@ -274,11 +273,11 @@ let solve_single ?(init=[])
   (*   specs *)
   (*   ~f:(fun spec -> *)
         (* let (hole_bodies: expr Ctx.t) = Ctx.mapi spec.holes ~f:(fun ~key:name ~data:_ -> `Id name) in *)
-        (* printf "%s\n" (expr_to_string (spec.target hole_bodies (`Id "_"))); *)
+        (* printf "%s\n" (Expr.to_string (spec.target hole_bodies (`Id "_"))); *)
   (*       Ctx.to_alist spec.holes *)
   (*       |> List.iter ~f:(fun (name, hole) -> *)
   (*                        printf "\t%s: %s\n" name (typ_to_string hole.signature); *)
-  (*                        List.iter hole.examples ~f:(fun (ex, _) -> printf "\t\t%s\n" (example_to_string ex)))); *)
+  (*                        List.iter hole.examples ~f:(fun (ex, _) -> printf "\t\t%s\n" (Expr.example_to_string ex)))); *)
   (* print_newline (); *)
 
   let matrix_of_hole hole =
@@ -294,13 +293,13 @@ let solve_single ?(init=[])
        |> Stream.map_matrix ~f:(fun texpr -> 
                                 (* printf "%s %s\n"  *)
                                 (*        (typ_to_string hole.signature)  *)
-                                (*        (expr_to_string (expr_of_texpr texpr)); *)
+                                (*        (Expr.to_string (expr_of_texpr texpr)); *)
                                 `Lambda (arg_names, expr_of_texpr texpr))
     | typ -> enumerate (MemoStream.empty ()) init' typ 
              |> Stream.map_matrix ~f:(fun tx -> 
                                       (* printf "%s %s\n"  *)
                                       (*        (typ_to_string hole.signature)  *)
-                                      (*        (expr_to_string (expr_of_texpr tx)); *)
+                                      (*        (Expr.to_string (expr_of_texpr tx)); *)
                                       (expr_of_texpr tx))
   in
 
@@ -320,7 +319,7 @@ let solve_single ?(init=[])
     ctx_matrix
     |> Stream.map_matrix ~f:(fun ctx -> 
                              let target = spec.target ctx in
-                             (* print_endline (expr_to_string (target (`Id "_"))); *)
+                             (* print_endline (Expr.to_string (target (`Id "_"))); *)
                              if verify target examples
                              then Some target else None)
   in
@@ -339,7 +338,7 @@ let solve_single ?(init=[])
                      done;
                      (* let hole_bodies = Ctx.mapi spec.holes ~f:(fun ~key:name ~data:_ -> `Id name) in *)
                      (* printf "Searched %s to depth %d." *)
-                     (*        (expr_to_string (spec.target hole_bodies (`Id "_"))) *)
+                     (*        (Expr.to_string (spec.target hole_bodies (`Id "_"))) *)
                      (*        !depth; *)
                      (* print_newline () *)
                     );
@@ -354,7 +353,7 @@ let solve ?(init=[]) (examples: example list) : expr Ctx.t =
              ~f:(fun ex -> 
                  match ex with
                  | ((`Apply (`Id n, _)), _) -> n, ex
-                 | _ -> failwith (sprintf "Malformed example: %s" (example_to_string ex)))
+                 | _ -> failwith (sprintf "Malformed example: %s" (Expr.example_to_string ex)))
     |> List.group ~break:(fun (n1, _) (n2, _) -> n1 <> n2)
     |> List.map ~f:(fun exs -> 
                     let (name, _)::_ = exs in
@@ -377,7 +376,7 @@ let solve ?(init=[]) (examples: example list) : expr Ctx.t =
         ~f:(fun (ectx, vctx, tctx, init) (name, exs) ->
             let verify = Verify.verify_examples ~ctx:vctx in
             let result = (solve_single ~init:init ~verify:verify exs) (`Id "_") in
-            (* printf "Solved %s: %s\n" name (expr_to_string result); *)
+            (* printf "Solved %s: %s\n" name (Expr.to_string result); *)
             match result with
             | `Let (_, body, _) ->
                let ectx' = Ctx.bind ectx name body in
@@ -390,6 +389,6 @@ let solve ?(init=[]) (examples: example list) : expr Ctx.t =
                let tctx' = Ctx.bind tctx name typ in
                let init' = (Id (name, typ))::init in
                ectx', vctx', tctx', init'
-            | _ -> failwith (sprintf "Bad result from solve_single %s" (expr_to_string result)))
+            | _ -> failwith (sprintf "Bad result from solve_single %s" (Expr.to_string result)))
     in ectx
   else failwith "Some example group does not represent a function."

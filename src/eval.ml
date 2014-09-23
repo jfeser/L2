@@ -1,6 +1,5 @@
 open Core.Std
 open Ast
-open Expr
 open Util
 
 (** Exceptions that can be thrown by the evaluation and type-checking functions. *)
@@ -16,18 +15,19 @@ type value = [ `Num of int
 let rec value_to_string v =
   let join = String.concat ~sep:" " in
   match v with
-  | `Num x  -> expr_to_string (`Num x)
-  | `Bool x -> expr_to_string (`Bool x)
+  | `Num x  -> Expr.to_string (`Num x)
+  | `Bool x -> Expr.to_string (`Bool x)
   | `Tree x -> Tree.to_string x ~str:value_to_string
   | `List x -> "[" ^ (join (List.map x ~f:value_to_string)) ^ "]"
-  | `Closure (e, _) -> expr_to_string e
+  | `Closure (e, _) -> Expr.to_string e
   | `Unit -> "unit"
 
 (** Raise a bad argument error. *)
 let arg_error op args =
-  raise (RuntimeError (Printf.sprintf "Bad arguments to %s %s."
-                                      (Op.to_string op)
-                                      (sexp "(" (List.map ~f:expr_to_string args) ")")))
+  raise (RuntimeError 
+           (Printf.sprintf "Bad arguments to %s: (%s)."
+                           (Expr.Op.to_string op)
+                           (String.concat ~sep:" " (List.map ~f:Expr.to_string args))))
 
 (** Raise a wrong # of arguments error. *)
 let argn_error id = raise (RuntimeError ("Wrong # of arguments to " ^ id))
@@ -73,7 +73,7 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
                                   | `Both (_, v) | `Left v | `Right v -> Some v) in
   let rec ev ctx lim expr : value =
     if lim = 0 
-    then raise (RuntimeError (sprintf "Exceeded recursion limit: %s" (expr_to_string expr)))
+    then raise (RuntimeError (sprintf "Exceeded recursion limit: %s" (Expr.to_string expr)))
     else
       let ev_all = List.map ~f:(ev ctx lim) in
       match expr with
@@ -96,8 +96,8 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
                                       ~init:(enclosed_ctx)
                                       ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value) in
                  ev ctx' (lim - 1) body
-              | None -> argn_error @@ expr_to_string body)
-          | _ -> raise @@ RuntimeError (sprintf "Tried to apply a non-function: %s" (expr_to_string expr)))
+              | None -> argn_error @@ Expr.to_string body)
+          | _ -> raise @@ RuntimeError (sprintf "Tried to apply a non-function: %s" (Expr.to_string expr)))
       | `Op (op, args) ->
          (match op with
           | Not -> (match ev_all args with

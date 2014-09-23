@@ -1,7 +1,6 @@
 open Core.Std
 
 open Ast
-open Expr
 open Infer
 open Util
 
@@ -35,7 +34,7 @@ let signature ?(ctx=Ctx.empty ()) (examples: example list) : typ =
   let res_typ =
     match typ_of_expr (infer ctx (`List results)) with
     | App_t ("list", [t]) -> t
-    | t -> failwith (sprintf "Unexpected result type: %s" (typ_to_string t))
+    | t -> failwith (sprintf "Unexpected result type: %s" (Expr.typ_to_string t))
   in
   let typ =
     match inputs with
@@ -69,7 +68,7 @@ let check_examples (examples: (example * expr Ctx.t) list) : bool =
              List.exists 
                examples
                ~f:(fun ((lhs', rhs'), vctx') -> 
-                   Ctx.equal equal_expr vctx vctx' && lhs = lhs' && rhs <> rhs')))
+                   Ctx.equal Expr.equal vctx vctx' && lhs = lhs' && rhs <> rhs')))
 
 (* Map is an appropriate implementation when one of the inputs is a
    list and the output is a list of the same length. *)
@@ -504,7 +503,6 @@ let recurs_bodies (spec: spec) : spec list =
                     depth = hole.depth - 1;
                   } in
                 let target ctx =
-                  let open Op in
                   let base = Ctx.lookup_exn ctx base_name in
                   let recurs = Ctx.lookup_exn ctx recurs_name in
                   let expr =

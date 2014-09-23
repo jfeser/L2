@@ -279,8 +279,8 @@ let time_solve ((name, example_strs, init_strs), _) =
     let solutions_str =
       Util.Ctx.to_alist solutions
       |> List.map ~f:(fun (name, lambda) ->
-                      let lambda = Expr.normalize_expr lambda in
-                      "\t\t" ^ (Expr.expr_to_string (`Let (name, lambda, `Id "_"))))
+                      let lambda = Expr.normalize lambda in
+                      "\t\t" ^ (Expr.to_string (`Let (name, lambda, `Id "_"))))
       |> String.concat ~sep:"\n"
     in
     Printf.printf "Solved %s in %s.\n" name (Time.Span.to_short_string solve_time);

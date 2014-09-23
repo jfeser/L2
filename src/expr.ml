@@ -1,4 +1,5 @@
 open Core.Std
+open Printf
 
 open Ast
 open Util
@@ -18,27 +19,27 @@ module Op = struct
   let metadata_by_op = 
     let t = Util.parse_typ in
     [
-      Plus,  { typ = t "(num, num) -> num"; commut = true;  assoc = true;  str = "+"; };
-      Minus, { typ = t "(num, num) -> num"; commut = false; assoc = false; str = "-"; };
-      Mul,   { typ = t "(num, num) -> num"; commut = true;  assoc = true;  str = "*"; };
-      Div,   { typ = t "(num, num) -> num"; commut = false; assoc = false; str = "/"; };
-      Mod,   { typ = t "(num, num) -> num"; commut = false; assoc = false; str = "%"; };
-      Eq,    { typ = t "(a, a) -> bool"; commut = true;  assoc = false; str = "="; };
-      Neq,   { typ = t "(a, a) -> bool"; commut = true;  assoc = false; str = "!="; };
-      Lt,    { typ = t "(num, num) -> bool"; commut = false; assoc = false; str = "<"; };
-      Leq,   { typ = t "(num, num) -> bool"; commut = false; assoc = false; str = "<="; };
-      Gt,    { typ = t "(num, num) -> bool"; commut = false; assoc = false; str = ">"; };
-      Geq,   { typ = t "(num, num) -> bool"; commut = false; assoc = false; str = ">="; };
-      And,   { typ = t "(bool, bool) -> bool"; commut = true;  assoc = true;  str = "&"; };
-      Or,    { typ = t "(bool, bool) -> bool"; commut = true;  assoc = true;  str = "|"; };
-      Not,   { typ = t "(bool) -> bool"; commut = false; assoc = false; str = "~"; };
-      If,    { typ = t "(bool, a, a) -> a"; commut = false; assoc = false; str = "if"; };
-      Cons,  { typ = t "(a, list[a]) -> list[a]"; commut = false; assoc = false; str = "cons"; };
-      Car,   { typ = t "(list[a]) -> a"; commut = false; assoc = false; str = "car"; };
-      Cdr,   { typ = t "(list[a]) -> list[a]"; commut = false; assoc = false; str = "cdr"; };
-      Tree,  { typ = t "(a, list[tree[a]]) -> tree[a]"; commut = false; assoc = false; str = "tree"};
-      Children, { typ = t "(tree[a]) -> list[tree[a]]"; commut = false; assoc = false; str = "children" };
-      Value, { typ = t "(tree[a]) -> a"; commut = false; assoc = false; str = "value" };
+      Plus,     { typ = t "(num, num) -> num"             ; commut = true;  assoc = true;  str = "+"; };
+      Minus,    { typ = t "(num, num) -> num"             ; commut = false; assoc = false; str = "-"; };
+      Mul,      { typ = t "(num, num) -> num"             ; commut = true;  assoc = true;  str = "*"; };
+      Div,      { typ = t "(num, num) -> num"             ; commut = false; assoc = false; str = "/"; };
+      Mod,      { typ = t "(num, num) -> num"             ; commut = false; assoc = false; str = "%"; };
+      Eq,       { typ = t "(a, a) -> bool"                ; commut = true;  assoc = false; str = "="; };
+      Neq,      { typ = t "(a, a) -> bool"                ; commut = true;  assoc = false; str = "!="; };
+      Lt,       { typ = t "(num, num) -> bool"            ; commut = false; assoc = false; str = "<"; };
+      Leq,      { typ = t "(num, num) -> bool"            ; commut = false; assoc = false; str = "<="; };
+      Gt,       { typ = t "(num, num) -> bool"            ; commut = false; assoc = false; str = ">"; };
+      Geq,      { typ = t "(num, num) -> bool"            ; commut = false; assoc = false; str = ">="; };
+      And,      { typ = t "(bool, bool) -> bool"          ; commut = true;  assoc = true;  str = "&"; };
+      Or,       { typ = t "(bool, bool) -> bool"          ; commut = true;  assoc = true;  str = "|"; };
+      Not,      { typ = t "(bool) -> bool"                ; commut = false; assoc = false; str = "~"; };
+      If,       { typ = t "(bool, a, a) -> a"             ; commut = false; assoc = false; str = "if"; };
+      Cons,     { typ = t "(a, list[a]) -> list[a]"       ; commut = false; assoc = false; str = "cons"; };
+      Car,      { typ = t "(list[a]) -> a"                ; commut = false; assoc = false; str = "car"; };
+      Cdr,      { typ = t "(list[a]) -> list[a]"          ; commut = false; assoc = false; str = "cdr"; };
+      Tree,     { typ = t "(a, list[tree[a]]) -> tree[a]" ; commut = false; assoc = false; str = "tree"};
+      Children, { typ = t "(tree[a]) -> list[tree[a]]"    ; commut = false; assoc = false; str = "children" };
+      Value,    { typ = t "(tree[a]) -> a"                ; commut = false; assoc = false; str = "value" };
     ]
 
   let op_by_str = metadata_by_op
@@ -46,7 +47,7 @@ module Op = struct
                   |> String.Map.of_alist_exn
 
   (** Get operator record from operator. *)
-  let meta op = 
+  let meta op =
     let (_, meta) = List.find_exn metadata_by_op ~f:(fun (op', _) -> op = op') in
     meta
 
@@ -75,7 +76,7 @@ let rec size (e: expr) : int =
   | `Lambda (args, body) -> 1 + (List.length args) + size body
   | `Apply (a, l) -> 1 + size a + (sum (List.map l ~f:size))
 
-let normalize_expr (expr: expr) : expr = 
+let normalize (expr: expr) : expr = 
   let count = ref (-1) in
   let fresh_name () =
     let n = incr count; !count in
@@ -110,11 +111,33 @@ let normalize_expr (expr: expr) : expr =
        in `Lambda (args', norm ctx' body)
   in norm (Ctx.empty ()) expr
 
-(** Create an S-expression from the provided string list and brackets. *)
-let sexp lb strs rb = lb ^ (String.concat ~sep:" " strs) ^ rb
+(** Convert and expression to a string. *)
+let rec to_string (expr: expr) : string =
+  let list_to_string l =
+    String.concat ~sep:" " (List.map ~f:to_string l) 
+  in
+  match expr with
+  | `Num x -> Int.to_string x
+  | `Bool true -> "#t"
+  | `Bool false -> "#f"
+  | `Id x -> x
+  | `List x -> sprintf "[%s]" (list_to_string x)
+  | `Tree x -> Tree.to_string x ~str:to_string
+  | `Op (op, args) -> sprintf "(%s %s)" (Op.to_string op) (list_to_string args)
+  | `Let (x, y, z) -> sprintf "(let %s %s %s)" x (to_string y) (to_string z)
+  | `Apply (x, y) -> sprintf "(%s %s)" (to_string x) (list_to_string y)
+  | `Lambda (args, body) ->
+     sprintf "(lambda (%s) %s)" (String.concat ~sep:" " args) (to_string body)
+
+let equal e1 e2 = (compare_expr e1 e2) = 0
+
+(** Convert an example to a string. *)
+let example_to_string (ex: example) : string =
+  let e1, e2 = ex in
+  sprintf "%s -> %s" (to_string e1) (to_string e2)
 
 (** Convert a type to a string. *)
-let rec typ_to_string typ =
+let rec typ_to_string (typ: typ) : string =
   let tlist_str typs =
     typs |> List.map ~f:typ_to_string |> String.concat ~sep:", "
   in
@@ -124,30 +147,6 @@ let rec typ_to_string typ =
   | Var_t {contents = Free (id, _)} -> "ft" ^ (Int.to_string id)
   | Var_t {contents = Quant name} -> name
   | Var_t {contents = Link typ'} -> typ_to_string typ'
-  | App_t (id, args) -> 
-     Printf.sprintf "%s[%s]" id (tlist_str args)
-  | Arrow_t ([arg], ret) -> 
-     Printf.sprintf "(%s -> %s)" (typ_to_string arg) (typ_to_string ret)
-  | Arrow_t (args, ret) -> 
-     Printf.sprintf "((%s) -> %s)" (tlist_str args) (typ_to_string ret)
-
-(** Convert and expression to a string. *)
-let rec expr_to_string (expr: expr) : string =
-  let str_all l = List.map ~f:expr_to_string l in
-  match expr with
-  | `Num x  -> Int.to_string x
-  | `Bool true -> "#t"
-  | `Bool false -> "#f"
-  | `List x -> sexp "[" (List.map ~f:expr_to_string x) "]"
-  | `Tree x -> Tree.to_string x ~str:expr_to_string
-  | `Id x -> x
-  | `Op (op, args) -> sexp "(" ((Op.to_string op)::(str_all args)) ")"
-  | `Let (x, y, z) -> sexp "(" ["let"; x; expr_to_string y; expr_to_string z] ")"
-  | `Apply (x, y)  -> sexp "(" ((expr_to_string x)::(str_all y)) ")"
-  | `Lambda (args, body) -> sexp "(" ["lambda"; sexp "(" args ")"; expr_to_string body] ")"
-
-let example_to_string (ex: example) : string =
-  let e1, e2 = ex in
-  (expr_to_string e1) ^ " -> " ^ (expr_to_string e2)
-
-let equal_expr e1 e2 = (compare_expr e1 e2) = 0
+  | App_t (id, args) -> sprintf "%s[%s]" id (tlist_str args)
+  | Arrow_t ([arg], ret) -> sprintf "(%s -> %s)" (typ_to_string arg) (typ_to_string ret)
+  | Arrow_t (args, ret) -> sprintf "((%s) -> %s)" (tlist_str args) (typ_to_string ret)
