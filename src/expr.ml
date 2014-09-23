@@ -81,7 +81,8 @@ let normalize_expr (expr: expr) : expr =
     let n = incr count; !count in
     let prefix = Char.of_int_exn ((n mod 26) + 97) in
     let suffix = if n >= 26 then Int.to_string ((n - 26) mod 26) else "" in
-    Printf.sprintf "%c%s" prefix suffix in
+    Printf.sprintf "%c%s" prefix suffix
+  in
   let rec norm ctx e =
     let norm_all = List.map ~f:(norm ctx) in
     match e with

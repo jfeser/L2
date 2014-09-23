@@ -93,31 +93,3 @@ type expr =
 
 type example = expr * expr with compare, sexp
 type constr = expr * (id list)
-
-let op_of_string str =
-  let str_to_op = [  
-    "+", Plus;
-    "-", Minus;
-    "*", Mul;
-    "/", Div;
-    "%", Mod;
-    "=", Eq;
-    "!=", Neq;
-    "<", Lt;
-    "<=", Leq;
-    ">", Gt;
-    ">=", Geq;
-    "&", And;
-    "|", Or;
-    "~", Not;
-    "if", If;
-    "cons", Cons;
-    "car", Car;
-    "cdr", Cdr;
-    "tree", Tree;
-    "children", Children;
-    "value", Value;
-  ] in
-  match List.find str_to_op ~f:(fun (str', _) -> str = str') with
-  | Some (_, op) -> Some op
-  | None -> None

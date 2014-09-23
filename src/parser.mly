@@ -57,11 +57,35 @@ lambda_body:
  | LAMBDA; args = sexp(list(ID)); body = expr; { `Lambda (args, body) }
 
 call_body:
- | f = expr; args = list(expr); { match f with
-                                  | `Id f_id -> (match op_of_string f_id with
-                                                 | Some op -> `Op (op, args)
-                                                 | None -> `Apply (f, args))
-                                  | _ -> `Apply (f, args) }
+ | f = expr; args = list(expr); 
+   { 
+     match f with
+     | `Id f_id -> 
+        (match f_id with
+         | "+"        -> `Op (Plus, args)
+         | "-"        -> `Op (Minus, args)
+         | "*"        -> `Op (Mul, args)
+         | "/"        -> `Op (Div, args)
+         | "%"        -> `Op (Mod, args)
+         | "="        -> `Op (Eq, args)
+         | "!="       -> `Op (Neq, args)
+         | "<"        -> `Op (Lt, args)
+         | "<="       -> `Op (Leq, args)
+         | ">"        -> `Op (Gt, args)
+         | ">="       -> `Op (Geq, args)
+         | "&"        -> `Op (And, args)
+         | "|"        -> `Op (Or, args)
+         | "~"        -> `Op (Not, args)
+         | "if"       -> `Op (If, args)
+         | "cons"     -> `Op (Cons, args)
+         | "car"      -> `Op (Car, args)
+         | "cdr"      -> `Op (Cdr, args)
+         | "tree"     -> `Op (Tree, args)
+         | "children" -> `Op (Children, args)
+         | "value"    -> `Op (Value, args)
+         | _          -> `Apply (f, args))
+     | _ -> `Apply (f, args) 
+   }
 
 constr:
  | LPAREN; FORALL; vars = sexp(list(ID)); body = expr; RPAREN { (body, vars) }
