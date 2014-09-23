@@ -15,6 +15,54 @@ module IntListSet = Set.Make(struct
                               let t_of_sexp = List.t_of_sexp Int.t_of_sexp
                             end)
 
+module SMap = Map.Make(String)
+module Ctx = struct
+  type 'a t = 'a SMap.t ref
+  exception UnboundError of string
+
+  (** Return an empty context. *)
+  let empty () : 'a t = ref SMap.empty
+
+  (** Look up an id in a context. *)
+  let lookup ctx id = SMap.find !ctx id
+  let lookup_exn ctx id = match lookup ctx id with
+    | Some v -> v
+    | None -> raise (UnboundError id)
+
+  (** Bind a type or value to an id, returning a new context. *)
+  let bind ctx id data = ref (SMap.add !ctx ~key:id ~data:data)
+  let bind_alist ctx alist = 
+    List.fold alist ~init:ctx ~f:(fun ctx' (id, data) -> bind ctx' id data)
+
+  (** Remove a binding from a context, returning a new context. *)
+  let unbind ctx id = ref (SMap.remove !ctx id)
+
+  (** Bind a type or value to an id, updating the context in place. *)
+  let update ctx id data = ctx := SMap.add !ctx ~key:id ~data:data
+
+  (** Remove a binding from a context, updating the context in place. *)
+  let remove ctx id = ctx := SMap.remove !ctx id
+
+  let merge c1 c2 ~f:f = ref (SMap.merge !c1 !c2 ~f:f)
+  let map ctx ~f:f = ref (SMap.map !ctx ~f:f)
+  let mapi ctx ~f:f = ref (SMap.mapi !ctx ~f:f)
+  let filter ctx ~f:f = ref (SMap.filter !ctx ~f:f)
+  let filter_mapi ctx ~f:f = ref (SMap.filter_mapi !ctx ~f:f)
+
+  let equal cmp c1 c2 = SMap.equal cmp !c1 !c2
+
+  let keys ctx = SMap.keys !ctx
+
+  let of_alist alist = ref (SMap.of_alist alist)
+  let of_alist_exn alist = ref (SMap.of_alist_exn alist)
+  let to_alist ctx = SMap.to_alist !ctx
+  let to_string ctx str =
+    to_alist ctx
+    |> List.map ~f:(fun (key, value) -> key ^ ": " ^ (str value))
+    |> String.concat ~sep:", "
+    |> fun s -> "{ " ^ s ^ " }"
+end
+
 let partition n : int list list =
   let map_range a b f = List.map (List.range a b) ~f:f in
   let add_to_partition x p = List.sort ~cmp:Int.compare (p @ [x]) in

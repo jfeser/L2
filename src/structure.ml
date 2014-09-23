@@ -1,5 +1,7 @@
 open Core.Std
+
 open Ast
+open Expr
 open Infer
 open Util
 

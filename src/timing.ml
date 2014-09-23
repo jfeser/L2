@@ -44,10 +44,16 @@ let catamorphic_solve_testcases =
              ], ["0"]),
     "";
 
-    (* ("flatten", ["(f {}) -> []"; *)
-    (*              "(f {1}) -> [1]"; *)
-    (*              "(f {1 {2} {3}}) -> [1 2 3]"; *)
-    (*             ], []), *)
+    (* ("flatten", [ *)
+    (*     "(join []) -> []"; *)
+    (*     "(join [[] [1 0]]) -> [1 0]"; *)
+    (*     "(join [[1 0] []]) -> [1 0]"; *)
+    (*     "(join [[1 0] [2 3] [6] [4 5]]) -> [1 0 2 3 6 4 5]"; *)
+
+    (*     "(flatten {}) -> []"; *)
+    (*     "(flatten {1}) -> [1]"; *)
+    (*     "(flatten {1 {2} {3}}) -> [1 2 3]"; *)
+    (*   ], []), *)
     (* ""; *)
 
     ("add", ["(f [] 1) -> []";
@@ -271,10 +277,10 @@ let time_solve ((name, example_strs, init_strs), _) =
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
     let solutions_str =
-      Ast.Ctx.to_alist solutions
+      Util.Ctx.to_alist solutions
       |> List.map ~f:(fun (name, lambda) ->
-                      let lambda = Ast.normalize_expr lambda in
-                      "\t\t" ^ (Ast.expr_to_string (`Let (name, lambda, `Id "_"))))
+                      let lambda = Expr.normalize_expr lambda in
+                      "\t\t" ^ (Expr.expr_to_string (`Let (name, lambda, `Id "_"))))
       |> String.concat ~sep:"\n"
     in
     Printf.printf "Solved %s in %s.\n" name (Time.Span.to_short_string solve_time);

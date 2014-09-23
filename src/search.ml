@@ -1,7 +1,8 @@
 open Core.Std
 open Printf
-open Ast
 
+open Ast
+open Expr
 open Infer
 open Structure
 open Util

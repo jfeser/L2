@@ -1,6 +1,9 @@
 open Core.Std
 open Core.Option
+
 open Ast
+open Expr
+open Util
 
 exception BadExpression
 

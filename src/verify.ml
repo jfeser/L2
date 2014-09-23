@@ -1,18 +1,14 @@
 open Core.Std
+
 open Ast
-open Eval
-open Infer
-
-exception VerifyError of string
-
-let verify_error str = raise @@ VerifyError str
+open Util
 
 type status = 
   | Invalid
   | Valid
   | Error
 
-type typed_constr = typed_expr * typed_id list
+(* type typed_constr = typed_expr * typed_id list *)
 
 (* let typed_constr constr = *)
 (*   let body, vars = constr in *)
@@ -128,10 +124,10 @@ let verify_example ?(ctx=Ctx.empty ())
   let input, result = example in
   let eval expr = Eval.eval ~recursion_limit:limit ctx expr in
   (try (eval (target input)) = (eval (target result)) with
-   | RuntimeError msg ->
+   | Eval.RuntimeError msg ->
       (* printf "Runtime error \"%s\" in %s\n" msg (expr_to_string (target input)); *) false
-   | Ast.Ctx.UnboundError name ->
-      printf "Unbound %s in %s\n" name (expr_to_string (target input)); false)
+   | Ctx.UnboundError name ->
+      printf "Unbound %s in %s\n" name (Expr.expr_to_string (target input)); false)
 
 let verify_examples ?(ctx=Ctx.empty ())
                     ?(limit=100)

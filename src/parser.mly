@@ -58,8 +58,9 @@ lambda_body:
 
 call_body:
  | f = expr; args = list(expr); { match f with
-                                  | `Id f_id -> (try let op = Op.of_string f_id in `Op (op, args)
-                                                 with Not_found -> `Apply (f, args))
+                                  | `Id f_id -> (match op_of_string f_id with
+                                                 | Some op -> `Op (op, args)
+                                                 | None -> `Apply (f, args))
                                   | _ -> `Apply (f, args) }
 
 constr:

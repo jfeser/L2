@@ -1,5 +1,7 @@
 open Core.Std
 open Ast
+open Expr
+open Util
 
 (** Exceptions that can be thrown by the evaluation and type-checking functions. *)
 exception RuntimeError of string
@@ -24,7 +26,7 @@ let rec value_to_string v =
 (** Raise a bad argument error. *)
 let arg_error op args =
   raise (RuntimeError (Printf.sprintf "Bad arguments to %s %s."
-                                      (Ast.Op.to_string op)
+                                      (Op.to_string op)
                                       (sexp "(" (List.map ~f:expr_to_string args) ")")))
 
 (** Raise a wrong # of arguments error. *)
@@ -97,7 +99,6 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
               | None -> argn_error @@ expr_to_string body)
           | _ -> raise @@ RuntimeError (sprintf "Tried to apply a non-function: %s" (expr_to_string expr)))
       | `Op (op, args) ->
-         let open Op in
          (match op with
           | Not -> (match ev_all args with
                     | [`Bool x] -> `Bool (not x)

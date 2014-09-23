@@ -1,6 +1,7 @@
 open Core.Std
 open Printf
 open Ast
+open Expr
 open Util
 
 type typed_id = id * typ
@@ -129,7 +130,7 @@ let rec unify_exn t1 t2 =
         | None -> error ())
     | _ -> error ()
 
-let unify t1 t2 = try Some (unify_exn t1 t2) with TypeError _ -> None
+let unify t1 t2 = try Some (unify_exn t1 t2; t1) with TypeError _ -> None
 let is_unifiable t1 t2 = Option.is_some (unify (instantiate 0 t1) (instantiate 0 t2))
 
 let typ_of_expr = function
