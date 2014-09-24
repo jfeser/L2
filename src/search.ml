@@ -149,9 +149,9 @@ let rec enumerate ?(ops=Expr.Op.all) memo init typ : typed_expr Stream.matrix =
         when instantiating the argument types for equals: (a, a) ->
         bool, both a's should map to the same free type. *)
         let arg_typs' =
-      let ctx = Ctx.empty () in
+          let ctx = Ctx.empty () in
           List.map arg_typs ~f:(instantiate ~ctx:ctx 0)
-      in
+        in
         List.split_n arg_typs' (List.length prev_args)
       in
 
@@ -171,7 +171,7 @@ let rec enumerate ?(ops=Expr.Op.all) memo init typ : typed_expr Stream.matrix =
          created until the prefix classes are exhausted. *)
       slazy (fun () -> 
              map_matrix (MemoStream.get memo current_typ' (fun () -> enumerate memo init current_typ'))
-                                  ~f:(fun arg -> prev_args @ [arg]))
+                        ~f:(fun arg -> prev_args @ [arg]))
     in
     match arg_typs with
     | x::xs -> (List.fold_left xs ~init:choose ~f:(fun acc _ -> compose acc choose)) []
@@ -269,7 +269,7 @@ let solve_single ?(init=[])
                                              @ (filter_bodies parent)
                                              @ (fold_bodies parent)
                                              @ (foldt_bodies parent)
-                                             (* @ (recurs_bodies parent) *)
+                                             @ (recurs_bodies parent)
                                             )
        in
        specs @ (generate_specs child_specs)

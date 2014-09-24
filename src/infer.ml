@@ -65,7 +65,7 @@ let rec occurs id level typ = match typ with
   | Var_t {contents = Quant _} -> ()
   | Var_t ({contents = Free (id', level')} as typ') ->
      if id' = id
-     then raise @@ TypeError (sprintf "Failed occurs check: t%d in %s" id (typ_to_string typ))
+     then raise @@ TypeError (sprintf "Failed occurs check: ft%d in %s" id (typ_to_string typ))
      else 
        (* The other type is being claimed by the let binding, if it is
        owned by a lower let. This prevents the free variable from
@@ -97,8 +97,7 @@ let instantiate ?ctx:(ctx = Ctx.empty ()) level typ =
     | Var_t {contents = Quant name} ->
        (match Ctx.lookup ctx name with
         | Some typ' -> typ'
-        | None -> let typ' = fresh_free level in
-                  Ctx.update ctx name typ'; typ')
+        | None -> let typ' = fresh_free level in Ctx.update ctx name typ'; typ')
     | Var_t {contents = Link typ'} -> inst ctx typ'
     | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(inst ctx) args, inst ctx ret)
     | App_t (const, args) -> App_t (const, List.map ~f:(inst ctx) args)

@@ -1,6 +1,8 @@
 open Core.Std
 open OUnit2
+
 open Ast
+open Util
 
 let identity (x: 'a) : 'a = x
 
@@ -10,7 +12,7 @@ let cmp_partition a b =
                               |> List.sort ~cmp:(List.compare ~cmp:Int.compare) in
   (sort_partition_list a) = (sort_partition_list b)
 
-let m_expr_to_string = function Some e -> expr_to_string e | None -> "None"
+let m_expr_to_string = function Some e -> Expr.to_string e | None -> "None"
 
 (* let vals_to_string (res:(value list * value) list) = *)
 (*   let val_to_string (v: value list * value) = *)
@@ -38,10 +40,9 @@ let make_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name case
 (*               cases) *)
 
 let test_parse_expr =
-  let open Op in
   let open Tree in
   make_tests ~in_f:Util.parse_expr ~out_f:identity
-              ~in_str:identity ~out_str:expr_to_string ~res_str:expr_to_string
+              ~in_str:identity ~out_str:Expr.to_string ~res_str:Expr.to_string
               "parse_expr"
               [ "1", `Num 1;
                 "#t", `Bool true;
@@ -78,14 +79,14 @@ let test_parse_expr =
 
 let test_parse_typ =
   make_tests ~in_f:Util.parse_typ ~out_f:identity
-              ~in_str:identity ~out_str:typ_to_string ~res_str:typ_to_string
+              ~in_str:identity ~out_str:Expr.typ_to_string ~res_str:Expr.typ_to_string
               "parse_typ"
               [ "num", Const_t Num_t;
               ]
 
 let test_parse_example =
   make_tests ~in_f:Util.parse_example ~out_f:identity
-              ~in_str:identity ~out_str:example_to_string ~res_str:example_to_string
+              ~in_str:identity ~out_str:Expr.example_to_string ~res_str:Expr.example_to_string
               "parse_example"
               [ "(f 1) -> 1", ((`Apply (`Id "f", [`Num 1])), `Num 1);
                 "(f (f 1)) -> 1", ((`Apply (`Id "f", [`Apply (`Id "f", [`Num 1])])), `Num 1);
@@ -156,6 +157,9 @@ let test_eval =
                 "(let max (lambda (x) (foldl x (lambda (a e) (if (> e a) e a)) 0)) (max [0 1 5 9]))", `Num 9;
                 "(let max (lambda (x) (foldl x (lambda (a e) (if (> e a) e a)) 0)) (let dropmax (lambda (y) (filter y (lambda (z) (< z (max y))))) (dropmax [1 5 0 9])))",
                 `List [`Num 1; `Num 5; `Num 0];
+                "(let member (lambda (l x) (foldl l (lambda (a e ) (| (= e x) a)) #f)) (member [] 0))", `Bool false;
+                "(let member (lambda (l x) (foldl l (lambda (a e ) (| (= e x) a)) #f)) (member [0] 0))", `Bool true;
+                "(let member (lambda (l x) (foldl l (lambda (a e ) (| (= e x) a)) #f)) (member [0 1 ] 0))", `Bool true;
               ]
 
 let test_typeof =
@@ -163,7 +167,7 @@ let test_typeof =
     ~in_f:(fun str -> Util.parse_expr str |> (Infer.infer (Ctx.empty ())) |> Infer.typ_of_expr |> Infer.normalize)
     ~out_f:(fun str -> Util.parse_typ str |> Infer.normalize)
     ~in_str:identity ~out_str:identity
-    ~res_str:typ_to_string
+    ~res_str:Expr.typ_to_string
     "typeof"
     [ 
       "1", "num";
@@ -260,7 +264,7 @@ let test_rewrite =
 
 let test_normalize =
   make_tests ~in_f:(fun str -> str |> Util.parse_expr |> Rewrite.normalize) ~out_f:Util.parse_expr
-              ~in_str:identity ~out_str:identity ~res_str:expr_to_string
+              ~in_str:identity ~out_str:identity ~res_str:Expr.to_string
     "normalize"
     [ "(+ 1 (+ 2 3))", "(+ 1 2 3)";
       "(+ (+ 1 2) (+ 3 4))", "(+ 1 2 3 4)";
@@ -271,7 +275,7 @@ let test_normalize =
 
 let test_denormalize =
   make_tests ~in_f:(fun str -> str |> Util.parse_expr |> Rewrite.denormalize) ~out_f:Util.parse_expr
-              ~in_str:identity ~out_str:identity ~res_str:expr_to_string
+              ~in_str:identity ~out_str:identity ~res_str:Expr.to_string
     "normalize"
     [ "(+ 1 2 3)", "(+ 1 (+ 2 3))";
       "(+ 1 2 3 4)", "(+ 1 (+ 2 (+ 3 4)))";
@@ -306,7 +310,7 @@ let test_m_partition =
 (*   make_tests ~in_f:(fun exs -> exs |> List.map ~f:Util.parse_example |> Search.signature |> Infer.normalize) *)
 (*              ~out_f:Util.parse_typ *)
 (*              ~in_str:(fun exs -> "[" ^ (String.concat ~sep:"; " exs) ^ "]") *)
-(*              ~out_str:identity ~res_str:typ_to_string *)
+(*              ~out_str:identity ~res_str:Expr.typ_to_string *)
 (*              "signature" *)
 (*              [ ["(f 1) -> 1"; "(f 2) -> 2"], "num -> num"; *)
 (*                ["(f #f 0) -> 1"; "(f #t 5) -> 2"], "(bool, num) -> num"; *)
@@ -331,7 +335,7 @@ let test_m_partition =
 (* let test_expand = *)
 (*   make_tests ~in_f:(fun e -> e |> Util.parse_expr |> Verify.expand (Ctx.empty ())) *)
 (*              ~out_f:Util.parse_expr *)
-(*              ~in_str:identity ~out_str:identity ~res_str:expr_to_string *)
+(*              ~in_str:identity ~out_str:identity ~res_str:Expr.to_string *)
 (*              "expand" *)
 (*              [ *)
 (*                "(let x 2 (+ x 1))", "(+ 2 1)"; *)
@@ -378,7 +382,7 @@ let test_m_partition =
 (*     ~out_f:Util.parse_expr *)
 (*     ~in_str:(fun (f_str, exs) -> f_str ^ " " ^ (vals_to_string exs)) *)
 (*     ~out_str:identity *)
-(*     ~res_str:expr_to_string *)
+(*     ~res_str:Expr.to_string *)
 (*     "sat_solver" *)
 (*     [ *)
 (*       ("(lambda (x:num y:num):num (+ (+ x y) z))", [[`Num 1; `Num 2], `Num 3]), "(+ (+ x y) 0)"; *)
@@ -396,7 +400,7 @@ let test_m_partition =
 (*     ~in_str:(fun (f_str, constr_strs, exs) -> *)
 (*              Printf.sprintf "%s, %s, %s" f_str (String.concat ~sep:" " constr_strs) (vals_to_string exs)) *)
 (*     ~out_str:identity *)
-(*     ~res_str:expr_to_string *)
+(*     ~res_str:Expr.to_string *)
 (*     "symb_solver" *)
 (*     [ *)
 (*       ("(lambda (x:num y:num):num (+ (+ x y) z))", [], [[`Num 1; `Num 2], `Num 3]), *)
