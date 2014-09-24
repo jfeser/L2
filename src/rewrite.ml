@@ -177,6 +177,8 @@ let rewrite (expr: expr) : expr option =
                   | [x; y] when x = y -> x
                   | [`Bool true; x] | [x; `Bool true] -> x
                   | [`Bool false; _] | [_; `Bool false] -> `Bool false
+                  | [x; `Op (And, [y; z])] when x = y -> `Op (And, [x; z])
+                  | [x; `Op (And, [y; z])] when x = z -> `Op (And, [x; y])
                   | [x; `Op (Not, [y])] | [`Op (Not, [y]); x] when x = y -> `Bool false
                   (* DeMorgan's law. *)
                   | [`Op (Not, [x]); `Op (Not, [y])] -> `Op (Not, [`Op (Or, [x; y])])
@@ -187,11 +189,15 @@ let rewrite (expr: expr) : expr option =
                  | [x; y] when x = y -> x
                  | [`Bool false; x] | [x; `Bool false] -> x
                  | [`Bool true; _] | [_; `Bool true] -> `Bool true
+                 | [x; `Op (Or, [y; z])] when x = y -> `Op (Or, [x; z])
+                 | [x; `Op (Or, [y; z])] when x = z -> `Op (Or, [x; y])
                  | [x; `Op (Not, [y])] | [`Op (Not, [y]); x] when x = y -> `Bool true
                  | [`Op (Not, [x]); `Op (Not, [y])] -> `Op (Not, [`Op (And, [x; y])])
                  | [`Op (And, [a; b]); `Op (And, [c; d])] when a = c -> `Op (And, [a; `Op (Or, [b; d])])
                  | _ -> `Op (op, args))
         | Not -> (match args with
+                  | [`Bool true] -> `Bool false
+                  | [`Bool false] -> `Bool true
                   | [`Op (Not, [x])] -> x
                   | [`Op (Lt, [x; y])] -> `Op (Geq, [x; y])
                   | [`Op (Gt, [x; y])] -> `Op (Leq, [x; y])
