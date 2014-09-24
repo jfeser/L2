@@ -497,7 +497,7 @@ let recurs_bodies (spec: spec) : spec list =
                 let recurs_hole =
                   { examples = recurs_examples examples recurs_name input_name;
                     signature = Arrow_t ([input_elem_typ; App_t ("list", [input_elem_typ])], res_typ);
-                    tctx = Ctx.bind (Ctx.unbind tctx input_name) name hole.signature;
+                    tctx = Ctx.bind (Ctx.unbind tctx input_name) recurs_name hole.signature;
                     depth = hole.depth - 1;
                   } in
                 let target ctx =
