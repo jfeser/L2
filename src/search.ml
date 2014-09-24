@@ -139,26 +139,38 @@ let rec enumerate ?(ops=Expr.Op.all) memo init typ : typed_expr Stream.matrix =
   (* Generate an argument list matrix that conforms to the provided list of types. *)
   let args_matrix (arg_typs: typ list) =
     let choose (prev_args: typed_expr list) : (typed_expr list) matrix =
-      (* Determine the type of the current argument from the types of
-      the already selected arguments and the provided argument
-      types. This handles the case where multiple arguments use the
-      same polymorphic type variable. *)
+      (* Split the argument type list into the types of the arguments
+      that have already been selected and the head of the list of
+      remaining types (which will be the type of the current
+      argument). *)
+      let prev_arg_typs, (current_typ::_) =
+        (* Instantiate the argument types in the same context. Free
+        type variables should be shared across arguments. For example,
+        when instantiating the argument types for equals: (a, a) ->
+        bool, both a's should map to the same free type. *)
+        let arg_typs' =
       let ctx = Ctx.empty () in
-      let prev_typs, (typ'::_) =
-        List.split_n (List.map arg_typs ~f:(instantiate ~ctx:ctx (-1))) (List.length prev_args)
+          List.map arg_typs ~f:(instantiate ~ctx:ctx 0)
       in
-      List.iter2_exn prev_args prev_typs
-                     ~f:(fun parg ptyp ->
-                         (* printf "%s %s %s\n" *)
-                         (*        (Expr.to_string (expr_of_texpr parg))  *)
-                         (*        (typ_to_string (typ_of_expr parg))  *)
-                         (*        (typ_to_string ptyp); *)
-                         unify_exn (instantiate (-1) (typ_of_expr parg) ~ctx:ctx) ptyp);
-      let typ = generalize (-1) typ' in
+        List.split_n arg_typs' (List.length prev_args)
+      in
+
+      (* Unify the types of the previous arguments with the actual
+      selected types. By the size effects of unify, this should fill
+      in any type variables in the current type that have already been
+      bound. *)
+      let prev_selected_typs =
+        let ctx = Ctx.empty () in
+        List.map prev_args ~f:(fun arg -> instantiate ~ctx:ctx 0 (typ_of_expr arg))
+      in
+      List.iter2_exn prev_arg_typs prev_selected_typs ~f:unify_exn;
+
+      let current_typ' = normalize (generalize (-1) current_typ) in
 
       (* Generate the argument matrix lazily so that it will not be
          created until the prefix classes are exhausted. *)
-      slazy (fun () -> map_matrix (MemoStream.get memo typ (fun () -> enumerate memo init typ))
+      slazy (fun () -> 
+             map_matrix (MemoStream.get memo current_typ' (fun () -> enumerate memo init current_typ'))
                                   ~f:(fun arg -> prev_args @ [arg]))
     in
     match arg_typs with
