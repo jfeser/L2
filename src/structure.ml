@@ -109,13 +109,12 @@ let map_bodies (spec: spec) : spec list =
                                         match Ctx.lookup_exn vctx name, result with
                                         | `Tree x, `Tree y -> Tree.equal x y ~cmp:(fun _ _ -> true)
                                         | `Apply _, `Tree _ -> true
-                                        | _ -> failwith "Examples do not have a consistent type.")
+                                        | _ -> false)
                        && List.exists examples
                                       ~f:(fun ((_, result), vctx) ->
                                           match (Ctx.lookup_exn vctx name), result with
                                           | `Tree x, `Tree y -> x <> y
-                                          | `Apply _, `List _ -> false
-                                          | _ -> failwith "Examples do not have a consistent type.")
+                                          | _ -> false)
                     then Some elem_typ else None
                  | _ -> None)
            |> Ctx.to_alist
@@ -132,13 +131,12 @@ let map_bodies (spec: spec) : spec list =
                                         match Ctx.lookup_exn vctx name, result with
                                         | `List x, `List y -> List.length x = List.length y
                                         | `Apply _, `List _ -> true
-                                        | _ -> failwith "Examples do not have a consistent type.")
+                                        | _ -> false)
                        && List.exists examples
                                       ~f:(fun ((_, result), vctx) ->
                                           match (Ctx.lookup_exn vctx name), result with
                                           | `List x, `List y -> x <> y
-                                          | `Apply _, `List _ -> false
-                                          | _ -> failwith "Examples do not have a consistent type.")
+                                          | _ -> false)
                     then Some elem_typ else None
                  | _ -> None)
            |> Ctx.to_alist
