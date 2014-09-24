@@ -42,6 +42,15 @@ module Op = struct
       Value,    { typ = t "(tree[a]) -> a"                ; commut = false; assoc = false; str = "value" };
     ]
 
+  let all = List.map metadata_by_op ~f:(fun (op, _) -> op)
+  let control = [ If; ]
+  let cmp = [ Eq; Neq; Lt; Leq; Gt; Geq; ]
+  let logic = [ And; Or; Not; ]
+  let list = [ Cons; Car; Cdr; ]
+  let tree = [ Tree; Children; Value; ]
+  let simple_arith = [ Plus; Minus; ]
+  let arith = [ Plus; Minus; Mul; Div; Mod; ]
+
   let op_by_str = metadata_by_op
                   |> List.map ~f:(fun (op, meta) -> meta.str, op)
                   |> String.Map.of_alist_exn

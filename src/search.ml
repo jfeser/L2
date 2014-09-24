@@ -114,7 +114,7 @@ module MemoStream = struct
              if sc = !(mstream.index) then Some (Int.Table.find_exn mstream.head sc) else None))
 end
 
-let rec enumerate memo init typ : typed_expr Stream.matrix =
+let rec enumerate ?(ops=Expr.Op.all) memo init typ : typed_expr Stream.matrix =
   let open Stream in
   let arrow_error () = failwith "Operator is not of type Arrow_t." in
 
@@ -169,23 +169,20 @@ let rec enumerate memo init typ : typed_expr Stream.matrix =
   let callable_matrix apply_callable callable_typ = match callable_typ with
     | Arrow_t (arg_typs, ret_typ) ->
        let prefix = repeat_n (List.length arg_typs) [] in
-       let matrix =
-         slazy (fun () -> map_matrix (args_matrix arg_typs) 
-                                     ~f:(fun args -> apply_callable args ret_typ))
-       in
+       let matrix = slazy (fun () -> map_matrix (args_matrix arg_typs) ~f:(apply_callable ret_typ)) in
        concat prefix matrix
     | _ -> arrow_error ()
   in
   let op_matrix op op_typ =
-    callable_matrix (fun args ret_typ -> Op ((op, args), ret_typ)) op_typ
+    callable_matrix (fun ret_typ args -> Op ((op, args), ret_typ)) op_typ
   in
   let apply_matrix func func_typ =
-    callable_matrix (fun args ret_typ -> Apply ((func, args), ret_typ)) func_typ
+    callable_matrix (fun ret_typ args -> Apply ((func, args), ret_typ)) func_typ
   in
 
   (* The op stream is infinite, so it needs more careful handling. *)
   let op_matrices =
-    Expr.Op.metadata_by_op
+    List.map ops ~f:(fun op -> op, Expr.Op.meta op)
     (* Filter all operators that can return the correct type. *)
     |> List.filter ~f:(fun (_, meta) ->
                        match meta.Expr.Op.typ with
