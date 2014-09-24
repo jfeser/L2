@@ -50,7 +50,9 @@ let signature ?(ctx=Ctx.empty ()) (examples: example list) : typ =
   List.iter inputs ~f:(fun input -> let _ = infer ctx input in ()); typ
 
 let vctx_of_example (example: example) (arg_names: string list) : expr Ctx.t =
-  match example with (`Apply (_, inputs)), _ -> List.zip_exn arg_names inputs |> Ctx.of_alist_exn
+  match example with 
+  | (`Apply (_, inputs)), _ -> List.zip_exn arg_names inputs |> Ctx.of_alist_exn
+  | _ -> failwith (sprintf "Malformed example: %s" (Expr.example_to_string example))
 
 let ctx_merge outer_ctx inner_ctx =
   Ctx.merge outer_ctx inner_ctx 
