@@ -355,7 +355,9 @@ let solve_single ?(init=[])
      done;
      failwith "Exited solve loop without finding a solution.")
 
-let solve ?(init=[]) (examples: example list) : expr Ctx.t =
+let default_init = ["0"; "1"; "[]"; "#f";] |> List.map ~f:parse_expr
+
+let solve ?(init=default_init) (examples: example list) : expr Ctx.t =
   (* Split examples into separate functions. *)
   let func_examples =
     List.map examples 
