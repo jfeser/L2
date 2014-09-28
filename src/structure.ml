@@ -16,44 +16,6 @@ type spec = {
   holes: hole Ctx.t;
 }
 
-(** Extract the name of the target function from a list of examples. *)
-let get_target_name (examples: example list) : id =
-  let target_names =
-    List.map examples ~f:(fun ex -> match ex with
-                                    | (`Apply (`Id n, _)), _ -> n
-                                    | _ -> failwith "Malformed example.")
-  in
-  match target_names with
-  | [] -> failwith "Example list is empty."
-  | name::rest -> if List.for_all rest ~f:((=) name) then name
-                  else failwith "Multiple target names in example list."
-
-(** Infer a function signature from input/output examples. *)
-let signature ?(ctx=Ctx.empty ()) (examples: example list) : typ =
-  let inputs, results = List.unzip examples in
-  let res_typ =
-    match typ_of_expr (infer ctx (`List results)) with
-    | App_t ("list", [t]) -> t
-    | t -> failwith (sprintf "Unexpected result type: %s" (Expr.typ_to_string t))
-  in
-  let typ =
-    match inputs with
-    | (`Apply (_, args))::_ ->
-       let num_args = List.length args in
-       Arrow_t (List.range 0 num_args |> List.map ~f:(fun _ -> fresh_free 0), res_typ)
-    | _ -> failwith (sprintf "Malformed example inputs.")
-  in
-  let ctx =
-    let name = get_target_name examples in
-    Ctx.bind ctx name typ
-  in
-  List.iter inputs ~f:(fun input -> let _ = infer ctx input in ()); typ
-
-let vctx_of_example (example: example) (arg_names: string list) : expr Ctx.t =
-  match example with 
-  | (`Apply (_, inputs)), _ -> List.zip_exn arg_names inputs |> Ctx.of_alist_exn
-  | _ -> failwith (sprintf "Malformed example: %s" (Expr.example_to_string example))
-
 let ctx_merge outer_ctx inner_ctx =
   Ctx.merge outer_ctx inner_ctx 
             ~f:(fun ~key:_ value -> match value with
@@ -61,16 +23,6 @@ let ctx_merge outer_ctx inner_ctx =
                                     | `Left octx_v -> Some octx_v
                                     | `Right ictx_v -> Some ictx_v)
 
-let check_examples (examples: (example * expr Ctx.t) list) : bool =
-  (* Is there a pair of examples such that the outer contexts and LHSs
-  are equal, but the RHSs are not? *)
-  not (List.exists
-         examples
-         ~f:(fun ((lhs, rhs), vctx) ->
-             List.exists 
-               examples
-               ~f:(fun ((lhs', rhs'), vctx') -> 
-                   Ctx.equal Expr.equal vctx vctx' && lhs = lhs' && rhs <> rhs')))
 
 (* Map is an appropriate implementation when one of the inputs is a
    list and the output is a list of the same length. *)
@@ -87,7 +39,7 @@ let map_bodies (spec: spec) : spec list =
                            | _ -> [])
                           |> List.map ~f:(fun (i, o) -> map_example lambda_name i o, vctx'))
       |> List.dedup
-    in if check_examples ex then Some ex else None
+        in if Example.check ex then Some ex else None
   in
   let fill name hole =
     if hole.depth > 0 then
@@ -97,7 +49,8 @@ let map_bodies (spec: spec) : spec list =
          let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
          let tctx = ctx_merge hole.tctx (List.zip_exn arg_names arg_typs |> Ctx.of_alist_exn) in
          let examples =
-           List.map hole.examples ~f:(fun (ex, ovctx) -> ex, ctx_merge ovctx (vctx_of_example ex arg_names))
+               List.map hole.examples ~f:(fun (ex, ovctx) ->
+                                          ex, ctx_merge ovctx (Example.to_vctx ex arg_names))
          in
 
          let tree_args =
@@ -187,7 +140,7 @@ let filter_bodies (spec: spec) : spec list =
                              |> List.map ~f:(fun ex -> ex, vctx)
                           | _ -> [])
       |> List.dedup
-    in if check_examples ex then Some ex else None
+        in if Example.check ex then Some ex else None
   in
 
   let fill name hole =
@@ -197,7 +150,7 @@ let filter_bodies (spec: spec) : spec list =
          let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
          let tctx = ctx_merge hole.tctx (List.zip_exn arg_names arg_typs |> Ctx.of_alist_exn) in
          let examples =
-           List.map hole.examples ~f:(fun (ex, ovctx) -> ex, ctx_merge ovctx (vctx_of_example ex arg_names))
+               List.map hole.examples ~f:(fun (ex, ovctx) -> ex, ctx_merge ovctx (Example.to_vctx ex arg_names))
          in
 
          (* Select all list arguments which are a superset of the result
@@ -322,7 +275,7 @@ let fold_bodies (spec: spec) : spec list =
          let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
          let tctx = ctx_merge hole.tctx (List.zip_exn arg_names arg_typs |> Ctx.of_alist_exn) in
          let examples =
-           List.map hole.examples ~f:(fun (ex, ovctx) -> ex, ctx_merge ovctx (vctx_of_example ex arg_names))
+               List.map hole.examples ~f:(fun (ex, ovctx) -> ex, ctx_merge ovctx (Example.to_vctx ex arg_names))
          in
 
          (* Create a list of tuples (list name, list element type) from
@@ -399,7 +352,7 @@ let foldt_bodies (spec: spec) : spec list =
          let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
          let tctx = ctx_merge hole.tctx (List.zip_exn arg_names arg_typs |> Ctx.of_alist_exn) in
          let examples =
-           List.map hole.examples ~f:(fun (ex, ovctx) -> ex, ctx_merge ovctx (vctx_of_example ex arg_names))
+               List.map hole.examples ~f:(fun (ex, ovctx) -> ex, ctx_merge ovctx (Example.to_vctx ex arg_names))
          in
 
          let trees =
@@ -473,7 +426,7 @@ let recurs_bodies (spec: spec) : spec list =
          let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
          let tctx = ctx_merge hole.tctx (List.zip_exn arg_names arg_typs |> Ctx.of_alist_exn) in
          let examples =
-           List.map hole.examples ~f:(fun (ex, ovctx) -> ex, ctx_merge ovctx (vctx_of_example ex arg_names))
+               List.map hole.examples ~f:(fun (ex, ovctx) -> ex, ctx_merge ovctx (Example.to_vctx ex arg_names))
          in
 
          let lists =

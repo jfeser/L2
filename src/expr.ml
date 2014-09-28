@@ -140,10 +140,6 @@ let rec to_string (expr: t) : string =
   | `Lambda (args, body) ->
      sprintf "(lambda (%s) %s)" (String.concat ~sep:" " args) (to_string body)
 
-(** Convert an example to a string. *)
-let example_to_string (ex: example) : string =
-  let e1, e2 = ex in
-  sprintf "%s -> %s" (to_string e1) (to_string e2)
 let equal (e1: t) (e2: t) = (compare_expr e1 e2) = 0
 
 (** Convert a type to a string. *)

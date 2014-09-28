@@ -242,7 +242,7 @@ let solve_single ?(init=[])
                  ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
                  (examples: example list) =
   let initial_spec =
-    let target_name = get_target_name examples in
+    let target_name = Example.name examples in
     let target ctx expr =
       let body = Ctx.lookup_exn ctx target_name in
       `Let (target_name, body, expr)
@@ -251,7 +251,7 @@ let solve_single ?(init=[])
       holes = Ctx.of_alist_exn [
                   target_name, 
                   { examples = List.map examples ~f:(fun ex -> ex, Ctx.empty ());
-                    signature = signature examples;
+              signature = Example.signature examples;
                     tctx = Ctx.empty ();
                     depth = 2;
                   };
@@ -357,23 +357,13 @@ let solve_single ?(init=[])
 
 let solve ?(init=[]) (examples: example list) : expr Ctx.t =
   (* Split examples into separate functions. *)
-  let func_examples =
-    List.map examples 
-             ~f:(fun ex -> 
-                 match ex with
-                 | ((`Apply (`Id n, _)), _) -> n, ex
-                 | _ -> failwith (sprintf "Malformed example: %s" (Expr.example_to_string ex)))
-    |> List.group ~break:(fun (n1, _) (n2, _) -> n1 <> n2)
-    |> List.map ~f:(fun exs -> 
-                    let (name, _)::_ = exs in
-                    name, List.map exs ~f:Tuple.T2.get2)
-  in
+  let func_examples = Example.split examples in
 
   (* Check that each set of examples represents a function. *)
   if List.for_all func_examples
                   ~f:(fun (_, exs) ->
                       let exs' = List.map exs ~f:(fun ex -> ex, Ctx.empty ()) in
-                      check_examples exs')
+                      Example.check exs')
   then
     let ectx, _, _, _ =
       List.fold_left
