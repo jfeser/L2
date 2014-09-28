@@ -144,8 +144,9 @@ let solve_single ?(init=[])
       let body = Ctx.lookup_exn ctx target_name in
       `Let (target_name, body, expr)
     in
-    { target;
-      holes = Ctx.of_alist_exn [
+    { Spec.target;
+      Spec.holes =
+        Ctx.of_alist_exn [
                   target_name, 
                   { examples = List.map examples ~f:(fun ex -> ex, Ctx.empty ());
               signature = Example.signature examples;
@@ -156,17 +157,17 @@ let solve_single ?(init=[])
     }
   in
 
-  let rec generate_specs (specs: spec list) : spec list =
+  let rec generate_specs (specs: Spec.t list) : Spec.t list =
     match specs with
     | [] -> []
     | specs ->
        let child_specs = List.concat_map specs
                                          ~f:(fun parent ->
-                                             (map_bodies parent)
-                                             @ (filter_bodies parent)
-                                             @ (fold_bodies parent)
-                                             @ (foldt_bodies parent)
-                                             @ (recurs_bodies parent)
+                                             (Spec.map_bodies parent)
+                                             @ (Spec.filter_bodies parent)
+                                             @ (Spec.fold_bodies parent)
+                                             @ (Spec.foldt_bodies parent)
+                                             @ (Spec.recurs_bodies parent)
                                             )
        in
        specs @ (generate_specs child_specs)
@@ -214,7 +215,7 @@ let solve_single ?(init=[])
   in
 
   let solver_of_spec spec =
-    let ctx_matrix = match Ctx.to_alist spec.holes with
+    let ctx_matrix = match Ctx.to_alist spec.Spec.holes with
       | [] -> failwith "Specification has no holes."
       | (name, hole)::hs ->
          (List.fold_left hs
