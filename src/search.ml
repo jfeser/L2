@@ -6,116 +6,12 @@ open Infer
 open Structure
 open Util
 
-module Stream = struct
-  include Stream
-
-  type 'a stream = 'a t
-  type 'a matrix = ('a list) stream
-
-  (* Concatenate two streams together. The second stream will not be
-  inspected until the first stream is exhausted. *)
-  let concat s1 s2 =
-    from (fun _ ->
-          match peek s1 with
-          | Some _ -> Some (next s1)
-          | None -> (match peek s2 with
-                     | Some _ -> Some (next s2)
-                     | None -> None))
-
-  (* Map a function over a stream. *)
-  let map s ~f = from (fun _ -> try Some (f (next s)) with Failure -> None)
-
-  (* Map a function over a matrix. *)
-  let map_matrix s ~f = map s ~f:(List.map ~f:f)
-
-  (* Create an infinite stream of 'value'. *)
-  let repeat (value: 'a) : 'a stream = from (fun _ -> Some value)
-
-  (* Create a finite stream of 'value' of length 'n'. *)
-  let repeat_n (n: int) (value: 'a) : 'a stream =
-    List.range 0 n |> List.map ~f:(fun _ -> value) |> of_list
-
-  let trans : (('a stream) list -> ('a list) stream) = function
-    | [] -> repeat []
-    | ss -> from (fun _ -> Some (List.map ss ~f:next))
-
-  let diag (s: ('a stream) stream) : (('a list) stream) =
-    from (fun i -> Some (List.map (npeek (i + 1) s) ~f:next))
-
-  let join (x: ('a matrix) matrix) : 'a matrix =
-    x |> map ~f:trans |> diag |> map ~f:(fun y -> y |> List.concat |> List.concat)
-
-  let compose (f: 'a -> 'b matrix) (g: 'b -> 'c matrix) (x: 'a) : 'c matrix =
-    x |> f |> (map ~f:(List.map ~f:g)) |> join
-
-  let group s ~break =
-    from (fun _ ->
-          let rec collect () =
-            match npeek 2 s with
-            | [] -> None
-            | [_] -> Some [next s]
-            | [x; y] -> if break x y then Some [next s] else collect ()
-            | _ -> failwith "Stream.npeek returned a larger list than expected."
-          in collect ())
-
-  let merge (ss: ('a matrix) list) : 'a matrix =
-    from (fun _ ->
-          Some (ss
-                |> List.filter_map ~f:(fun s -> try Some (next s) with Failure -> None)
-                |> List.concat))
-
-  let rec drop s ~f = match peek s with
-    | Some x -> if f x then (junk s; drop s ~f:f) else ()
-    | None -> ()
-
-  let flatten (m: 'a matrix) : 'a stream =
-    let current = ref [] in
-    from (fun _ -> match !current with
-                   | x::xs -> current := xs; Some x
-                   | [] -> drop m ~f:((=) []);
-                           (try (match next m with
-                                 | [] -> failwith "Failed to drop empty rows."
-                                 | x::xs -> current := xs; Some x)
-                            with Failure -> None))
-end
-
-module MemoStream = struct
-  module Typ = struct type t = typ with compare, sexp end
-  module TypMap = Map.Make(Typ)
-
-  type memo_stream = {
-    index: int ref;
-    head: typed_expr list Int.Table.t;
-    stream: typed_expr Stream.matrix;
-  }
-
-  type t = memo_stream TypMap.t ref
-
-  let empty () = ref TypMap.empty
-
-  (* Get access to a stream of results for 'typ'. *)
-  let get memo typ stream : typed_expr Stream.matrix =
-    let mstream = match TypMap.find !memo typ with
-      | Some s -> s
-      | None ->
-         let s = { index = ref 0; head = Int.Table.create (); stream = stream (); } in
-         memo := TypMap.add !memo ~key:typ ~data:s; s
-    in
-    Stream.from
-      (fun i -> 
-       let sc = i + 1 in
-       if sc <= !(mstream.index) then Some (Int.Table.find_exn mstream.head sc)
-       else (List.range ~stop:`inclusive (!(mstream.index) + 1) sc
-             |> List.iter
-                  ~f:(fun j ->
-                      try Int.Table.add_exn mstream.head ~key:j ~data:(Stream.next mstream.stream);
-                          incr mstream.index;
-                      with Stream.Failure -> ());
-             if sc = !(mstream.index) then Some (Int.Table.find_exn mstream.head sc) else None))
-end
-
-let rec enumerate ?(ops=Expr.Op.all) memo init typ : typed_expr Stream.matrix =
-  let open Stream in
+let rec enumerate ?(ops=Expr.Op.all) 
+                  ?(memo=Sstream.Memoizer.empty ()) 
+                  init 
+                  typ 
+        : typed_expr Sstream.matrix =
+  let open Sstream in
   let arrow_error () = failwith "Operator is not of type Arrow_t." in
 
   (* printf "enumerate %s %s.\n" *)
@@ -170,7 +66,8 @@ let rec enumerate ?(ops=Expr.Op.all) memo init typ : typed_expr Stream.matrix =
       (* Generate the argument matrix lazily so that it will not be
          created until the prefix classes are exhausted. *)
       slazy (fun () -> 
-             map_matrix (MemoStream.get memo current_typ' (fun () -> enumerate memo init current_typ'))
+             map_matrix (Memoizer.get memo current_typ' 
+                                      (fun () -> enumerate ~memo:memo init current_typ'))
                         ~f:(fun arg -> prev_args @ [arg]))
     in
     match arg_typs with
@@ -298,22 +195,22 @@ let solve_single ?(init=[])
        let args = List.map arg_typs ~f:(fun typ -> Fresh.name "x", typ) in
        let arg_names, _ = List.unzip args in
        let init'' = init' @ (List.map args ~f:(fun (name, typ) -> Id (name, typ))) in
-       enumerate (MemoStream.empty ()) init'' ret_typ 
-       |> Stream.map_matrix ~f:(fun texpr -> 
+       enumerate init'' ret_typ 
+       |> Sstream.map_matrix ~f:(fun texpr -> 
                                 (* printf "%s %s\n"  *)
                                 (*        (typ_to_string hole.signature)  *)
                                 (*        (Expr.to_string (expr_of_texpr texpr)); *)
                                 `Lambda (arg_names, expr_of_texpr texpr))
-    | typ -> enumerate (MemoStream.empty ()) init' typ 
-             |> Stream.map_matrix ~f:(fun tx -> 
+    | typ -> enumerate init' typ 
+             |> Sstream.map_matrix ~f:(fun tx -> 
                                       (* printf "%s %s\n"  *)
                                       (*        (typ_to_string hole.signature)  *)
                                       (*        (Expr.to_string (expr_of_texpr tx)); *)
                                       (expr_of_texpr tx))
   in
 
-  let choose name hole ctx : (expr Ctx.t) Stream.matrix =
-    Stream.map_matrix (matrix_of_hole hole) ~f:(Ctx.bind ctx name)
+  let choose name hole ctx : (expr Ctx.t) Sstream.matrix =
+    Sstream.map_matrix (matrix_of_hole hole) ~f:(Ctx.bind ctx name)
   in
 
   let solver_of_spec spec =
@@ -322,18 +219,16 @@ let solve_single ?(init=[])
       | (name, hole)::hs ->
          (List.fold_left hs
                         ~init:(choose name hole)
-                        ~f:(fun matrix (name', hole') -> Stream.compose matrix (choose name' hole')))
+                        ~f:(fun matrix (name', hole') -> Sstream.compose matrix (choose name' hole')))
            (Ctx.empty ())
     in
     ctx_matrix
-    |> Stream.map_matrix ~f:(fun ctx -> 
+    |> Sstream.map_matrix ~f:(fun ctx -> 
                              let target = spec.target ctx in
                              (* print_endline (Expr.to_string (target (`Id "_"))); *)
                              if verify target examples
                              then Some target else None)
   in
-
-  let solutions = List.map specs ~f:solver_of_spec |> Stream.merge |> Stream.flatten in
 
   with_return 
     (fun r ->
