@@ -4,6 +4,8 @@ open Printf
 open Ast
 open Util
 
+type t = expr
+
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
   type t = op with compare, sexp
@@ -72,7 +74,7 @@ module Op = struct
 end
 
 (** Calculate the size of an expression. *)
-let rec size (e: expr) : int =
+let rec size (e: t) : int =
   let sum = List.fold_left ~init:0 ~f:(+) in
   match e with
   | `Id _
@@ -85,7 +87,7 @@ let rec size (e: expr) : int =
   | `Lambda (args, body) -> 1 + (List.length args) + size body
   | `Apply (a, l) -> 1 + size a + (sum (List.map l ~f:size))
 
-let normalize (expr: expr) : expr = 
+let normalize (expr: t) : expr = 
   let count = ref (-1) in
   let fresh_name () =
     let n = incr count; !count in
@@ -121,7 +123,7 @@ let normalize (expr: expr) : expr =
   in norm (Ctx.empty ()) expr
 
 (** Convert and expression to a string. *)
-let rec to_string (expr: expr) : string =
+let rec to_string (expr: t) : string =
   let list_to_string l =
     String.concat ~sep:" " (List.map ~f:to_string l) 
   in
@@ -138,12 +140,7 @@ let rec to_string (expr: expr) : string =
   | `Lambda (args, body) ->
      sprintf "(lambda (%s) %s)" (String.concat ~sep:" " args) (to_string body)
 
-let equal e1 e2 = (compare_expr e1 e2) = 0
-
-(** Convert an example to a string. *)
-let example_to_string (ex: example) : string =
-  let e1, e2 = ex in
-  sprintf "%s -> %s" (to_string e1) (to_string e2)
+let equal (e1: t) (e2: t) = (compare_expr e1 e2) = 0
 
 (** Convert a type to a string. *)
 let rec typ_to_string (typ: typ) : string =
