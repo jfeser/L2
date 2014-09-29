@@ -104,7 +104,8 @@ module MemoStream = struct
     Stream.from
       (fun i -> 
        let sc = i + 1 in
-       if sc <= !(mstream.index) then Some (Int.Table.find_exn mstream.head sc)
+       if sc <= !(mstream.index)
+       then Some (Int.Table.find_exn mstream.head sc)
        else (List.range ~stop:`inclusive (!(mstream.index) + 1) sc
              |> List.iter
                   ~f:(fun j ->
@@ -174,7 +175,7 @@ let rec enumerate ?(ops=Expr.Op.all) memo init typ : typed_expr Stream.matrix =
                         ~f:(fun arg -> prev_args @ [arg]))
     in
     match arg_typs with
-    | x::xs -> (List.fold_left xs ~init:choose ~f:(fun acc _ -> compose acc choose)) []
+    | _::xs -> (List.fold_left xs ~init:choose ~f:(fun acc _ -> compose acc choose)) []
     | [] -> failwith "Cannot generate args matrix with no arguments."
   in
 
@@ -332,8 +333,6 @@ let solve_single ?(init=[])
                              if verify target examples
                              then Some target else None)
   in
-
-  let solutions = List.map specs ~f:solver_of_spec |> Stream.merge |> Stream.flatten in
 
   with_return 
     (fun r ->
