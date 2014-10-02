@@ -56,15 +56,15 @@ let merge (ss: ('a matrix) list) : 'a matrix =
               |> List.filter_map ~f:(fun s -> try Some (next s) with Failure -> None)
               |> List.concat))
 
-let rec drop s ~f = match peek s with
-  | Some x -> if f x then (junk s; drop s ~f:f) else ()
+let rec drop_while s ~f = match peek s with
+  | Some x -> if f x then (junk s; drop_while s ~f:f) else ()
   | None -> ()
 
 let flatten (m: 'a matrix) : 'a t =
   let current = ref [] in
   from (fun _ -> match !current with
                  | x::xs -> current := xs; Some x
-                 | [] -> drop m ~f:((=) []);
+                 | [] -> drop_while m ~f:((=) []);
                          (try (match next m with
                                | [] -> failwith "Failed to drop empty rows."
                                | x::xs -> current := xs; Some x)
