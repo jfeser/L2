@@ -133,7 +133,6 @@ let rec enumerate ?(ops=Expr.Op.all)
                              match Rewrite.rewrite e with
                              | Some e' -> e = e'
                              | None -> false))
-  (* |> map ~f:(List.map ~f:(fun e -> print_endline (Expr.to_string (expr_of_texpr e)); e)) *)
 
 let solve_single ?(init=[])
                  ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
@@ -147,13 +146,13 @@ let solve_single ?(init=[])
     { Spec.target;
       Spec.holes =
         Ctx.of_alist_exn [
-                  target_name, 
-                  { examples = List.map examples ~f:(fun ex -> ex, Ctx.empty ());
+            target_name, 
+            { examples = List.map examples ~f:(fun ex -> ex, Ctx.empty ());
               signature = Example.signature examples;
-                    tctx = Ctx.empty ();
-                    depth = 2;
-                  };
-                ];
+              tctx = Ctx.empty ();
+              depth = 2;
+            };
+          ];
     }
   in
 
@@ -175,18 +174,6 @@ let solve_single ?(init=[])
 
   let specs = generate_specs [initial_spec] in
 
-  (* print_endline "Completed structure analysis. Inferred structures:"; *)
-  (* List.iter *)
-  (*   specs *)
-  (*   ~f:(fun spec -> *)
-        (* let (hole_bodies: expr Ctx.t) = Ctx.mapi spec.holes ~f:(fun ~key:name ~data:_ -> `Id name) in *)
-        (* printf "%s\n" (Expr.to_string (spec.target hole_bodies (`Id "_"))); *)
-  (*       Ctx.to_alist spec.holes *)
-  (*       |> List.iter ~f:(fun (name, hole) -> *)
-  (*                        printf "\t%s: %s\n" name (typ_to_string hole.signature); *)
-  (*                        List.iter hole.examples ~f:(fun (ex, _) -> printf "\t\t%s\n" (Expr.example_to_string ex)))); *)
-  (* print_newline (); *)
-
   let matrix_of_hole hole =
     let init' =
       (Ctx.to_alist hole.tctx |> List.map ~f:(fun (name, typ) -> Id (name, typ))) @ init
@@ -197,17 +184,8 @@ let solve_single ?(init=[])
        let arg_names, _ = List.unzip args in
        let init'' = init' @ (List.map args ~f:(fun (name, typ) -> Id (name, typ))) in
        enumerate init'' ret_typ 
-       |> Sstream.map_matrix ~f:(fun texpr -> 
-                                (* printf "%s %s\n"  *)
-                                (*        (typ_to_string hole.signature)  *)
-                                (*        (Expr.to_string (expr_of_texpr texpr)); *)
-                                `Lambda (arg_names, expr_of_texpr texpr))
-    | typ -> enumerate init' typ 
-             |> Sstream.map_matrix ~f:(fun tx -> 
-                                      (* printf "%s %s\n"  *)
-                                      (*        (typ_to_string hole.signature)  *)
-                                      (*        (Expr.to_string (expr_of_texpr tx)); *)
-                                      (expr_of_texpr tx))
+       |> Sstream.map_matrix ~f:(fun texpr -> `Lambda (arg_names, expr_of_texpr texpr))
+    | typ -> enumerate init' typ |> Sstream.map_matrix ~f:(fun tx -> (expr_of_texpr tx))
   in
 
   let choose name hole ctx : (expr Ctx.t) Sstream.matrix =
@@ -220,15 +198,16 @@ let solve_single ?(init=[])
       | (name, hole)::hs ->
          (List.fold_left hs
                         ~init:(choose name hole)
-                        ~f:(fun matrix (name', hole') -> Sstream.compose matrix (choose name' hole')))
+                        ~f:(fun matrix (name', hole') ->
+                            Sstream.compose matrix (choose name' hole')))
            (Ctx.empty ())
     in
     ctx_matrix
-    |> Sstream.map_matrix ~f:(fun ctx -> 
-                             let target = spec.target ctx in
-                             (* print_endline (Expr.to_string (target (`Id "_"))); *)
-                             if verify target examples
-                             then Some target else None)
+    |> Sstream.map_matrix 
+         ~f:(fun ctx -> 
+             let target = spec.Spec.target ctx in
+             (* print_endline (Expr.to_string (target (`Id "_"))); *)
+             if verify target examples then Some target else None)
   in
 
   with_return 
@@ -250,6 +229,17 @@ let solve_single ?(init=[])
        Int.incr depth;
      done;
      failwith "Exited solve loop without finding a solution.")
+  (* Search a spec up to a specified maximum depth. *)
+  let search spec max_depth : (expr -> expr) option =
+    let solver = solver_of_spec spec in
+    let rec search' depth : (expr -> expr) option =
+      if depth >= max_depth then None else
+        let row = Sstream.next solver in
+        match List.find_map row ~f:(fun elem -> elem) with
+        | Some result -> Some result
+        | None -> search' (depth + 1)
+    in search' 1
+  in
 
 let default_init = ["0"; "1"; "[]"; "#f";] |> List.map ~f:parse_expr
 

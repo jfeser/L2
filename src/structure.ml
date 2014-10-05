@@ -24,6 +24,10 @@ module Spec = struct
         holes: hole Ctx.t;
       }
 
+    let to_string (spec: t) : string =
+      let (hole_bodies: expr Ctx.t) = Ctx.mapi spec.holes ~f:(fun ~key:name ~data:_ -> `Id name) in
+      Expr.to_string (spec.target hole_bodies (`Id "_"))
+
     (* Map is an appropriate implementation when one of the inputs is a
    list and the output is a list of the same length. *)
     let map_bodies (spec: t) : t list =
