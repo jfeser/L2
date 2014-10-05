@@ -210,36 +210,24 @@ let solve_single ?(init=[])
              if verify target examples then Some target else None)
   in
 
-  with_return 
-    (fun r ->
-     let depth = ref 1 in
-     while true do
-       List.iter specs 
-                 ~f:(fun spec ->
-                     let solver = solver_of_spec spec in
-                     for i = 1 to !depth do
-                       List.iter (Stream.next solver) ~f:(Option.iter ~f:r.return)
-                     done;
-                     (* let hole_bodies = Ctx.mapi spec.holes ~f:(fun ~key:name ~data:_ -> `Id name) in *)
-                     (* printf "Searched %s to depth %d." *)
-                     (*        (Expr.to_string (spec.target hole_bodies (`Id "_"))) *)
-                     (*        !depth; *)
-                     (* print_newline () *)
-                    );
-       Int.incr depth;
-     done;
-     failwith "Exited solve loop without finding a solution.")
   (* Search a spec up to a specified maximum depth. *)
-  let search spec max_depth : (expr -> expr) option =
+  let search max_depth spec : (expr -> expr) option =
     let solver = solver_of_spec spec in
     let rec search' depth : (expr -> expr) option =
       if depth >= max_depth then None else
         let row = Sstream.next solver in
-        match List.find_map row ~f:(fun elem -> elem) with
+        match List.find_map row ~f:ident with
         | Some result -> Some result
         | None -> search' (depth + 1)
     in search' 1
   in
+
+  let rec search_unbounded depth specs =
+    match List.find_map specs ~f:(search depth) with
+    | Some result -> result
+    | None -> search_unbounded (depth + 1) specs
+  in
+  search_unbounded 1 specs
 
 let default_init = ["0"; "1"; "[]"; "#f";] |> List.map ~f:parse_expr
 
