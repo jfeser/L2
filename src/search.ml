@@ -229,6 +229,17 @@ let solve_single ?(init=[])
        Int.incr depth;
      done;
      failwith "Exited solve loop without finding a solution.")
+  (* Search a spec up to a specified maximum depth. *)
+  let search spec max_depth : (expr -> expr) option =
+    let solver = solver_of_spec spec in
+    let rec search' depth : (expr -> expr) option =
+      if depth >= max_depth then None else
+        let row = Sstream.next solver in
+        match List.find_map row ~f:(fun elem -> elem) with
+        | Some result -> Some result
+        | None -> search' (depth + 1)
+    in search' 1
+  in
 
 let solve ?(init=[]) (examples: example list) : expr Ctx.t =
   (* Split examples into separate functions. *)
