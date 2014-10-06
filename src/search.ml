@@ -215,21 +215,23 @@ let solve_single ?(verbose=false)
   let search max_depth spec : (expr -> expr) option =
     let solver = solver_of_spec spec in
     let rec search' depth : (expr -> expr) option =
-      if depth >= max_depth then None else
+      if depth >= max_depth 
+      then 
+        begin
+          if verbose
+          then
+            begin
+              printf "Searched %s to depth %d.\n" (Spec.to_string spec) depth;
+              flush stdout;
+            end
+          else ();
+          None 
+        end
+      else
         let row = Sstream.next solver in
         match List.find_map row ~f:ident with
         | Some result -> Some result
-        | None ->
-           begin
-             if verbose
-             then
-               begin
-                 printf "Searched %s to depth %d.\n" (Spec.to_string spec) max_depth;
-                 flush stdout;
-               end
-             else ();
-             search' (depth + 1)
-           end
+        | None -> search' (depth + 1)
     in search' 1
   in
 
