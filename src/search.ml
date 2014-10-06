@@ -134,7 +134,8 @@ let rec enumerate ?(ops=Expr.Op.all)
                              | Some e' -> e = e'
                              | None -> false))
 
-let solve_single ?(init=[])
+let solve_single ?(verbose=false)
+                 ?(init=[])
                  ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
                  (examples: example list) =
   let initial_spec =
@@ -218,7 +219,17 @@ let solve_single ?(init=[])
         let row = Sstream.next solver in
         match List.find_map row ~f:ident with
         | Some result -> Some result
-        | None -> search' (depth + 1)
+        | None ->
+           begin
+             if verbose
+             then
+               begin
+                 printf "Searched %s to depth %d.\n" (Spec.to_string spec) max_depth;
+                 flush stdout;
+               end
+             else ();
+             search' (depth + 1)
+           end
     in search' 1
   in
 
@@ -231,7 +242,7 @@ let solve_single ?(init=[])
 
 let default_init = ["0"; "1"; "[]"; "#f";] |> List.map ~f:parse_expr
 
-let solve ?(init=default_init) (examples: example list) : expr Ctx.t =
+let solve ?(verbose=false) ?(init=default_init) (examples: example list) : expr Ctx.t =
   (* Split examples into separate functions. *)
   let func_examples = Example.split examples in
 
@@ -250,7 +261,7 @@ let solve ?(init=default_init) (examples: example list) : expr Ctx.t =
                List.map init ~f:(infer (Ctx.empty ())))
         ~f:(fun (ectx, vctx, tctx, init) (name, exs) ->
             let verify = Verify.verify_examples ~ctx:vctx in
-            let result = (solve_single ~init:init ~verify:verify exs) (`Id "_") in
+            let result = (solve_single ~verbose ~init ~verify exs) (`Id "_") in
             (* printf "Solved %s: %s\n" name (Expr.to_string result); *)
             match result with
             | `Let (_, body, _) ->
