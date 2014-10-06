@@ -160,6 +160,27 @@ let testcases =
         "(join [[1 0] []]) -> [1 0]";
         "(join [[1 0] [2 3] [6] [4 5]]) -> [1 0 2 3 6 4 5]";
       ], "Concatenates together a list of lists.";
+
+      "insert", 
+      [
+        "(insert [] 1) -> [1]";
+        "(insert [] 2) -> [2]";
+        "(insert [0 1] 2) -> [0 1 2]";
+        "(insert [0 1] 1) -> [0 1 1]";
+        "(insert [0 1] 0) -> [0 0 1]";
+        "(insert [0 1 2] 0) -> [0 0 1 2]";
+      ], "Inserts a number into a sorted list, maintaining the sort order.";
+
+      "count",
+      [
+        "(count [] 1) -> 0";
+        "(count [1 0] 1) -> 1";
+        "(count [0 0 1] 0) -> 2";
+        "(count [1 2 2 2 4 4 5] 2) -> 3";
+        "(count [1 2 2 2 4 4 5] 4) -> 2";
+        "(count [1 2 2 2 4 4 5] 5) -> 1";
+      ], "Counts the number of times an element appears in a list.";
+
     ], "Simple list examples";
 
     [
@@ -175,12 +196,60 @@ let testcases =
         "(incrt {1}) -> {2}";
         "(incrt {1 {2}}) -> {2 {3}}";
       ], "Increments the value of each node in a tree by one.";
+
       "sumt",
       [
         "(sumt {}) -> 0";
         "(sumt {1}) -> 1";
         "(sumt {1 {2} {3}}) -> 6";
       ], "Sums the nodes of a tree.";
+
+      "leaves",
+      [
+        "(join []) -> []";
+        "(join [[] [1 0]]) -> [1 0]";
+        "(join [[1 0] []]) -> [1 0]";
+        "(join [[1 0] [2 3] [6] [4 5]]) -> [1 0 2 3 6 4 5]";
+        
+        "(leaves {}) -> []";
+        "(leaves {1}) -> [1]";
+        "(leaves {1 {2} {3}}) -> [2 3]";
+        "(leaves {1 {2} {3 {4}}}) -> [2 4]";
+        "(leaves {1 {2 {1} {5}} {3 {4}}}) -> [1 5 4]";
+      ], "Returns a list of the leaves of a tree.";
+
+      "count_leaves",
+      [
+        "(sum []) -> 0";
+        "(sum [1]) -> 1";
+        "(sum [1 2 3]) -> 6";
+        "(sum [1 1 1 1]) -> 4";
+
+        "(count_leaves {}) -> 0";
+        "(count_leaves {5}) -> 1";
+        "(count_leaves {3 {2}}) -> 1";
+        "(count_leaves {3 {2} {5}}) -> 2";
+        "(count_leaves {3 {2 {3}} {5}}) -> 2";
+        "(count_leaves {3 {2 {3} {5}} {5 {5}}}) -> 3";
+        "(count_leaves {3 {2 {3} {5}} {5 {5} {4}}}) -> 4";
+        "(count_leaves {5 {5 {5 {5 {5 {5 {5 {5}}}}}}}}) -> 1";
+      ], "Counts the number of leaves in a tree.";
+
+      "membert",
+      [
+        "(membert {} 1) -> #f";
+        "(membert {1} 1) -> #t";
+        "(membert {0 {5} {6} {8}} 6) -> #t";
+        "(membert {0 {5 {7} {1} {1}} {6} {8}} 3) -> #f";
+        "(membert {0 {5 {7} {1} {3}} {6} {8}} 9) -> #f";
+        "(membert {0 {5 {7} {1} {3}} {6} {8}} 7) -> #t";
+        "(membert {0 {5 {7} {1} {3}} {6} {8}} 8) -> #t";
+        "(membert {0 {5 {7} {1} {3}} {6} {8}} 0) -> #t";
+        "(membert {12 {5 {7} {1} {3}} {6} {8}} 0) -> #f";
+        "(membert {1 {3 {5 {7 {9}}}}} 9) -> #t";
+        "(membert {1 {3 {5 {7 {9 {1} {2} {4} {6} {8}}}}}} 8) -> #t";
+        "(membert {1 {3 {5 {7 {9 {1} {2} {4} {6} {8}}}}}} 12) -> #f";
+      ], "Checks whether an element is contained in a tree.";
     ], "Simple tree examples";
 
     [
@@ -220,6 +289,7 @@ let testcases =
         "(sum [1]) -> 1";
         "(sum [1 2 3]) -> 6";
         "(sum [1 1 1 1]) -> 4";
+
         "(length []) -> 0";
         "(length [0]) -> 1";
         "(length [0 0]) -> 2";
@@ -323,15 +393,6 @@ let testcases =
   (*   "(compress [1 1 1 1 1 2 2 2 2 1 1 4 4]) -> [1 2 1 4]"; *)
   (* ]; *)
 
-  (* "count", *)
-  (* ["(count [] 1) -> 0"; *)
-  (*  "(count [1 0] 1) -> 1"; *)
-  (*  "(count [0 0 1] 0) -> 2"; *)
-  (*  "(count [1 2 2 2 4 4 5] 2) -> 3"; *)
-  (*  "(count [1 2 2 2 4 4 5] 4) -> 2"; *)
-  (*  "(count [1 2 2 2 4 4 5] 5) -> 1"; *)
-  (* ]; *)
-
   (* ("cprod", ["(f []) -> [[]]"; *)
   (*            "(f [[]]) -> []"; *)
   (*            "(f [[] []]) -> []"; *)
@@ -346,15 +407,6 @@ let testcases =
   (*           ], []), *)
   (* ""; *)
     
-  (* ("insert", ["(f [] 1) -> [1]"; *)
-  (*             "(f [] 2) -> [2]"; *)
-  (*             "(f [0 1] 2) -> [0 1 2]"; *)
-  (*             "(f [0 1] 1) -> [0 1 1]"; *)
-  (*             "(f [0 1] 0) -> [0 0 1]"; *)
-  (*             "(f [0 1 2] 0) -> [0 0 1 2]"; *)
-  (*            ], ["[]"]), *)
-  (* ""; *)
-
   (* ("drop", ["(f [] 0) -> []"; *)
   (*           "(f [1] 0) -> [1]"; *)
   (*           "(f [] 1) -> []"; *)
