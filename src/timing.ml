@@ -468,7 +468,7 @@ let output_table results =
             List.iter 
               cases 
               ~f:(fun (name, time, _, desc) -> 
-                  pf "& %s & %s & %s \\\\\\n" name (Time.Span.to_short_string time) desc);
+                  pf "& %s & %s & %s \\\\\n" name (Time.Span.to_short_string time) desc);
           end);
     pe "\\bottomrule";
     pe "\\end{tabular}";
