@@ -70,38 +70,39 @@ let flatten (m: 'a matrix) : 'a t =
                                | x::xs -> current := xs; Some x)
                           with Failure -> None))
 
-module Memoizer = struct
-    open Infer
-    module Typ = struct type t = Ast.typ with compare, sexp end
-    module TypMap = Map.Make(Typ)
 
-    type memo_stream = {
-        index: int ref;
-        head: typed_expr list Int.Table.t;
-        stream: typed_expr matrix;
-      }
+module Memoizer (Key: Map.Key) (Value: sig type t end) = struct
+  module KMap = Map.Make(Key)
 
-    type t = memo_stream TypMap.t ref
+  type memo_stream = {
+    index: int ref;
+    head: Value.t list Int.Table.t;
+    stream: Value.t matrix;
+  }
+  type t = memo_stream KMap.t ref
 
-    let empty () = ref TypMap.empty
+  let empty () = ref KMap.empty
 
-    (* Get access to a stream of results for 'typ'. *)
-    let get memo typ stream : typed_expr matrix =
-      let mstream = match TypMap.find !memo typ with
-        | Some s -> s
-        | None ->
-           let s = { index = ref 0; head = Int.Table.create (); stream = stream (); } in
-           memo := TypMap.add !memo ~key:typ ~data:s; s
-      in
-      from
-        (fun i -> 
-         let sc = i + 1 in
-         if sc <= !(mstream.index) then Some (Int.Table.find_exn mstream.head sc)
-         else (List.range ~stop:`inclusive (!(mstream.index) + 1) sc
-               |> List.iter
-                    ~f:(fun j ->
-                        try Int.Table.add_exn mstream.head ~key:j ~data:(next mstream.stream);
-                            incr mstream.index;
-                        with Failure -> ());
-               if sc = !(mstream.index) then Some (Int.Table.find_exn mstream.head sc) else None))
-  end
+  (* Get access to a stream of results for 'typ'. *)
+  let get memo typ stream : Value.t matrix =
+    let mstream = match KMap.find !memo typ with
+      | Some s -> s
+      | None ->
+        let s = { index = ref 0; head = Int.Table.create (); stream = stream (); } in
+        memo := KMap.add !memo ~key:typ ~data:s; s
+    in
+    from (fun i -> 
+        let sc = i + 1 in
+        if sc <= !(mstream.index) then Some (Int.Table.find_exn mstream.head sc)
+        else begin
+          List.range ~stop:`inclusive (!(mstream.index) + 1) sc
+          |> List.iter
+            ~f:(fun j ->
+                try Int.Table.add_exn mstream.head ~key:j ~data:(next mstream.stream);
+                  incr mstream.index;
+                with Failure -> ());
+          if sc = !(mstream.index)
+          then Some (Int.Table.find_exn mstream.head sc)
+          else None
+        end)
+end

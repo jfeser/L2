@@ -6,8 +6,11 @@ open Infer
 open Structure
 open Util
 
+module Typ = struct type t = Ast.typ with compare, sexp end
+module TypedExpr = struct type t = typed_expr end
+module TypMemoizer = Sstream.Memoizer(Typ) (TypedExpr)
 let rec enumerate ?(ops=Expr.Op.all) 
-                  ?(memo=Sstream.Memoizer.empty ()) 
+                  ?(memo=TypMemoizer.empty ())
                   init 
                   typ 
         : typed_expr Sstream.matrix =
@@ -66,7 +69,7 @@ let rec enumerate ?(ops=Expr.Op.all)
       (* Generate the argument matrix lazily so that it will not be
          created until the prefix classes are exhausted. *)
       slazy (fun () -> 
-             map_matrix (Memoizer.get memo current_typ' 
+          map_matrix (TypMemoizer.get memo current_typ' 
                                       (fun () -> enumerate ~memo:memo init current_typ'))
                         ~f:(fun arg -> prev_args @ [arg]))
     in
