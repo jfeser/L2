@@ -431,11 +431,11 @@ let testcases =
 let all_cases =
   List.concat_map testcases ~f:(fun (cases, _) -> List.map cases ~f:(fun (name, _, _) -> name))
 
-let time_solve verbose (name, example_strs, desc) =
+let time_solve verbose untyped (name, example_strs, desc) =
   begin
     let examples = List.map example_strs ~f:Util.parse_example in
     let start_time = Time.now () in
-    let solutions = Search.solve ~verbose examples in
+    let solutions = Search.solve ~verbose ~simple_search:untyped examples in
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
     let solutions_str =
@@ -503,12 +503,13 @@ let command =
     empty
     +> flag "-t" ~aliases:["--table"] no_arg ~doc:" print out a result table in LaTeX format"
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
+    +> flag "-u" ~aliases:["--untyped"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> anon (sequence ("testcase" %: string))
   in
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun table verbose testcase_names () ->
+    (fun table verbose untyped testcase_names () ->
      let testcases = match testcase_names with
        | [] -> testcases
        | _ ->
@@ -517,10 +518,8 @@ let command =
                        List.filter cases ~f:(fun (name, _, _) -> List.mem testcase_names name), desc)
      in
      let results =
-       List.map testcases ~f:(fun (cases, desc) -> List.map cases ~f:(time_solve verbose), desc)
+       List.map testcases ~f:(fun (cases, desc) -> List.map cases ~f:(time_solve verbose untyped), desc)
      in
      if table then output_table results else ())
 
 let () = Command.run command
-      
-

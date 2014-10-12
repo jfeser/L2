@@ -86,10 +86,6 @@ let rec enumerate
   : typed_expr Sstream.matrix =
   let open Sstream in
 
-  (* printf "enumerate %s %s.\n" *)
-  (*        (List.to_string init ~f:(fun e -> Expr.to_string (expr_of_texpr e))) *)
-  (*        (typ_to_string typ); *)
-
   (* Init is finite, so we can construct an init stream by breaking
   init into a list of size classes and returning that list as a
   stream. *)
@@ -132,8 +128,7 @@ let rec enumerate
       (* Generate the argument matrix lazily so that it will not be
          created until the prefix classes are exhausted. *)
       slazy (fun () -> 
-          map_matrix (TypMemoizer.get memo current_typ' 
-                        (fun () -> enumerate ~memo:memo init current_typ'))
+          map_matrix (TypMemoizer.get memo current_typ' (fun () -> enumerate ~memo:memo init current_typ'))
             ~f:(fun arg -> prev_args @ [arg]))
     in
     match arg_typs with
@@ -200,11 +195,13 @@ let rec enumerate
                              | Some e' -> Expr.size e' >= Expr.size e
                              | None -> false))
 
-let solve_single ?(verbose=false)
-                 ?(init=[])
-                 ?(ops=Expr.Op.all)
-                 ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
-                 (examples: example list) =
+let solve_single
+    ?(verbose=false)
+    ?(simple_search=false)
+    ?(init=[])
+    ?(ops=Expr.Op.all)
+    ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
+    (examples: example list) =
   let initial_spec =
     let target_name = Example.name examples in
     let target ctx expr =
@@ -214,13 +211,13 @@ let solve_single ?(verbose=false)
     { Spec.target;
       Spec.holes =
         Ctx.of_alist_exn [
-            target_name, 
-            { examples = List.map examples ~f:(fun ex -> ex, Ctx.empty ());
-              signature = Example.signature examples;
-              tctx = Ctx.empty ();
-              depth = 2;
-            };
-          ];
+          target_name, 
+          { examples = List.map examples ~f:(fun ex -> ex, Ctx.empty ());
+            signature = Example.signature examples;
+            tctx = Ctx.empty ();
+            depth = 2;
+          };
+        ];
     }
   in
 
@@ -249,9 +246,17 @@ let solve_single ?(verbose=false)
        let args = List.map arg_typs ~f:(fun typ -> Fresh.name "x", typ) in
        let arg_names, _ = List.unzip args in
        let init'' = init' @ (List.map args ~f:(fun (name, typ) -> Id (name, typ))) in
-       simple_enumerate init''
-       |> Sstream.map_matrix ~f:(fun expr -> `Lambda (arg_names, expr))
-    | typ -> simple_enumerate init'
+       if simple_search then
+         simple_enumerate init''
+         |> Sstream.map_matrix ~f:(fun expr -> `Lambda (arg_names, expr))
+       else
+         enumerate init'' ret_typ
+         |> Sstream.map_matrix ~f:(fun texpr -> `Lambda (arg_names, expr_of_texpr texpr))
+    | typ ->
+      if simple_search then
+        simple_enumerate init'
+      else
+        enumerate init' typ |> Sstream.map_matrix ~f:expr_of_texpr
   in
 
   let choose name hole ctx : (expr Ctx.t) Sstream.matrix =
@@ -305,18 +310,19 @@ let solve_single ?(verbose=false)
 
 let default_init = ["0"; "1"; "[]"; "#f";] |> List.map ~f:parse_expr
 
-let solve ?(verbose=false) 
-          ?(init=default_init) 
-          (examples: example list) 
-    : expr Ctx.t =
+let solve 
+    ?(verbose=false) 
+    ?(simple_search=false)
+    ?(init=default_init) 
+    (examples: example list) 
+  : expr Ctx.t =
   (* Split examples into separate functions. *)
   let func_examples = Example.split examples in
 
   (* Check that each set of examples represents a function. *)
-  if List.for_all func_examples
-                  ~f:(fun (_, exs) ->
-                      let exs' = List.map exs ~f:(fun ex -> ex, Ctx.empty ()) in
-                      Example.check exs')
+  if List.for_all func_examples ~f:(fun (_, exs) ->
+      let exs' = List.map exs ~f:(fun ex -> ex, Ctx.empty ()) in
+      Example.check exs')
   then
     let ectx, _, _, _ =
       List.fold_left
@@ -337,7 +343,7 @@ let solve ?(verbose=false)
               | Infer.TypeError _ -> false
               | Util.Ctx.UnboundError _ -> false
             in
-            let result = (solve_single ~verbose ~init ~verify exs) (`Id "_") in
+            let result = (solve_single ~verbose ~init ~verify ~simple_search exs) (`Id "_") in
             (* printf "Solved %s: %s\n" name (Expr.to_string result); *)
             match result with
             | `Let (_, body, _) ->
