@@ -8,14 +8,83 @@ open Util
 
 module Typ = struct type t = Ast.typ with compare, sexp end
 module TypedExpr = struct type t = typed_expr end
-module TypMemoizer = Sstream.Memoizer(Typ) (TypedExpr)
-let rec enumerate ?(ops=Expr.Op.all) 
-                  ?(memo=TypMemoizer.empty ())
-                  init 
-                  typ 
-        : typed_expr Sstream.matrix =
+module TypMemoizer = Sstream.Memoizer (Typ) (TypedExpr)
+
+module SimpleMemoizer = Sstream.Memoizer (struct type t = typed_expr list with compare, sexp end) (Expr)
+
+let matrix_of_texpr_list ~size (texprs: typed_expr list) : typed_expr Sstream.matrix =
+  let init_sizes = List.map texprs ~f:(fun e -> e, size e) in
+  let max_size =
+    List.fold_left init_sizes ~init:0 ~f:(fun x (_, y) -> if x > y then x else y) 
+  in
+  List.range ~stop:`inclusive 1 max_size
+  |> List.map ~f:(fun s -> 
+      List.filter_map init_sizes
+        ~f:(fun (e, s') -> if s = s' then Some e else None))
+  |> Sstream.of_list
+
+let arrow_error () = failwith "Operator is not of type Arrow_t."
+
+let rec simple_enumerate
+    ?(memo=SimpleMemoizer.empty ())
+    init
+  : expr Sstream.matrix =
   let open Sstream in
-  let arrow_error () = failwith "Operator is not of type Arrow_t." in
+  let init_matrix =
+    matrix_of_texpr_list ~size:(fun e -> Expr.size (expr_of_texpr e)) init
+    |> map_matrix ~f:(expr_of_texpr)
+  in
+
+  let args_matrix num_args =
+    let choose prev_args =
+      slazy (fun () ->
+          map_matrix (SimpleMemoizer.get memo init (fun () -> simple_enumerate ~memo:memo init))
+            ~f:(fun arg -> prev_args @ [arg]))
+    in
+    match List.range 0 num_args with
+    | _::xs -> (List.fold_left xs ~init:choose ~f:(fun acc _ -> compose acc choose)) []
+    | [] -> failwith "Cannot generate args matrix with no arguments."
+  in
+
+  let callable_matrix apply_callable callable_typ = match callable_typ with
+    | Arrow_t (arg_typs, _) ->
+      let num_args = List.length arg_typs in
+      let prefix = repeat_n num_args [] in
+      let matrix =
+        slazy (fun () -> map_matrix (args_matrix num_args) ~f:apply_callable)
+      in
+      concat prefix matrix
+    | _ -> arrow_error ()
+  in
+  let op_matrix op op_typ =
+    callable_matrix (fun args -> `Op (op, args)) op_typ
+  in
+  let apply_matrix func func_typ =
+    callable_matrix (fun args -> `Apply (func, args)) func_typ
+  in
+
+  let (op_matrices : expr matrix list) =
+    List.map Expr.Op.all ~f:(fun op -> 
+        let meta = Expr.Op.meta op in 
+        op_matrix op meta.Expr.Op.typ)
+  in
+
+  let (apply_matrices : expr matrix list) =
+    List.filter init ~f:(fun texpr ->
+        match typ_of_expr texpr with
+        | Arrow_t (_, ret_typ) -> true
+        | _ -> false)
+    |> List.map ~f:(fun func -> apply_matrix (expr_of_texpr func) (typ_of_expr func))
+  in
+  merge (init_matrix::(op_matrices @ apply_matrices))
+
+let rec enumerate
+    ?(ops=Expr.Op.all)
+    ?(memo=TypMemoizer.empty ())
+    init 
+    typ 
+  : typed_expr Sstream.matrix =
+  let open Sstream in
 
   (* printf "enumerate %s %s.\n" *)
   (*        (List.to_string init ~f:(fun e -> Expr.to_string (expr_of_texpr e))) *)
@@ -24,15 +93,9 @@ let rec enumerate ?(ops=Expr.Op.all)
   (* Init is finite, so we can construct an init stream by breaking
   init into a list of size classes and returning that list as a
   stream. *)
-  let (init_matrix: typed_expr matrix) =
-    let init_sizes =
-      List.filter init ~f:(fun e -> is_unifiable typ (typ_of_expr e))
-      |> List.map ~f:(fun e -> e, Expr.size (expr_of_texpr e))
-    in
-    let max_size = List.fold_left init_sizes ~init:0 ~f:(fun x (_, y) -> if x > y then x else y) in
-    List.range ~stop:`inclusive 1 max_size
-    |> List.map ~f:(fun s -> List.filter_map init_sizes ~f:(fun (e, s') -> if s = s' then Some e else None))
-    |> of_list
+  let init_matrix = 
+    List.filter init ~f:(fun e -> is_unifiable typ (typ_of_expr e))
+    |> matrix_of_texpr_list ~size:(fun e -> Expr.size (expr_of_texpr e))
   in
 
   (* Generate an argument list matrix that conforms to the provided list of types. *)
@@ -70,8 +133,8 @@ let rec enumerate ?(ops=Expr.Op.all)
          created until the prefix classes are exhausted. *)
       slazy (fun () -> 
           map_matrix (TypMemoizer.get memo current_typ' 
-                                      (fun () -> enumerate ~memo:memo init current_typ'))
-                        ~f:(fun arg -> prev_args @ [arg]))
+                        (fun () -> enumerate ~memo:memo init current_typ'))
+            ~f:(fun arg -> prev_args @ [arg]))
     in
     match arg_typs with
     | _::xs -> (List.fold_left xs ~init:choose ~f:(fun acc _ -> compose acc choose)) []
@@ -134,11 +197,12 @@ let rec enumerate ?(ops=Expr.Op.all)
   |> map ~f:(List.filter ~f:(fun x ->
                              let e = expr_of_texpr x in
                              match Rewrite.rewrite e with
-                             | Some e' -> e = e'
+                             | Some e' -> Expr.size e' >= Expr.size e
                              | None -> false))
 
 let solve_single ?(verbose=false)
                  ?(init=[])
+                 ?(ops=Expr.Op.all)
                  ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
                  (examples: example list) =
   let initial_spec =
@@ -164,16 +228,14 @@ let solve_single ?(verbose=false)
     match specs with
     | [] -> []
     | specs ->
-       let child_specs = List.concat_map specs
-                                         ~f:(fun parent ->
-                                             (Spec.map_bodies parent)
-                                             @ (Spec.filter_bodies parent)
-                                             @ (Spec.fold_bodies parent)
-                                             @ (Spec.foldt_bodies parent)
-                                             @ (Spec.recurs_bodies parent)
-                                            )
-       in
-       specs @ (generate_specs child_specs)
+      let child_specs = List.concat_map specs ~f:(fun parent ->
+          (Spec.map_bodies parent)
+          @ (Spec.filter_bodies parent)
+          @ (Spec.fold_bodies parent)
+          @ (Spec.foldt_bodies parent)
+          @ (Spec.recurs_bodies parent))
+      in
+      specs @ (generate_specs child_specs)
   in
 
   let specs = generate_specs [initial_spec] in
@@ -187,9 +249,9 @@ let solve_single ?(verbose=false)
        let args = List.map arg_typs ~f:(fun typ -> Fresh.name "x", typ) in
        let arg_names, _ = List.unzip args in
        let init'' = init' @ (List.map args ~f:(fun (name, typ) -> Id (name, typ))) in
-       enumerate init'' ret_typ 
-       |> Sstream.map_matrix ~f:(fun texpr -> `Lambda (arg_names, expr_of_texpr texpr))
-    | typ -> enumerate init' typ |> Sstream.map_matrix ~f:(fun tx -> (expr_of_texpr tx))
+       simple_enumerate init''
+       |> Sstream.map_matrix ~f:(fun expr -> `Lambda (arg_names, expr))
+    | typ -> simple_enumerate init'
   in
 
   let choose name hole ctx : (expr Ctx.t) Sstream.matrix =
@@ -219,18 +281,14 @@ let solve_single ?(verbose=false)
     let solver = solver_of_spec spec in
     let rec search' depth : (expr -> expr) option =
       if depth >= max_depth 
-      then 
-        begin
-          if verbose
-          then
-            begin
-              printf "Searched %s to depth %d.\n" (Spec.to_string spec) depth;
-              flush stdout;
-            end
-          else ();
-          None 
-        end
-      else
+      then begin
+        if verbose
+        then begin
+          printf "Searched %s to depth %d.\n" (Spec.to_string spec) depth;
+          flush stdout;
+        end else ();
+        None 
+      end else
         let row = Sstream.next solver in
         match List.find_map row ~f:ident with
         | Some result -> Some result
@@ -247,7 +305,10 @@ let solve_single ?(verbose=false)
 
 let default_init = ["0"; "1"; "[]"; "#f";] |> List.map ~f:parse_expr
 
-let solve ?(verbose=false) ?(init=default_init) (examples: example list) : expr Ctx.t =
+let solve ?(verbose=false) 
+          ?(init=default_init) 
+          (examples: example list) 
+    : expr Ctx.t =
   (* Split examples into separate functions. *)
   let func_examples = Example.split examples in
 
@@ -265,7 +326,17 @@ let solve ?(verbose=false) ?(init=default_init) (examples: example list) : expr 
                Ctx.empty (), 
                List.map init ~f:(infer (Ctx.empty ())))
         ~f:(fun (ectx, vctx, tctx, init) (name, exs) ->
-            let verify = Verify.verify_examples ~ctx:vctx in
+            let verify ?(limit=100) target examples =
+              try
+                match target (`Id "_") with
+                | `Let (_, body, _) ->
+                  let _ = infer (Ctx.bind tctx name (fresh_free 0)) body in
+                  Verify.verify_examples ~ctx:vctx target examples
+                | _ -> failwith "Bad result from solve_single."
+              with
+              | Infer.TypeError _ -> false
+              | Util.Ctx.UnboundError _ -> false
+            in
             let result = (solve_single ~verbose ~init ~verify exs) (`Id "_") in
             (* printf "Solved %s: %s\n" name (Expr.to_string result); *)
             match result with

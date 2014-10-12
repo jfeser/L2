@@ -4,7 +4,7 @@ open Printf
 open Ast
 open Util
 
-type t = expr
+type t = expr with compare, sexp
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
