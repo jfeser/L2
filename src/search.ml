@@ -72,7 +72,7 @@ let rec simple_enumerate
   let (apply_matrices : expr matrix list) =
     List.filter init ~f:(fun texpr ->
         match typ_of_expr texpr with
-        | Arrow_t (_, ret_typ) -> true
+        | Arrow_t _ -> true
         | _ -> false)
     |> List.map ~f:(fun func -> apply_matrix (expr_of_texpr func) (typ_of_expr func))
   in
@@ -198,6 +198,7 @@ let rec enumerate
 let solve_single
     ?(verbose=false)
     ?(simple_search=false)
+    ?(deduce_examples=true)
     ?(init=[])
     ?(ops=Expr.Op.all)
     ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
@@ -226,11 +227,11 @@ let solve_single
     | [] -> []
     | specs ->
       let child_specs = List.concat_map specs ~f:(fun parent ->
-          (Spec.map_bodies parent)
-          @ (Spec.filter_bodies parent)
-          @ (Spec.fold_bodies parent)
-          @ (Spec.foldt_bodies parent)
-          @ (Spec.recurs_bodies parent))
+          (Spec.map_bodies ~deduce_examples parent)
+          @ (Spec.filter_bodies ~deduce_examples parent)
+          @ (Spec.fold_bodies ~deduce_examples parent)
+          @ (Spec.foldt_bodies ~deduce_examples parent)
+          @ (Spec.recurs_bodies ~deduce_examples parent))
       in
       specs @ (generate_specs child_specs)
   in
@@ -313,6 +314,7 @@ let default_init = ["0"; "1"; "[]"; "#f";] |> List.map ~f:parse_expr
 let solve 
     ?(verbose=false) 
     ?(simple_search=false)
+    ?(deduce_examples=true)
     ?(init=default_init) 
     (examples: example list) 
   : expr Ctx.t =
@@ -343,7 +345,9 @@ let solve
               | Infer.TypeError _ -> false
               | Util.Ctx.UnboundError _ -> false
             in
-            let result = (solve_single ~verbose ~init ~verify ~simple_search exs) (`Id "_") in
+            let result = 
+              (solve_single ~verbose ~init ~verify ~simple_search ~deduce_examples exs) (`Id "_")
+            in
             (* printf "Solved %s: %s\n" name (Expr.to_string result); *)
             match result with
             | `Let (_, body, _) ->

@@ -5,18 +5,18 @@ open Infer
 open Util
 
 type hole = {
-    examples: (example * expr Ctx.t) list;
-    signature: typ;
-    tctx: typ Ctx.t;
-    depth: int;
-  }
+  examples: (example * expr Ctx.t) list;
+  signature: typ;
+  tctx: typ Ctx.t;
+  depth: int;
+}
 
 let ctx_merge outer_ctx inner_ctx =
   Ctx.merge outer_ctx inner_ctx 
-            ~f:(fun ~key:_ value -> match value with
-                                    | `Both (_, ictx_v) -> Some ictx_v
-                                    | `Left octx_v -> Some octx_v
-                                    | `Right ictx_v -> Some ictx_v)
+    ~f:(fun ~key:_ value -> match value with
+        | `Both (_, ictx_v) -> Some ictx_v
+        | `Left octx_v -> Some octx_v
+        | `Right ictx_v -> Some ictx_v)
 
 module Spec = struct
   type t = {
@@ -30,7 +30,7 @@ module Spec = struct
 
   (* Map is an appropriate implementation when one of the inputs is a
      list and the output is a list of the same length. *)
-  let map_bodies (spec: t) : t list =
+  let map_bodies ?(deduce_examples=true) (spec: t) : t list =
     let map_example lambda_name input result : example = (`Apply (`Id lambda_name, [input])), result in
     let map_examples examples lambda_name lambda_arg_name =
       let ex =
@@ -43,7 +43,10 @@ module Spec = struct
                | _ -> [])
               |> List.map ~f:(fun (i, o) -> map_example lambda_name i o, vctx'))
         |> List.dedup
-      in if Example.check ex then Some ex else None
+      in 
+      if Example.check ex then
+        if deduce_examples then Some ex else Some []
+      else None
     in
     let fill name hole =
       if hole.depth > 0 then
@@ -130,7 +133,7 @@ module Spec = struct
     in
     Ctx.to_alist spec.holes |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
-  let filter_bodies (spec: t) : t list =
+  let filter_bodies ?(deduce_examples=true) (spec: t) : t list =
     let filter_example lambda_name input result = (`Apply (`Id lambda_name, [input])), `Bool result in
     let filter_examples examples lambda_name list_name =
       let ex = 
@@ -144,7 +147,10 @@ module Spec = struct
                 |> List.map ~f:(fun ex -> ex, vctx)
               | _ -> [])
         |> List.dedup
-      in if Example.check ex then Some ex else None
+      in       
+      if Example.check ex then
+        if deduce_examples then Some ex else Some []
+      else None
     in
 
     let fill name hole =
@@ -228,48 +234,54 @@ module Spec = struct
      appropriate whenever one of the inputs is a list. If another of the
      arguments can act as a base case, it is used. Otherwise, a default
      base case is used for each type. *)
-  let fold_bodies (spec: t) : t list =
+  let fold_bodies ?(deduce_examples=true) (spec: t) : t list =
     let init_examples examples init_name list_name =
-      List.filter_map examples
-        ~f:(fun ((_, result), vctx) -> 
+      let ex = 
+        List.filter_map examples ~f:(fun ((_, result), vctx) -> 
             match Ctx.lookup_exn vctx list_name with
             | `List [] -> Some ((`Id init_name, result), vctx)
             | _ -> None)
+      in
+      if Example.check ex then
+        if deduce_examples then Some ex else Some []
+      else None
     in
     let foldr_examples examples lambda_name list_name init_expr =
       let apply_lambda acc elem = `Apply (`Id lambda_name, [acc; elem]) in
-      List.filter_map 
-        examples
-        ~f:(fun ((_, result), vctx) ->
-            match Ctx.lookup_exn vctx list_name with
-            | `List [x] -> Some ((apply_lambda init_expr x, result), vctx)
-            | `List (x::xs) ->
-              let acc_result_m = 
-                List.find_map examples ~f:(fun ((_, result), vctx) ->
-                    match Ctx.lookup_exn vctx list_name with
-                    | `List xs' when xs = xs' -> Some result
-                    | _ -> None)
-              in
-              Option.map acc_result_m ~f:(fun acc_result -> (apply_lambda acc_result x, result), vctx)
-            | _ -> None)
+      let ex = List.filter_map examples ~f:(fun ((_, result), vctx) ->
+          match Ctx.lookup_exn vctx list_name with
+          | `List [x] -> Some ((apply_lambda init_expr x, result), vctx)
+          | `List (x::xs) ->
+            let acc_result_m = List.find_map examples ~f:(fun ((_, result), vctx) ->
+                match Ctx.lookup_exn vctx list_name with
+                | `List xs' when xs = xs' -> Some result
+                | _ -> None)
+            in
+            Option.map acc_result_m ~f:(fun acc_result -> (apply_lambda acc_result x, result), vctx)
+          | _ -> None)
+      in
+      if Example.check ex then
+        if deduce_examples then Some ex else Some []
+      else None
     in
     let foldl_examples examples lambda_name list_name init_expr =
       let apply_lambda acc elem = `Apply (`Id lambda_name, [acc; elem]) in
-      List.filter_map 
-        examples
-        ~f:(fun ((_, result), vctx) ->
-            match Ctx.lookup_exn vctx list_name with
-            | `List [x] -> Some ((apply_lambda init_expr x, result), vctx)
-            | `List (r::rs) ->
-              let x::xs = List.rev (r::rs) in
-              let acc_result_m = 
-                List.find_map examples ~f:(fun ((_, result), vctx) ->
-                    match Ctx.lookup_exn vctx list_name with
-                    | `List rs' when xs = (List.rev rs') -> Some result
-                    | _ -> None)
-              in
-              Option.map acc_result_m ~f:(fun acc_result -> (apply_lambda acc_result x, result), vctx)
-            | _ -> None)
+      let ex = List.filter_map examples ~f:(fun ((_, result), vctx) ->
+          match Ctx.lookup_exn vctx list_name with
+          | `List [x] -> Some ((apply_lambda init_expr x, result), vctx)
+          | `List (r::rs) ->
+            let x::xs = List.rev (r::rs) in
+            let acc_result_m = List.find_map examples ~f:(fun ((_, result), vctx) ->
+                match Ctx.lookup_exn vctx list_name with
+                | `List rs' when xs = (List.rev rs') -> Some result
+                | _ -> None)
+            in
+            Option.map acc_result_m ~f:(fun acc_result -> (apply_lambda acc_result x, result), vctx)
+          | _ -> None)
+      in
+      if Example.check ex then
+        if deduce_examples then Some ex else Some []
+      else None
     in
 
     let fill name hole : t list =
@@ -292,9 +304,12 @@ module Spec = struct
                 | _ -> None)
           in
 
-          List.concat_map
-            lists
-            ~f:(fun (input_name, input_elem_typ) ->
+          List.concat_map lists ~f:(fun (input_name, input_elem_typ) ->
+              let init_name = Fresh.name "i" in
+              match init_examples examples init_name input_name with
+              | Some init_exs -> 
+                let holes' = Ctx.unbind spec.holes name in
+
                 let lambda_name = Fresh.name "f" in
                 let lambda_hole = {
                   examples = [];
@@ -302,52 +317,62 @@ module Spec = struct
                   tctx;
                   depth = hole.depth - 1;
                 } in
-                let holes' = Ctx.unbind spec.holes name in
-                match extract_base_case examples input_name with
-                | Some base -> 
-                  let foldl_hole = {
-                    lambda_hole with examples = foldl_examples examples lambda_name input_name base
-                  } in
-                  let foldr_hole = {
-                    lambda_hole with examples = foldr_examples examples lambda_name input_name base
-                  } in
-                  let target fold_name ctx =
-                    let body = Ctx.lookup_exn ctx lambda_name in
-                    let expr = `Lambda (arg_names, `Apply (`Id fold_name, [`Id input_name; body; base])) in
-                    let ctx' = Ctx.bind ctx name expr in
-                    spec.target ctx'
-                  in
-                  [ { target = target "foldl"; holes = Ctx.bind holes' lambda_name foldl_hole; };
-                    { target = target "foldr"; holes = Ctx.bind holes' lambda_name foldr_hole; }; ]
-                | None -> 
-                  let init_name = Fresh.name "i" in
-                  let init_hole =
-                    { examples = init_examples examples init_name input_name;
-                      signature = res_typ;
-                      tctx;
-                      depth = hole.depth - 1;
-                    } in
-                  let target fold_name ctx =
-                    let body = Ctx.lookup_exn ctx lambda_name in
-                    let init = Ctx.lookup_exn ctx init_name in
-                    let expr = `Lambda (arg_names, `Apply (`Id fold_name, [`Id input_name; body; init])) in
-                    let ctx' = Ctx.bind ctx name expr in
-                    spec.target ctx'
-                  in
-                  let holes = Ctx.bind (Ctx.bind holes' lambda_name lambda_hole) init_name init_hole in
-                  [ { target = target "foldl"; holes; }; { target = target "foldr"; holes; }; ])
+
+                let init_hole = {
+                  examples = init_exs;
+                  signature = res_typ;
+                  tctx;
+                  depth = hole.depth - 1;
+                } in
+
+                let baseless_target fold_name ctx =
+                  let body = Ctx.lookup_exn ctx lambda_name in
+                  let init = Ctx.lookup_exn ctx init_name in
+                  let expr = `Lambda (arg_names, `Apply (`Id fold_name, [`Id input_name; body; init])) in
+                  let ctx' = Ctx.bind ctx name expr in
+                  spec.target ctx'
+                in
+                let baseless_holes =
+                  Ctx.bind (Ctx.bind holes' lambda_name lambda_hole) init_name init_hole
+                in
+
+                (match extract_base_case examples input_name with
+                 | Some base ->
+                   let target fold_name ctx =
+                     let body = Ctx.lookup_exn ctx lambda_name in
+                     let expr = `Lambda (arg_names, `Apply (`Id fold_name, [`Id input_name; body; base])) in
+                     let ctx' = Ctx.bind ctx name expr in
+                     spec.target ctx'
+                   in
+                   (match foldl_examples examples lambda_name input_name base with
+                    | Some examples -> 
+                      [ { target = target "foldl";
+                          holes = Ctx.bind holes' lambda_name { lambda_hole with examples; }; } ]
+                    | None -> []) @
+                   (match foldr_examples examples lambda_name input_name base with
+                    | Some examples -> 
+                      [ { target = target "foldr";
+                          holes = Ctx.bind holes' lambda_name { lambda_hole with examples; }; } ]
+                    | None -> [])
+                 | None -> [ { target = baseless_target "foldl"; holes = baseless_holes; };
+                             { target = baseless_target "foldr"; holes = baseless_holes; }; ])
+              | None -> [])
         | _ -> []
       else []
     in
     Ctx.to_alist spec.holes |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
-  let foldt_bodies (spec: t) : t list =
+  let foldt_bodies ?(deduce_examples=true) (spec: t) : t list =
     let init_examples examples init_name input_name =
-      List.filter_map examples
-        ~f:(fun ((_, result), vctx) -> 
+      let ex =
+        List.filter_map examples ~f:(fun ((_, result), vctx) -> 
             match Ctx.lookup_exn vctx input_name with
             | `Tree Tree.Empty -> Some ((`Id init_name, result), vctx)
             | _ -> None)
+      in
+      if Example.check ex then
+        if deduce_examples then Some ex else Some []
+      else None
     in
     let fill name hole : t list =
       if hole.depth > 0 then
@@ -368,9 +393,12 @@ module Spec = struct
             |> Ctx.to_alist
           in
 
-          List.map
-            trees
-            ~f:(fun (input_name, input_elem_typ) ->
+          List.filter_map trees ~f:(fun (input_name, input_elem_typ) ->
+              let init_name = Fresh.name "i" in
+              match init_examples examples init_name input_name with
+              | Some init_exs -> 
+                let holes' = Ctx.unbind spec.holes name in
+
                 let lambda_name = Fresh.name "f" in
                 let lambda_hole = {
                   examples = [];
@@ -378,50 +406,60 @@ module Spec = struct
                   tctx;
                   depth = hole.depth - 1;
                 } in
-                let holes' = Ctx.unbind spec.holes name in
-                match extract_base_case examples input_name with
-                | Some base ->
-                  let target ctx =
-                    let body = Ctx.lookup_exn ctx lambda_name in
-                    let expr = `Lambda (arg_names, `Apply (`Id "foldt", [`Id input_name; body; base])) in
-                    let ctx' = Ctx.bind ctx name expr in
-                    spec.target ctx'
-                  in
-                  { target; holes = Ctx.bind holes' lambda_name lambda_hole; }
-                | None -> 
-                  let init_name = Fresh.name "i" in
-                  let init_hole = {
-                    tctx;
-                    depth = hole.depth - 1;
-                    examples = init_examples examples init_name input_name;
-                    signature = res_typ;
-                  } in
-                  let target ctx =
-                    let body = Ctx.lookup_exn ctx lambda_name in
-                    let init = Ctx.lookup_exn ctx init_name in
-                    let expr = `Lambda (arg_names, `Apply (`Id "foldt", [`Id input_name; body; init])) in
-                    let ctx' = Ctx.bind ctx name expr in
-                    spec.target ctx'
-                  in
-                  { target; holes = Ctx.bind (Ctx.bind holes' lambda_name lambda_hole) init_name init_hole; })
+
+                let init_hole = {
+                  tctx;
+                  depth = hole.depth - 1;
+                  examples = init_exs;
+                  signature = res_typ;
+                } in
+
+                let baseless_target ctx =
+                  let body = Ctx.lookup_exn ctx lambda_name in
+                  let init = Ctx.lookup_exn ctx init_name in
+                  let expr = `Lambda (arg_names, `Apply (`Id "foldt", [`Id input_name; body; init])) in
+                  let ctx' = Ctx.bind ctx name expr in
+                  spec.target ctx'
+                in
+
+                (match extract_base_case examples input_name with
+                 | Some base ->
+                   let target ctx =
+                     let body = Ctx.lookup_exn ctx lambda_name in
+                     let expr = `Lambda (arg_names, `Apply (`Id "foldt", [`Id input_name; body; base])) in
+                     let ctx' = Ctx.bind ctx name expr in
+                     spec.target ctx'
+                   in
+                   Some { target; holes = Ctx.bind holes' lambda_name lambda_hole; }
+                 | None -> 
+                   Some { target = baseless_target;
+                          holes = Ctx.bind (Ctx.bind holes' lambda_name lambda_hole) init_name init_hole; })
+              | None -> None)
         | _ -> []
       else []
     in
     Ctx.to_alist spec.holes |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
-  let recurs_bodies (spec: t) : t list =
+  let recurs_bodies ?(deduce_examples=true) (spec: t) : t list =
     let base_examples examples base_name input_name =
-      List.filter_map examples ~f:(fun ((_, result), vctx) -> 
+      let ex = List.filter_map examples ~f:(fun ((_, result), vctx) -> 
           match Ctx.lookup_exn vctx input_name with
           | `List [] -> Some ((`Id base_name, result), vctx)
           | _ -> None)
+      in
+      if Example.check ex then
+        if deduce_examples then Some ex else Some []
+      else None
     in
     let recurs_examples examples recurs_name input_name =
-      List.filter_map 
-        examples ~f:(fun ((_, result), vctx) ->
-            match Ctx.lookup_exn vctx input_name with
-            | `List (x::xs) -> Some ((`Apply (`Id recurs_name, [x; `List xs]), result), vctx)
-            | _ -> None)
+      let ex = List.filter_map examples ~f:(fun ((_, result), vctx) ->
+          match Ctx.lookup_exn vctx input_name with
+          | `List (x::xs) -> Some ((`Apply (`Id recurs_name, [x; `List xs]), result), vctx)
+          | _ -> None)
+      in
+      if Example.check ex then
+        if deduce_examples then Some ex else Some []
+      else None
     in
     let fill name hole : t list =
       if hole.depth > 0 then
@@ -442,50 +480,50 @@ module Spec = struct
             |> Ctx.to_alist
           in
 
-          (List.map
-             lists
-             ~f:(fun (input_name, input_elem_typ) ->
-                 let base_name = Fresh.name "f" in
-                 let base_hole =
-                   { examples = base_examples examples base_name input_name;
-                     signature = res_typ;
-                     tctx = Ctx.unbind tctx input_name;
-                     depth = hole.depth - 1;
-                   } in
-                 let recurs_name = Fresh.name "f" in
-                 let recurs_hole =
-                   { examples = recurs_examples examples recurs_name input_name;
-                     signature = Arrow_t ([input_elem_typ; App_t ("list", [input_elem_typ])], res_typ);
-                     tctx = Ctx.bind (Ctx.unbind tctx input_name) recurs_name hole.signature;
-                     depth = hole.depth - 1;
-                   } in
-                 let target ctx =
-                   let base = Ctx.lookup_exn ctx base_name in
-                   let recurs = Ctx.lookup_exn ctx recurs_name in
-                   let expr =
-                     `Lambda (arg_names,
-                              `Let (recurs_name,
-                                    `Lambda (arg_names, 
-                                             `Op (If, [`Op (Eq, [`Id input_name; `List []]); 
-                                                       base; 
-                                                       `Apply (recurs, [`Op (Car, [`Id input_name]); 
-                                                                        `Op (Cdr, [`Id input_name])])])),
-                                    `Apply (`Id recurs_name, [`Id input_name])))
+          List.filter_map lists ~f:(fun (input_name, input_elem_typ) ->
+              let base_name = Fresh.name "f" in
+              let recurs_name = Fresh.name "f" in
+              match base_examples examples base_name input_name, 
+                    recurs_examples examples recurs_name input_name with
+              | Some base_exs, Some recurs_exs -> 
+                let base_hole = {
+                  examples = base_exs;
+                  signature = res_typ;
+                  tctx = Ctx.unbind tctx input_name;
+                  depth = hole.depth - 1;
+                } in
+                let recurs_hole = {
+                  examples = recurs_exs;
+                  signature = Arrow_t ([input_elem_typ; App_t ("list", [input_elem_typ])], res_typ);
+                  tctx = Ctx.bind (Ctx.unbind tctx input_name) recurs_name hole.signature;
+                  depth = hole.depth - 1;
+                } in
+                let target ctx =
+                  let base = Ctx.lookup_exn ctx base_name in
+                  let recurs = Ctx.lookup_exn ctx recurs_name in
+                  let expr =
+                    `Lambda (arg_names,
+                             `Let (recurs_name,
+                                   `Lambda (arg_names, 
+                                            `Op (If, [`Op (Eq, [`Id input_name; `List []]); 
+                                                      base; 
+                                                      `Apply (recurs, [`Op (Car, [`Id input_name]); 
+                                                                       `Op (Cdr, [`Id input_name])])])),
+                                   `Apply (`Id recurs_name, [`Id input_name])))
 
-                   in
-                   let ctx' = Ctx.bind ctx name expr in
-                   spec.target ctx'
-                 in
-                 { target;
-                   holes = Ctx.bind (Ctx.bind (Ctx.unbind spec.holes name)
-                                       recurs_name recurs_hole)
-                       base_name base_hole;
-                 }
-               ))
+                  in
+                  let ctx' = Ctx.bind ctx name expr in
+                  spec.target ctx'
+                in
+                Some { 
+                  target;
+                  holes = Ctx.bind (Ctx.bind (Ctx.unbind spec.holes name)
+                                      recurs_name recurs_hole)
+                      base_name base_hole;
+                }
+              | _ -> None)
         | _ -> []
       else []
     in
     Ctx.to_alist spec.holes |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
-
-  
 end
