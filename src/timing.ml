@@ -161,25 +161,25 @@ let testcases =
         "(join [[1 0] [2 3] [6] [4 5]]) -> [1 0 2 3 6 4 5]";
       ], "Concatenates together a list of lists.";
 
-      "insert", 
-      [
-        "(insert [] 1) -> [1]";
-        "(insert [] 2) -> [2]";
-        "(insert [0 1] 2) -> [0 1 2]";
-        "(insert [0 1] 1) -> [0 1 1]";
-        "(insert [0 1] 0) -> [0 0 1]";
-        "(insert [0 1 2] 0) -> [0 0 1 2]";
-      ], "Inserts a number into a sorted list, maintaining the sort order.";
+      (* "insert",  *)
+      (* [ *)
+      (*   "(insert [] 1) -> [1]"; *)
+      (*   "(insert [] 2) -> [2]"; *)
+      (*   "(insert [0 1] 2) -> [0 1 2]"; *)
+      (*   "(insert [0 1] 1) -> [0 1 1]"; *)
+      (*   "(insert [0 1] 0) -> [0 0 1]"; *)
+      (*   "(insert [0 1 2] 0) -> [0 0 1 2]"; *)
+      (* ], "Inserts a number into a sorted list, maintaining the sort order."; *)
 
-      "count",
-      [
-        "(count [] 1) -> 0";
-        "(count [1 0] 1) -> 1";
-        "(count [0 0 1] 0) -> 2";
-        "(count [1 2 2 2 4 4 5] 2) -> 3";
-        "(count [1 2 2 2 4 4 5] 4) -> 2";
-        "(count [1 2 2 2 4 4 5] 5) -> 1";
-      ], "Counts the number of times an element appears in a list.";
+      (* "count", *)
+      (* [ *)
+      (*   "(count [] 1) -> 0"; *)
+      (*   "(count [1 0] 1) -> 1"; *)
+      (*   "(count [0 0 1] 0) -> 2"; *)
+      (*   "(count [1 2 2 2 4 4 5] 2) -> 3"; *)
+      (*   "(count [1 2 2 2 4 4 5] 4) -> 2"; *)
+      (*   "(count [1 2 2 2 4 4 5] 5) -> 1"; *)
+      (* ], "Counts the number of times an element appears in a list."; *)
 
     ], "Simple list examples";
 
@@ -264,6 +264,20 @@ let testcases =
         "(flatten {1}) -> [1]";
         "(flatten {1 {2} {3}}) -> [1 2 3]";
       ], "Flattens a tree into a list. Requires the specification of $join$.";
+
+      "flattenl",
+      [
+        "(join []) -> []";
+        "(join [[] [1 0]]) -> [1 0]";
+        "(join [[1 0] []]) -> [1 0]";
+        "(join [[1 0] [2 3] [6] [4 5]]) -> [1 0 2 3 6 4 5]";
+
+        "(flattenl {}) -> []";
+        "(flattenl {[1]}) -> [1]";
+        "(flattenl {[1] {[2]} {[3]}}) -> [1 2 3]";
+        "(flattenl {[1 1 1] {[2]} {[3]}}) -> [1 1 1 2 3]";
+        "(flattenl {[1 1 1] {[2 5 7]} {[3]}}) -> [1 1 1 2 5 7 3]";
+      ], "Flattens a tree of lists into a list. Requires the specification of $join$.";
 
       "height",
       [
@@ -441,14 +455,14 @@ let time_solve verbose untyped deduce (name, example_strs, desc) =
     let solutions_str =
       Util.Ctx.to_alist solutions
       |> List.map ~f:(fun (name, lambda) ->
-                      let lambda = Expr.normalize lambda in
-                      Expr.to_string (`Let (name, lambda, `Id "_")))
+          let lambda = Expr.normalize lambda in
+          Expr.to_string (`Let (name, lambda, `Id "_")))
       |> String.concat ~sep:"\n"
     in
     printf "Solved %s in %s. Solutions:\n%s\n\n"
-           name
-           (Time.Span.to_short_string solve_time)
-           solutions_str;
+      name
+      (Time.Span.to_short_string solve_time)
+      solutions_str;
     flush stdout;
     name, solve_time, solutions_str, desc
   end
@@ -461,11 +475,11 @@ let output_table results =
     pe "\\toprule";
     pe "Category & Name & Time & Description \\\\";
     List.iter results ~f:(fun (cases, desc) -> 
-          begin
-            pf "\\midrule\\multirow{%d}{2cm}{%s} \\\\\n" (List.length cases) desc;
+        begin
+          pf "\\midrule\\multirow{%d}{2cm}{%s} \\\\\n" (List.length cases) desc;
           List.iter cases ~f:(fun (name, time, _, desc) -> 
-                  pf "& %s & %s & %s \\\\\n" name (Time.Span.to_short_string time) desc);
-          end);
+              pf "& %s & %s & %s \\\\\n" name (Time.Span.to_short_string time) desc);
+        end);
     pe "\\bottomrule";
     pe "\\end{tabular}";
 
@@ -473,14 +487,14 @@ let output_table results =
     pe "\\toprule";
     pe "Category & Name & Implementation \\\\";
     List.iter results ~f:(fun (cases, desc) -> 
-          begin
-            pf "\\midrule\\multirow{%d}{2cm}{%s} \\\\\n" (List.length cases) desc;
+        begin
+          pf "\\midrule\\multirow{%d}{2cm}{%s} \\\\\n" (List.length cases) desc;
           List.iter cases ~f:(fun (name, _, impl, _) ->
               let impl' = List.fold_left ["%"; "#"; "_"] ~init:impl ~f:(fun impl' char ->
-                          String.substr_replace_all impl' ~pattern:char ~with_:("\\" ^ char))
-                  in
-                  pf "& %s & %s \\\\\n" name impl');
-          end);
+                  String.substr_replace_all impl' ~pattern:char ~with_:("\\" ^ char))
+              in
+              pf "& %s & %s \\\\\n" name impl');
+        end);
     pe "\\bottomrule";
     pe "\\end{tabular}";
   end
@@ -502,7 +516,7 @@ let command =
      let testcases = match testcase_names with
        | [] -> testcases
        | _ -> List.map testcases ~f:(fun (cases, desc) -> 
-                       List.filter cases ~f:(fun (name, _, _) -> List.mem testcase_names name), desc)
+           List.filter cases ~f:(fun (name, _, _) -> List.mem testcase_names name), desc)
      in
      let results = List.map testcases ~f:(fun (cases, desc) ->
          List.map cases ~f:(time_solve verbose untyped deduce), desc)
