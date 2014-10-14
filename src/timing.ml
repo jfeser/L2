@@ -180,7 +180,6 @@ let testcases =
       (*   "(count [1 2 2 2 4 4 5] 4) -> 2"; *)
       (*   "(count [1 2 2 2 4 4 5] 5) -> 1"; *)
       (* ], "Counts the number of times an element appears in a list."; *)
-
     ], "Simple list examples";
 
     [

@@ -232,7 +232,7 @@ let solve_single
           @ (Spec.filter_bodies ~deduce_examples parent)
           @ (Spec.fold_bodies ~deduce_examples ~infer_base parent)
           @ (Spec.foldt_bodies ~deduce_examples ~infer_base parent)
-          (* @ (Spec.recurs_bodies ~deduce_examples parent) *)
+          @ (Spec.recurs_bodies ~deduce_examples parent)
         )
       in
       specs @ (generate_specs child_specs)
@@ -240,6 +240,7 @@ let solve_single
 
   let specs = generate_specs [initial_spec] in
 
+  printf "%d specs.\n" (List.length specs);
   (* List.iter specs ~f:(fun spec -> print_endline (Spec.to_string spec)); *)
 
   let matrix_of_hole hole =
@@ -303,7 +304,7 @@ let solve_single
         match List.find_map row ~f:ident with
         | Some result -> Some result
         | None -> search' (depth + 1)
-    in search' 1
+    in search' 0
   in
 
   let rec search_unbounded depth specs =

@@ -86,7 +86,7 @@ let test_parse_typ =
 
 let test_parse_example =
   make_tests ~in_f:Util.parse_example ~out_f:identity
-              ~in_str:identity ~out_str:Expr.example_to_string ~res_str:Expr.example_to_string
+              ~in_str:identity ~out_str:Example.to_string ~res_str:Example.to_string
               "parse_example"
               [ "(f 1) -> 1", ((`Apply (`Id "f", [`Num 1])), `Num 1);
                 "(f (f 1)) -> 1", ((`Apply (`Id "f", [`Apply (`Id "f", [`Num 1])])), `Num 1);
@@ -160,6 +160,7 @@ let test_eval =
                 "(let member (lambda (l x) (foldl l (lambda (a e ) (| (= e x) a)) #f)) (member [] 0))", `Bool false;
                 "(let member (lambda (l x) (foldl l (lambda (a e ) (| (= e x) a)) #f)) (member [0] 0))", `Bool true;
                 "(let member (lambda (l x) (foldl l (lambda (a e ) (| (= e x) a)) #f)) (member [0 1 ] 0))", `Bool true;
+                "(let count (lambda (l x) (foldl l (lambda (a e) (if (= e x) (+ a 1) a)) 0)) (count [1 2 3 4 4] 4))", `Num 2;
               ]
 
 let test_typeof =
