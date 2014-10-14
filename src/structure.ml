@@ -140,10 +140,23 @@ module Spec = struct
           ~f:(fun ((_, result), vctx) ->
               match Ctx.lookup_exn vctx list_name, result with
               | `List x, `List y ->
-                let retained, removed = List.partition_tf x ~f:(List.mem y) in
-                List.map retained ~f:(fun i -> filter_example lambda_name i true)
-                @ List.map removed ~f:(fun i -> filter_example lambda_name i false)
-                |> List.map ~f:(fun ex -> ex, vctx)
+                let rec f inputs outputs =
+                  match inputs, outputs with
+                  | [], [] -> []
+                  (* This is a hack. In this case, there
+                     is more in the output list than there
+                     was in the input list. Return a pair of
+                     conflicting examples that will be picked
+                     up by the example checker. *)
+                  | [], o::os -> [filter_example lambda_name (`Num 1) false;
+                                  filter_example lambda_name (`Num 1) true]
+                  | i::is, [] -> (filter_example lambda_name i false)::(f is [])
+                  | i::is, o::os ->
+                    if i = o
+                    then (filter_example lambda_name i true)::(f is os)
+                    else (filter_example lambda_name i false)::(f is outputs)
+                in
+                f x y |> List.map ~f:(fun ex -> ex, vctx)
               | _ -> [])
         |> List.dedup
       in       
