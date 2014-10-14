@@ -36,12 +36,11 @@ module Spec = struct
       let ex =
         List.concat_map examples
           ~f:(fun ((_, result), vctx) ->
-              let vctx' = Ctx.unbind vctx lambda_arg_name in
               (match (Ctx.lookup_exn vctx lambda_arg_name), result with
                | `List x, `List y -> List.zip_exn x y
                | `Tree x, `Tree y -> List.zip_exn (Tree.flatten x) (Tree.flatten y)
                | _ -> [])
-              |> List.map ~f:(fun (i, o) -> map_example lambda_name i o, vctx'))
+              |> List.map ~f:(fun (i, o) -> map_example lambda_name i o, vctx))
         |> List.dedup
       in 
       if Example.check ex then
@@ -114,7 +113,7 @@ module Spec = struct
                     let hole' = { 
                       examples;
                       signature = Arrow_t ([input_elem_typ], res_elem_typ); 
-                      tctx = Ctx.unbind tctx input_name; 
+                      tctx; 
                       depth = hole.depth - 1;
                     } in
                     let target ctx =
@@ -483,13 +482,13 @@ module Spec = struct
                 let base_hole = {
                   examples = base_exs;
                   signature = res_typ;
-                  tctx = Ctx.unbind tctx input_name;
+                  tctx;
                   depth = hole.depth - 1;
                 } in
                 let recurs_hole = {
                   examples = recurs_exs;
                   signature = Arrow_t ([input_elem_typ; App_t ("list", [input_elem_typ])], res_typ);
-                  tctx = Ctx.bind (Ctx.unbind tctx input_name) recurs_name hole.signature;
+                  tctx = Ctx.bind tctx recurs_name hole.signature;
                   depth = hole.depth - 1;
                 } in
                 let target ctx =
