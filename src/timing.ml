@@ -444,7 +444,7 @@ let testcases =
 let all_cases = List.concat_map testcases ~f:(fun (cases, _) ->
     List.map cases ~f:(fun (name, _, _) -> name))
 
-let time_solve verbose untyped deduce infer (name, example_strs, desc) =
+let time_solve csv verbose untyped deduce infer (name, example_strs, desc) =
   begin
     let examples = List.map example_strs ~f:Util.parse_example in
     let start_time = Time.now () in
@@ -460,11 +460,12 @@ let time_solve verbose untyped deduce infer (name, example_strs, desc) =
           Expr.to_string (`Let (name, lambda, `Id "_")))
       |> String.concat ~sep:"\n"
     in
-    printf "Solved %s in %s. Solutions:\n%s\n\n"
-      name
-      (Time.Span.to_short_string solve_time)
-      solutions_str;
-    flush stdout;
+    if csv then begin
+      printf "%s,%f\n" name (Time.Span.to_sec solve_time);
+    end else begin
+      printf "Solved %s in %s. Solutions:\n%s\n\n"
+        name (Time.Span.to_short_string solve_time) solutions_str;
+    end; flush stdout;
     name, solve_time, solutions_str, desc
   end
 
@@ -505,6 +506,7 @@ let command =
     let open Command.Spec in
     empty
     +> flag "-t" ~aliases:["--table"] no_arg ~doc:" print out a result table in LaTeX format"
+    +> flag "-c" ~aliases:["--csv"] no_arg ~doc:" print out results in csv format"
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
     +> flag "-u" ~aliases:["--untyped"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> flag "-x" ~aliases:["--no-examples"] no_arg ~doc:" do not deduce examples when generalizing"
@@ -514,14 +516,14 @@ let command =
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun table verbose untyped no_deduce infer testcase_names () ->
+    (fun table csv verbose untyped no_deduce infer testcase_names () ->
      let testcases = match testcase_names with
        | [] -> testcases
        | _ -> List.map testcases ~f:(fun (cases, desc) -> 
            List.filter cases ~f:(fun (name, _, _) -> List.mem testcase_names name), desc)
      in
      let results = List.map testcases ~f:(fun (cases, desc) ->
-         List.map cases ~f:(time_solve verbose untyped (not no_deduce) infer), desc)
+         List.map cases ~f:(time_solve csv verbose untyped (not no_deduce) infer), desc)
      in
      if table then output_table results else ())
 

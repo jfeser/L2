@@ -240,7 +240,7 @@ let solve_single
 
   let specs = generate_specs [initial_spec] in
 
-  printf "%d specs.\n" (List.length specs);
+  (* printf "%d specs.\n" (List.length specs); *)
   (* List.iter specs ~f:(fun spec -> print_endline (Spec.to_string spec)); *)
 
   let matrix_of_hole hole =
@@ -324,8 +324,8 @@ let solve
     ?(init=default_init)
     (examples: example list) 
   : expr Ctx.t =
-  printf "Deduce examples? %b\n" deduce_examples;
-  printf "Infer base cases? %b\n" infer_base;
+  (* printf "Deduce examples? %b\n" deduce_examples; *)
+  (* printf "Infer base cases? %b\n" infer_base; *)
   
   (* Split examples into separate functions. *)
   let func_examples = Example.split examples in
