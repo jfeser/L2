@@ -71,11 +71,11 @@ module Spec = struct
                             | `Tree x, `Tree y -> Tree.equal x y ~cmp:(fun _ _ -> true)
                             | `Apply _, `Tree _ -> true
                             | _ -> false)
-                    && List.exists examples
-                         ~f:(fun ((_, result), vctx) ->
-                             match (Ctx.lookup_exn vctx name), result with
-                             | `Tree x, `Tree y -> x <> y
-                             | _ -> false)
+                    (* && List.exists examples *)
+                    (*      ~f:(fun ((_, result), vctx) -> *)
+                    (*          match (Ctx.lookup_exn vctx name), result with *)
+                    (*          | `Tree x, `Tree y -> x <> y *)
+                    (*          | _ -> false) *)
                     then Some elem_typ else None
                   | _ -> None)
             |> Ctx.to_alist
@@ -93,11 +93,11 @@ module Spec = struct
                             | `List x, `List y -> List.length x = List.length y
                             | `Apply _, `List _ -> true
                             | _ -> false)
-                    && List.exists examples
-                         ~f:(fun ((_, result), vctx) ->
-                             match (Ctx.lookup_exn vctx name), result with
-                             | `List x, `List y -> x <> y
-                             | _ -> false)
+                    (* && List.exists examples *)
+                    (*      ~f:(fun ((_, result), vctx) -> *)
+                    (*          match (Ctx.lookup_exn vctx name), result with *)
+                    (*          | `List x, `List y -> x <> y *)
+                    (*          | _ -> false) *)
                     then Some elem_typ else None
                   | _ -> None)
             |> Ctx.to_alist
@@ -189,12 +189,12 @@ module Spec = struct
                           | `List x, `List y -> Util.superset x y
                           | `Apply _, `List _ -> true
                           | _ -> failwith "Examples do not have a consistent type.")
-                  && List.exists examples
-                       ~f:(fun ((_, result), vctx) ->
-                           match Ctx.lookup_exn vctx name, result with
-                           | `List x, `List y -> Util.strict_superset x y
-                           | `Apply _, `List _ -> false
-                           | _ -> failwith "Examples do not have a consistent type.")
+                  (* && List.exists examples *)
+                  (*      ~f:(fun ((_, result), vctx) -> *)
+                  (*          match Ctx.lookup_exn vctx name, result with *)
+                  (*          | `List x, `List y -> Util.strict_superset x y *)
+                  (*          | `Apply _, `List _ -> false *)
+                  (*          | _ -> failwith "Examples do not have a consistent type.") *)
                   then Some elem_typ else None
                 | _ -> None)
           |> Ctx.to_alist
