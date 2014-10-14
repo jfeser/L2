@@ -445,11 +445,13 @@ let testcases =
 let all_cases = List.concat_map testcases ~f:(fun (cases, _) ->
     List.map cases ~f:(fun (name, _, _) -> name))
 
-let time_solve verbose untyped deduce (name, example_strs, desc) =
+let time_solve verbose untyped deduce infer (name, example_strs, desc) =
   begin
     let examples = List.map example_strs ~f:Util.parse_example in
     let start_time = Time.now () in
-    let solutions = Search.solve ~verbose ~simple_search:untyped ~deduce_examples:deduce examples in
+    let solutions =
+      Search.solve ~verbose ~simple_search:untyped ~deduce_examples:deduce ~infer_base:infer examples
+    in
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
     let solutions_str =
@@ -507,19 +509,20 @@ let command =
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
     +> flag "-u" ~aliases:["--untyped"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> flag "-x" ~aliases:["--no-examples"] no_arg ~doc:" do not deduce examples when generalizing"
+    +> flag "-i" ~aliases:["--infer-base"] no_arg ~doc:" infer the base case of folds (unsound)"
     +> anon (sequence ("testcase" %: string))
   in
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun table verbose untyped deduce testcase_names () ->
+    (fun table verbose untyped no_deduce infer testcase_names () ->
      let testcases = match testcase_names with
        | [] -> testcases
        | _ -> List.map testcases ~f:(fun (cases, desc) -> 
            List.filter cases ~f:(fun (name, _, _) -> List.mem testcase_names name), desc)
      in
      let results = List.map testcases ~f:(fun (cases, desc) ->
-         List.map cases ~f:(time_solve verbose untyped deduce), desc)
+         List.map cases ~f:(time_solve verbose untyped (not no_deduce) infer), desc)
      in
      if table then output_table results else ())
 

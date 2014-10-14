@@ -199,6 +199,7 @@ let solve_single
     ?(verbose=false)
     ?(simple_search=false)
     ?(deduce_examples=true)
+    ?(infer_base=false)
     ?(init=[])
     ?(ops=Expr.Op.all)
     ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
@@ -229,14 +230,17 @@ let solve_single
       let child_specs = List.concat_map specs ~f:(fun parent ->
           (Spec.map_bodies ~deduce_examples parent)
           @ (Spec.filter_bodies ~deduce_examples parent)
-          @ (Spec.fold_bodies ~deduce_examples parent)
-          @ (Spec.foldt_bodies ~deduce_examples parent)
-          @ (Spec.recurs_bodies ~deduce_examples parent))
+          @ (Spec.fold_bodies ~deduce_examples ~infer_base parent)
+          @ (Spec.foldt_bodies ~deduce_examples ~infer_base parent)
+          (* @ (Spec.recurs_bodies ~deduce_examples parent) *)
+        )
       in
       specs @ (generate_specs child_specs)
   in
 
   let specs = generate_specs [initial_spec] in
+
+  (* List.iter specs ~f:(fun spec -> print_endline (Spec.to_string spec)); *)
 
   let matrix_of_hole hole =
     let init' =
@@ -315,9 +319,13 @@ let solve
     ?(verbose=false) 
     ?(simple_search=false)
     ?(deduce_examples=true)
-    ?(init=default_init) 
+    ?(infer_base=false)
+    ?(init=default_init)
     (examples: example list) 
   : expr Ctx.t =
+  printf "Deduce examples? %b\n" deduce_examples;
+  printf "Infer base cases? %b\n" infer_base;
+  
   (* Split examples into separate functions. *)
   let func_examples = Example.split examples in
 
@@ -346,7 +354,7 @@ let solve
               | Util.Ctx.UnboundError _ -> false
             in
             let result = 
-              (solve_single ~verbose ~init ~verify ~simple_search ~deduce_examples exs) (`Id "_")
+              (solve_single ~verbose ~init ~verify ~simple_search ~deduce_examples ~infer_base exs) (`Id "_")
             in
             (* printf "Solved %s: %s\n" name (Expr.to_string result); *)
             match result with

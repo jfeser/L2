@@ -241,12 +241,12 @@ module Spec = struct
      appropriate whenever one of the inputs is a list. If another of the
      arguments can act as a base case, it is used. Otherwise, a default
      base case is used for each type. *)
-  let fold_bodies ?(deduce_examples=true) (spec: t) : t list =
+  let fold_bodies ?(deduce_examples=true) ?(infer_base=false) (spec: t) : t list =
     let init_examples examples init_name list_name =
       let ex = List.filter_map examples ~f:(fun ((_, result), vctx) -> 
-            match Ctx.lookup_exn vctx list_name with
-            | `List [] -> Some ((`Id init_name, result), vctx)
-            | _ -> None)
+          match Ctx.lookup_exn vctx list_name with
+          | `List [] -> Some ((`Id init_name, result), vctx)
+          | _ -> None)
       in
       if Example.check ex then
         if deduce_examples then Some ex else Some []
@@ -341,34 +341,39 @@ module Spec = struct
                 let baseless_holes =
                   Ctx.bind (Ctx.bind holes' lambda_name lambda_hole) init_name init_hole
                 in
+                let baseless_specs =
+                  [ { target = baseless_target "foldl"; holes = baseless_holes; };
+                    { target = baseless_target "foldr"; holes = baseless_holes; }; ]
+                in
 
-                (match extract_base_case examples input_name with
-                 | Some base ->
-                   let target fold_name ctx =
-                     let body = Ctx.lookup_exn ctx lambda_name in
-                     let expr = `Lambda (arg_names, `Apply (`Id fold_name, [`Id input_name; body; base])) in
-                     let ctx' = Ctx.bind ctx name expr in
-                     spec.target ctx'
-                   in
-                   (match foldl_examples examples lambda_name input_name base with
-                    | Some examples -> 
-                      [ { target = target "foldl";
-                          holes = Ctx.bind holes' lambda_name { lambda_hole with examples; }; } ]
-                    | None -> []) @
-                   (match foldr_examples examples lambda_name input_name base with
-                    | Some examples -> 
-                      [ { target = target "foldr";
-                          holes = Ctx.bind holes' lambda_name { lambda_hole with examples; }; } ]
-                    | None -> [])
-                 | None -> [ { target = baseless_target "foldl"; holes = baseless_holes; };
-                             { target = baseless_target "foldr"; holes = baseless_holes; }; ])
+                if infer_base then
+                  match extract_base_case examples input_name with
+                  | Some base ->
+                    let target fold_name ctx =
+                      let body = Ctx.lookup_exn ctx lambda_name in
+                      let expr = `Lambda (arg_names, `Apply (`Id fold_name, [`Id input_name; body; base])) in
+                      let ctx' = Ctx.bind ctx name expr in
+                      spec.target ctx'
+                    in
+                    (match foldl_examples examples lambda_name input_name base with
+                     | Some examples ->
+                       [ { target = target "foldl";
+                           holes = Ctx.bind holes' lambda_name { lambda_hole with examples; }; } ]
+                     | None -> []) @
+                    (match foldr_examples examples lambda_name input_name base with
+                     | Some examples ->
+                       [ { target = target "foldr";
+                           holes = Ctx.bind holes' lambda_name { lambda_hole with examples; }; } ]
+                     | None -> [])
+                  | None -> baseless_specs
+                else baseless_specs
               | None -> [])
         | _ -> []
       else []
     in
     Ctx.to_alist spec.holes |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
-  let foldt_bodies ?(deduce_examples=true) (spec: t) : t list =
+  let foldt_bodies ?(deduce_examples=true) ?(infer_base=false) (spec: t) : t list =
     let init_examples examples init_name input_name =
       let ex =
         List.filter_map examples ~f:(fun ((_, result), vctx) -> 
@@ -399,7 +404,7 @@ module Spec = struct
             |> Ctx.to_alist
           in
 
-          List.filter_map trees ~f:(fun (input_name, input_elem_typ) ->
+          List.concat_map trees ~f:(fun (input_name, input_elem_typ) ->
               let init_name = Fresh.name "i" in
               match init_examples examples init_name input_name with
               | Some init_exs -> 
@@ -427,20 +432,24 @@ module Spec = struct
                   let ctx' = Ctx.bind ctx name expr in
                   spec.target ctx'
                 in
+                let baseless_specs = 
+                  [ { target = baseless_target;
+                      holes = Ctx.bind (Ctx.bind holes' lambda_name lambda_hole) init_name init_hole; } ]
+                in
 
-                (match extract_base_case examples input_name with
-                 | Some base ->
-                   let target ctx =
-                     let body = Ctx.lookup_exn ctx lambda_name in
-                     let expr = `Lambda (arg_names, `Apply (`Id "foldt", [`Id input_name; body; base])) in
-                     let ctx' = Ctx.bind ctx name expr in
-                     spec.target ctx'
-                   in
-                   Some { target; holes = Ctx.bind holes' lambda_name lambda_hole; }
-                 | None -> 
-                   Some { target = baseless_target;
-                          holes = Ctx.bind (Ctx.bind holes' lambda_name lambda_hole) init_name init_hole; })
-              | None -> None)
+                if infer_base then
+                  match extract_base_case examples input_name with
+                  | Some base ->
+                    let target ctx =
+                      let body = Ctx.lookup_exn ctx lambda_name in
+                      let expr = `Lambda (arg_names, `Apply (`Id "foldt", [`Id input_name; body; base])) in
+                      let ctx' = Ctx.bind ctx name expr in
+                      spec.target ctx'
+                    in
+                    [ { target; holes = Ctx.bind holes' lambda_name lambda_hole; } ]
+                  | None -> baseless_specs
+                else baseless_specs
+              | None -> [])
         | _ -> []
       else []
     in
