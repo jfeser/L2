@@ -192,7 +192,8 @@ module Spec = struct
                 match filter_examples examples lambda_name input_name with
                 | Some examples -> 
                   let hole' = { 
-                    examples; tctx;
+                    examples;
+                    tctx;
                     signature = Arrow_t ([input_elem_typ], Const_t Bool_t);
                     depth = hole.depth - 1;
                   } in
@@ -224,20 +225,13 @@ module Spec = struct
     | [base] -> Some base
     | _::_::_ -> None
 
-  let remove_names ctx list_name init_expr =
-    let ctx' = Ctx.unbind ctx list_name in
-    match init_expr with
-    | `Id init_name -> Ctx.unbind ctx' init_name
-    | _ -> ctx'
-
   (* Foldl and foldr are the most general functions. They are
      appropriate whenever one of the inputs is a list. If another of the
      arguments can act as a base case, it is used. Otherwise, a default
      base case is used for each type. *)
   let fold_bodies ?(deduce_examples=true) (spec: t) : t list =
     let init_examples examples init_name list_name =
-      let ex = 
-        List.filter_map examples ~f:(fun ((_, result), vctx) -> 
+      let ex = List.filter_map examples ~f:(fun ((_, result), vctx) -> 
             match Ctx.lookup_exn vctx list_name with
             | `List [] -> Some ((`Id init_name, result), vctx)
             | _ -> None)
