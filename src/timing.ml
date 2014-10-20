@@ -511,12 +511,18 @@ let command =
     +> flag "-u" ~aliases:["--untyped"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> flag "-x" ~aliases:["--no-examples"] no_arg ~doc:" do not deduce examples when generalizing"
     +> flag "-i" ~aliases:["--infer-base"] no_arg ~doc:" infer the base case of folds (unsound)"
+    +> flag "-s" ~aliases:["--stdin"] no_arg ~doc:" read specification from standard input"
     +> anon (sequence ("testcase" %: string))
   in
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun table csv verbose untyped no_deduce infer testcase_names () ->
+    (fun table csv verbose untyped no_deduce infer use_stdin testcase_names () ->
+       if use_stdin then
+         let example_strs = In_channel.input_lines stdin in
+         let _ = time_solve false verbose untyped (not no_deduce) infer ("", example_strs, "") in
+         ()
+       else
      let testcases = match testcase_names with
        | [] -> testcases
        | _ -> List.map testcases ~f:(fun (cases, desc) -> 
