@@ -525,14 +525,14 @@ let command =
          let _ = time_solve false verbose untyped (not no_deduce) infer ("", example_strs, "") in
          ()
        else
-     let testcases = match testcase_names with
-       | [] -> testcases
-       | _ -> List.map testcases ~f:(fun (cases, desc) -> 
-           List.filter cases ~f:(fun (name, _, _) -> List.mem testcase_names name), desc)
-     in
-     let results = List.map testcases ~f:(fun (cases, desc) ->
-         List.map cases ~f:(time_solve csv verbose untyped (not no_deduce) infer), desc)
-     in
-     if table then output_table results else ())
+         let testcases = match testcase_names with
+           | [] -> testcases
+           | _ -> List.map testcases ~f:(fun (cases, desc) -> 
+               List.filter cases ~f:(fun (name, _, _) -> List.mem testcase_names name), desc)
+         in
+         let results = List.map testcases ~f:(fun (cases, desc) ->
+             List.map cases ~f:(time_solve csv verbose untyped (not no_deduce) infer), desc)
+         in
+         if table then output_table results else ())
 
 let () = Command.run command

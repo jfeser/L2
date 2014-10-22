@@ -4,6 +4,10 @@ _build/
 .depend
 .depend.input
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Emacs
 .merlin
 
