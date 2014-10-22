@@ -519,7 +519,9 @@ let command =
     spec
     (fun table csv verbose untyped no_deduce infer use_stdin testcase_names () ->
        if use_stdin then
-         let example_strs = In_channel.input_lines stdin in
+         let example_strs = 
+           In_channel.input_lines stdin |> List.filter ~f:(fun str -> str <> "")
+         in
          let _ = time_solve false verbose untyped (not no_deduce) infer ("", example_strs, "") in
          ()
        else
