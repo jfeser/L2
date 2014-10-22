@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 from collections import OrderedDict
+from multiprocessing import Pool
 import random
 from subprocess import Popen, PIPE, TimeoutExpired
 import sys
+import time
 
 TIMEOUT = 5 * 60
 MAX_NUMBER = 10
@@ -277,7 +279,7 @@ testcases = {
     },
 }
 
-def generate_examples(name):
+def generate_examples(name, num_examples):
     testcase = testcases[name]
     examples = []
     inputs = testcase['input_generator'](True)
@@ -287,7 +289,7 @@ def generate_examples(name):
     except Exception:
         pass
 
-    while len(examples) < NUM_EXAMPLES:
+    while len(examples) < num_examples:
         inputs = testcase['input_generator'](False)
         try:
             output = testcase['impl'](*inputs)
@@ -301,30 +303,75 @@ def generate_examples(name):
         examples_str += '({} {}) -> {}\n'.format(name, inputs_str, to_string(example[1]))
     return examples_str
 
-def run(name):
+def run(name, num_examples=5):
     testcase = testcases[name]
 
     # Generate examples
     if 'requires' in testcase:
-        examples_strs = [generate_examples(n) for n in testcase['requires']]
+        examples_strs = [generate_examples(n, num_examples) for n in testcase['requires']]
     else:
         examples_strs = []
-    examples_strs.append(generate_examples(name))
+    examples_strs.append(generate_examples(name, num_examples))
     examples_str = '\n'.join(examples_strs)
 
     # Synthesize
-    print('Running {} with examples:\n{}'.format(name, examples_str))
+    # print('Running {} with examples:\n{}'.format(name, examples_str))
     p = Popen(['./timing.native', '-s', '-i'], stdin=PIPE, stdout=PIPE)
     try:
         output = p.communicate(input=examples_str.encode('utf-8'), timeout=TIMEOUT)[0]
-        print(output.decode('utf-8'), end='')
+        ret = '\n'.join(output.decode('utf-8').split('\n')[1:])
     except TimeoutExpired:
-        print('Time expired when running {}. (Timeout: {} sec)\n'.format(testcase, TIMEOUT))
+        ret = 'Time expired when running {}. (Timeout: {} sec)\n'.format(testcase, TIMEOUT)
+    return ret
+
+def runp(name):
+    random.seed()
+    return run(name, num_examples=num_examples)
+
+def run_repeated(name, num_trials, num_examples):
+    with open('{}-{}-{}.results'.format(name, num_examples, num_trials), 'w') as output:
+        with Pool(processes=2) as pool:
+            results = pool.map(runp, [name] * num_trials)
+        for result in results:
+            output.write(result)
+            output.write('\n')
+    return results
+
+def check_results(results):
+    correct = 0
+    incorrect = 0
+    total = len(results)
+
+    while correct + incorrect < total:
+        print(results[0], end='')
+        is_correct = input('? ') == 'y'
+        if is_correct:
+            correct += len([r for r in results if r == results[0]])
+            results = [r for r in results if r != results[0]]
+        else:
+            incorrect += len([r for r in results if r == results[0]])
+            results = [r for r in results if r != results[0]]
+    return correct / total
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        name = sys.argv[1]
-        run(name)
-    else:
-        for name in testcases:
-            run(name)
+    # if len(sys.argv) == 2:
+    #     name = sys.argv[1]
+    #     print(run(name), end='')
+
+    # elif len(sys.argv) == 4:
+    #     name = sys.argv[1]
+    #     num_examples = int(sys.argv[2])
+    #     num_trials = int(sys.argv[3])
+    #     results = run_repeated(name, num_trials, num_examples)
+    #     print(check_results(results))
+    # else:
+    #     for name in testcases:
+    #         print(run(name), end='')
+    num_trials = int(sys.argv[1])
+    max_examples = int(sys.argv[2])
+    for name in testcases:
+        for num_examples in range(1, max_examples + 1):
+            start = time.time()
+            run_repeated(name, num_trials, num_examples)
+            end = time.time()
+            print('Run {} {}-example trials of {} in {}.'.format(num_trials, num_examples, name, end - start))
