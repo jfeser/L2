@@ -369,9 +369,9 @@ let testcases =
         "(shiftr []) -> []";
         "(shiftr [1]) -> [1]";
         "(shiftr [1 2]) -> [2 1]";
-        "(shiftr [1 2 3]) -> [3 1 2]";
+        "(shiftr [0 2 3]) -> [3 0 2]";
         "(shiftr [1 2 3 4]) -> [4 1 2 3]";
-        "(shiftr [1 9 7 4]) -> [4 1 9 7]";
+        "(shiftr [2 9 7 4]) -> [4 2 9 7]";
       ], "Shift all items in a list to the right. Requires the specification of $last$.";
       
       "dedup",
