@@ -161,6 +161,10 @@ let test_eval =
                 "(let member (lambda (l x) (foldl l (lambda (a e ) (| (= e x) a)) #f)) (member [0] 0))", `Bool true;
                 "(let member (lambda (l x) (foldl l (lambda (a e ) (| (= e x) a)) #f)) (member [0 1 ] 0))", `Bool true;
                 "(let count (lambda (l x) (foldl l (lambda (a e) (if (= e x) (+ a 1) a)) 0)) (count [1 2 3 4 4] 4))", `Num 2;
+                "(let last (lambda (a) (foldl a (lambda (c b) b) 0))
+                 (let shiftr (lambda (a) (foldr a (lambda (c b) (foldl c (lambda (e d) (cons (last a) (cons b (cdr c)))) [1])) [])) (shiftr [6 5 3 7 8])))", `List [`Num 8; `Num 6; `Num 5; `Num 3; `Num 7];
+                "(let last (lambda (a) (foldl a (lambda (c b) b) 0))
+                 (let shiftr (lambda (a) (foldr a (lambda (c b) (foldl c (lambda (e d) (cons (last a) (cons b (cdr c)))) [1])) [])) (shiftr [4 0 5])))", `List [`Num 5; `Num 4; `Num 0];
               ]
 
 let test_typeof =
