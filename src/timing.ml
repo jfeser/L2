@@ -328,9 +328,9 @@ let testcases =
       "(f [[] []]) -> []";
       "(f [[1 2 3] [4] [5 6]]) -> [[1 4 5] [1 4 6] [2 4 5] [2 4 6] [3 4 5] [3 4 6]]";
     ], "";
+  ]
 
-
-    let] time_solve csv config (name, bk_strs, example_strs, desc) =
+let time_solve csv config (name, bk_strs, example_strs, desc) =
   begin
     let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Util.parse_expr impl) in
     let examples = List.map example_strs ~f:Util.parse_example in
