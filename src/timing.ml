@@ -3,34 +3,12 @@ open Printf
 
 let testcases =
   [
-    "car", [],
-    [
-      "(mycar [0]) -> 0";
-      "(mycar [1 0]) -> 1";
-      "(mycar [2 1 0]) -> 2";
-    ], "Returns the first element in a list.";
-
-    "cdr", [],
-    [
-      "(mycdr [0]) -> []";
-      "(mycdr [1 0]) -> [0]";
-      "(mycdr [2 1 0]) -> [1 0]";
-    ], "Returns a list with the first element dropped.";
-
     "dupli", [],
     [
       "(dupli []) -> []";
       "(dupli [1]) -> [1 1]";
       "(dupli [1 2 3]) -> [1 1 2 2 3 3]";
     ], "Duplicates each element in a list.";
-
-    "incr", [],
-    [
-      "(incr []) -> []";
-      "(incr [1]) -> [2]";
-      "(incr [1 2]) -> [2 3]";
-      "(incr [1 2 3 4]) -> [2 3 4 5]";
-    ], "Increments each number in a list by one.";
 
     "add", [],
     [
@@ -57,6 +35,15 @@ let testcases =
       "(reverse [0 1]) -> [1 0]";
       "(reverse [0 1 2]) -> [2 1 0]"
     ], "Reverses a list.";
+
+    "droplast", [],
+    [
+      "(droplast [1]) -> []";
+      "(droplast [1 2 3]) -> [1 2]";
+      "(droplast [1 2]) -> [1]";
+      "(droplast [1 2 5 7 8]) -> [1 2 5 7]";
+      "(droplast [1 1 1 1 1 1 1]) -> [1 1 1 1 1 1]";
+    ], "";
 
     "last", [],
     [
@@ -120,22 +107,6 @@ let testcases =
       "(member [1 2 5] 3) -> #f";
     ], "Checks whether an item is a member of a list.";
 
-    "incrs", [],
-    [
-      "(incrs []) -> []";
-      "(incrs [[1]]) -> [[2]]";
-      "(incrs [[1] [2]]) -> [[2] [3]]";
-      "(incrs [[1 2] [3 4]]) -> [[2 3] [4 5]]";
-    ], "For each list in a list of lists, increments each number in the list by one.";
-
-    "zeroes", [],
-    [
-      "(zeroes []) -> []";
-      "(zeroes [0]) -> []";
-      "(zeroes [1 0]) -> [1]";
-      "(zeroes [1 0 2]) -> [1 2]";
-    ], "Filters out the zeroes in a list.";
-
     "concat", [],
     [
       "(concat [] []) -> []";
@@ -143,6 +114,22 @@ let testcases =
       "(concat [1 0] [0]) -> [1 0 0]";
       "(concat [1 0 2] [3 4]) -> [1 0 2 3 4]";
     ], "Appends a list to the end of another list.";
+
+    "sum", [],
+    [
+      "(sum []) -> 0";
+      "(sum [1]) -> 1";
+      "(sum [1 3 5]) -> 9";
+      "(sum [1 5]) -> 6";
+    ], "Returns the sum of a list.";
+
+    "incrs", [],
+    [
+      "(incrs []) -> []";
+      "(incrs [[1]]) -> [[2]]";
+      "(incrs [[1] [2]]) -> [[2] [3]]";
+      "(incrs [[1 2] [3 4]]) -> [[2 3] [4 5]]";
+    ], "For each list in a list of lists, increments each number in the list by one.";
 
     "sums", [],
     [
@@ -159,40 +146,6 @@ let testcases =
       "(join [[1 0] []]) -> [1 0]";
       "(join [[1 0] [2 3] [6] [4 5]]) -> [1 0 2 3 6 4 5]";
     ], "Concatenates together a list of lists.";
-
-    "transpose", [],
-    [
-      "(transpose []) -> []";
-      "(transpose [[1 2 3]]) -> [[1] [2] [3]]";
-      "(transpose [[1 2 3] [4 5 6]]) -> [[1 4] [2 5] [3 6]]";
-      "(transpose [[1 2 3] [4 5 6] [7 8 9]]) -> [[1 4 7] [2 5 8] [3 6 9]]";
-    ], "";
-
-    "insert", [],
-    [
-      "(insert [] 1) -> [1]";
-      "(insert [] 2) -> [2]";
-      "(insert [0 1] 2) -> [0 1 2]";
-      "(insert [0 1] 1) -> [0 1 1]";
-      "(insert [0 1] 0) -> [0 0 1]";
-      "(insert [0 1 2] 0) -> [0 0 1 2]";
-    ], "Inserts a number into a sorted list, maintaining the sort order.";
-
-    "count", [],
-    [
-      "(count [] 1) -> 0";
-      "(count [1 0] 1) -> 1";
-      "(count [0 0 1] 0) -> 2";
-      "(count [1 2 2 2 4 4 5] 2) -> 3";
-      "(count [1 2 2 2 4 4 5] 4) -> 2";
-      "(count [1 2 2 2 4 4 5] 5) -> 1";
-    ], "Counts the number of times an element appears in a list.";
-    
-    "value", [],
-    [
-      "(myvalue {1}) -> 1";
-      "(myvalue {2 {} {}}) -> 2"
-    ], "Returns the value at the root of a tree.";
 
     "incrt", [],
     [
@@ -247,14 +200,6 @@ let testcases =
       "(membert {1 {3 {5 {7 {9 {1} {2} {4} {6} {8}}}}}} 12) -> #f";
     ], "Checks whether an element is contained in a tree.";
 
-    "filterpaths", [],
-    [
-      "(filterpaths {1 {2} {3}} 3) -> [{1 {3}}]";
-      "(filterpaths {1 {2} {3}} 2) -> [{1 {2}}]";
-      "(filterpaths {1} 1) -> [{1}]";
-      "(filterpaths {1 {3 {4} {5}} {4 {5}}} 4) -> [{1 {3 {4}}} {1 {4}}]";
-    ], "";
-
     "maxt", [],
     [
       "(maxt {1}) -> 1";
@@ -264,26 +209,6 @@ let testcases =
       "(maxt {5 {2 {0} {7} {4}} {8}}) -> 8";
     ], "Returns the maximum element in a tree.";
 
-    "paths", [],
-    [
-      "(paths {}) -> []";
-      "(paths {1}) -> [[1]]";
-      "(paths {1 {2} {3}}) -> [[1 2] [1 3]]";
-      "(paths {1 {2 {4} {5}} {3}}) -> [[1 2 4] [1 2 5] [1 3]]";
-      "(paths {1 {2 {4} {5}} {3}}) -> [[1 2 4] [1 2 5] [1 3]]";
-    ], "";
-
-    "maxpath", [
-      "sum", "(lambda (a) (foldl a (lambda (c b) (+ c b)) 0))";
-    ], [
-      "(maxpath {}) -> []";
-      "(maxpath {1}) -> [1]";
-      "(maxpath {5 {2} {3}}) -> [3 5]";
-      "(maxpath {5 {2} {6}}) -> [6 5]";
-      "(maxpath {5 {2 {0} {7} {4}} {6}}) -> [7 2 5]";
-      "(maxpath {5 {2 {0} {7} {4}} {8}}) -> [7 2 5]";
-    ], "";
-
     "flatten", [
       "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
     ], [
@@ -291,6 +216,17 @@ let testcases =
       "(flatten {1}) -> [1]";
       "(flatten {1 {2} {3}}) -> [1 2 3]";
     ], "Flattens a tree into a list. Requires the specification of $join$.";
+
+    "height", [
+      "max", "(lambda (a) (foldl a (lambda (c b) (if (< c b) b c)) 0))";
+    ], [
+      "(height {}) -> 0";
+      "(height {1}) -> 1";
+      "(height {100 {100} {100}}) -> 2";
+      "(height {100 {100} {100 {100 {100}}}}) -> 4";
+      "(height {100 {100 {100 {100 {100}}}} {100}}) -> 5";
+      "(height {90 {6 {5} {6} {8}} {7} {9} {5}}) -> 3";
+    ], "Returns the height of a tree. Requires the specification of $max$.";
 
     "prependt", [],
     [
@@ -318,34 +254,12 @@ let testcases =
       "(replacet {[1 3 4] {[4 5 6]}} 4 7) -> {[1 3 7] {[7 5 6]}}";
     ], "";
 
-    "reverset", [],
+    "sumnodes", [],
     [
-      "(reverset {}) -> {}";
-      "(reverset {1}) -> {1}";
-      "(reverset {1 {2} {3}}) -> {1 {3} {2}}";
-      "(reverset {1 {2 {5} {6}} {3}}) -> {1 {3} {2 {6} {5}}}";
-    ], "";
-
-    "sumleaves", [],
-    [
-      "(sumleaves {}) -> {}";
-      "(sumleaves {[]}) -> {0}";
-      "(sumleaves {[1]}) -> {1}";
-      "(sumleaves {[1] {[1 2 3]} {[4 8]}}) -> {1 {6} {12}}";
-    ], "";
-
-    "sumtrees", [],
-    [
-      "(sumtrees []) -> []";
-      "(sumtrees [{} {1 {2} {3}}]) -> [0 6]";
-      "(sumtrees [{5 {6}} {1}]) -> [11 1]";
-    ], "";
-
-    "graft", [],
-    [
-      "(graft {1} {2 {3} {4}}) -> {2 {3} {4}}";
-      "(graft {1 {2} {3}} {2 {3} {4}}) -> {1 {2 {3} {4}} {2 {3} {4}}}";
-      "(graft {1 {2} {3 {4}}} {2 {3}}) -> {1 {2 {3}} {3 {2 {3}}}}";
+      "(sumnodes {}) -> {}";
+      "(sumnodes {[]}) -> {0}";
+      "(sumnodes {[1]}) -> {1}";
+      "(sumnodes {[1] {[1 2 3]} {[4 8]}}) -> {1 {6} {12}}";
     ], "";
 
     "flattenl", [
@@ -358,37 +272,13 @@ let testcases =
       "(flattenl {[1 1 1] {[2 5 7]} {[3]}}) -> [1 1 1 2 5 7 3]";
     ], "Flattens a tree of lists into a list. Requires the specification of $join$.";
 
-    "height", [
-      "max", "(lambda (a) (foldl a (lambda (c b) (if (< c b) b c)) 0))";
-    ], [
-      "(height {}) -> 0";
-      "(height {1}) -> 1";
-      "(height {100 {100} {100}}) -> 2";
-      "(height {100 {100} {100 {100 {100}}}}) -> 4";
-      "(height {100 {100 {100 {100 {100}}}} {100}}) -> 5";
-      "(height {90 {6 {5} {6} {8}} {7} {9} {5}}) -> 3";
-    ], "Returns the height of a tree. Requires the specification of $max$.";
+    "sumtrees", [],
+    [
+      "(sumtrees []) -> []";
+      "(sumtrees [{} {1 {2} {3}}]) -> [0 6]";
+      "(sumtrees [{5 {6}} {1}]) -> [11 1]";
+    ], "";
 
-    "average", [
-      "sum", "(lambda (a) (foldl a (lambda (c b) (+ c b)) 0))";
-      "length", "(lambda (a) (foldl a (lambda (c b) (+ 1 c)) 0))";
-    ], [
-      "(average [0]) -> 0";
-      "(average [0 1 5]) -> 2";
-      "(average [1 1 1 1]) -> 1";
-      "(average [4 5 7 8]) -> 6";
-    ], 
-    "Returns the average of a list of numbers. Requires the specification of $length$ and $sum$ as well.";
-
-    "dropaverage", [
-      "sum", "(lambda (a) (foldl a (lambda (c b) (+ c b)) 0))";
-      "length", "(lambda (a) (foldl a (lambda (c b) (+ 1 c)) 0))";
-      "average", "(lambda (a) (/ (sum a) (length a)))";
-    ], [
-      "(dropaverage [0 1 5]) -> [5]";
-      "(dropaverage [1 1 1 1]) -> [1 1 1 1]";
-      "(dropaverage [4 5 7 8]) -> [7 8]";
-    ], "Removes all numbers smaller than the average of a list. Requires the specification of $sum$, $length$, and $average$.";
 
     "dropmax", [
       "max", "(lambda (a) (foldl a (lambda (c b) (if (< c b) b c)) 0))";
@@ -431,16 +321,6 @@ let testcases =
       "(dedup [1 2 3 2 1]) -> [3 2 1]";
     ], "Removes duplicate elements from a list. Requires the specification of $member$.";
 
-    "compress", [], [
-      "(compress []) -> []";
-      "(compress [1]) -> [1]";
-      "(compress [1 1 1]) -> [1]";
-      "(compress [1 2 1]) -> [1 2 1]";
-      "(compress [1 2 2 1]) -> [1 2 1]";
-      "(compress [1 2 2 1 1 4 4]) -> [1 2 1 4]";
-      "(compress [1 1 1 1 1 2 2 2 2 1 1 4 4]) -> [1 2 1 4]";
-    ], "";
-
     "cprod", [],
     [
       "(f []) -> [[]]";
@@ -448,33 +328,6 @@ let testcases =
       "(f [[] []]) -> []";
       "(f [[1 2 3] [4] [5 6]]) -> [[1 4 5] [1 4 6] [2 4 5] [2 4 6] [3 4 5] [3 4 6]]";
     ], "";
-
-    (* ("power", ["(f []) -> [[]]"; *)
-    (*            "(f [0]) -> [[] [0]]"; *)
-    (*            "(f [0 1]) -> [[] [1] [0] [0 1]]"; *)
-    (*           ], []), *)
-    (* ""; *)
-
-    (* ("drop", ["(f [] 0) -> []"; *)
-    (*           "(f [1] 0) -> [1]"; *)
-    (*           "(f [] 1) -> []"; *)
-    (*           "(f [] 2) -> []"; *)
-    (*           "(f [0 1] 0) -> [0 1]"; *)
-    (*           "(f [0 1] 1) -> [1]"; *)
-    (*           "(f [0 1] 2) -> []"; *)
-    (*           "(f [1 1 1] 0) -> [1 1 1]"; *)
-    (*           "(f [1 1 1] 1) -> [1 1]"; *)
-    (*           "(f [1 1 1] 2) -> [1]"; *)
-    (*           "(f [1 1 1] 3) -> []"; *)
-    (*            ], ["[]"]), *)
-    (* "(if (= 0 n) l (drop (cdr l) (- n 1)))"; *)
-
-    (* ("frequency", ["(f [1]) -> [1]"; *)
-    (*                "(f [1 2]) -> [1 1]"; *)
-    (*                "(f [1 2 1]) -> [2 1 2]"; *)
-    (*               ], ["0"]), *)
-    (* ""; *)
-  ]
 
 
     let] time_solve csv config (name, bk_strs, example_strs, desc) =
