@@ -10,7 +10,8 @@ module Typ = struct type t = Ast.typ with compare, sexp end
 module TypedExpr = struct type t = typed_expr end
 module TypMemoizer = Sstream.Memoizer (Typ) (TypedExpr)
 
-module SimpleMemoizer = Sstream.Memoizer (struct type t = typed_expr list with compare, sexp end) (Expr)
+module SimpleMemoizer =
+  Sstream.Memoizer (struct type t = typed_expr list with compare, sexp end) (Expr)
 
 let matrix_of_texpr_list ~size (texprs: typed_expr list) : typed_expr Sstream.matrix =
   let init_sizes = List.map texprs ~f:(fun e -> e, size e) in
@@ -240,9 +241,6 @@ let solve_single
 
   let specs = generate_specs [initial_spec] in
 
-  (* printf "%d specs.\n" (List.length specs); *)
-  (* List.iter specs ~f:(fun spec -> print_endline (Spec.to_string spec)); *)
-
   let matrix_of_hole hole =
     let init' =
       (Ctx.to_alist hole.tctx |> List.map ~f:(fun (name, typ) -> Id (name, typ))) @ init
@@ -314,62 +312,48 @@ let solve_single
   in
   search_unbounded 1 specs
 
-let default_init = ["0"; "1"; "[]"; "#f";] |> List.map ~f:parse_expr
+let default_init = ["0"; "1"; "[]"; "#f";] |> List.map ~f:(fun str ->
+    parse_expr str |> infer (Ctx.empty ()))
 
 let solve 
     ?(verbose=false) 
     ?(simple_search=false)
     ?(deduce_examples=true)
     ?(infer_base=false)
+    ?(bk=[])
     ?(init=default_init)
-    (examples: example list) 
+    (examples: example list)
   : expr Ctx.t =
-  (* printf "Deduce examples? %b\n" deduce_examples; *)
-  (* printf "Infer base cases? %b\n" infer_base; *)
-  
-  (* Split examples into separate functions. *)
-  let func_examples = Example.split examples in
 
-  (* Check that each set of examples represents a function. *)
-  if List.for_all func_examples ~f:(fun (_, exs) ->
-      let exs' = List.map exs ~f:(fun ex -> ex, Ctx.empty ()) in
-      Example.check exs')
-  then
-    let ectx, _, _, _ =
-      List.fold_left
-        func_examples
-        ~init:(Ctx.empty (), 
-               Eval.stdlib_vctx,
-               Ctx.empty (), 
-               List.map init ~f:(infer (Ctx.empty ())))
-        ~f:(fun (ectx, vctx, tctx, init) (name, exs) ->
-            let verify ?(limit=100) target examples =
-              try
-                match target (`Id "_") with
-                | `Let (_, body, _) ->
-                  let _ = infer (Ctx.bind tctx name (fresh_free 0)) body in
-                  Verify.verify_examples ~ctx:vctx target examples
-                | _ -> failwith "Bad result from solve_single."
-              with
-              | Infer.TypeError _ -> false
-              | Util.Ctx.UnboundError _ -> false
-            in
-            let result = 
-              (solve_single ~verbose ~init ~verify ~simple_search ~deduce_examples ~infer_base exs) (`Id "_")
-            in
-            (* printf "Solved %s: %s\n" name (Expr.to_string result); *)
-            match result with
-            | `Let (_, body, _) ->
-               let ectx' = Ctx.bind ectx name body in
-               let vctx' =
-                 let vctx'' = Ctx.bind vctx name `Unit in
-                 let value = `Closure (body, vctx'') in
-                 Ctx.update vctx'' name value; vctx''
-               in
-               let typ = typ_of_expr (infer (Ctx.bind tctx name (fresh_free 0)) body) in
-               let tctx' = Ctx.bind tctx name typ in
-               let init' = (Id (name, typ))::init in
-               ectx', vctx', tctx', init'
-            | _ -> failwith (sprintf "Bad result from solve_single %s" (Expr.to_string result)))
-    in ectx
-  else failwith "Some example group does not represent a function."
+  (* Check examples. *)
+  (if not (List.map examples ~f:(fun ex -> ex, Ctx.empty ()) |> Example.check)
+   then failwith "Examples do not represent a function.");
+
+  let tctx =
+    List.fold_left bk ~init:(Ctx.empty ()) ~f:(fun ctx (name, impl) ->
+        Ctx.bind ctx name (typ_of_expr (infer ctx impl)))
+  in
+  let vctx =
+    List.fold_left bk ~init:Eval.stdlib_vctx
+      ~f:(fun ctx (name, impl) ->
+          Ctx.bind ctx name (`Closure (impl, ctx)))
+  in
+
+  let init =
+    init @ (Ctx.to_alist tctx |> List.map ~f:(fun (name, typ) -> Id (name, typ)))
+  in
+
+  let verify ?(limit=100) target examples =
+    try
+      match target (`Id "_") with
+      | `Let (name, body, _) ->
+        let _ = infer (Ctx.bind tctx name (fresh_free 0)) body in
+        Verify.verify_examples ~ctx:vctx target examples
+      | _ -> failwith "Bad result from solve_single."
+    with
+    | TypeError _ -> false
+    | Ctx.UnboundError _ -> false
+  in
+
+  Ctx.bind (Ctx.empty ()) (Example.name examples)
+    ((solve_single ~verbose ~init ~verify ~simple_search ~deduce_examples ~infer_base examples) (`Id "_"))

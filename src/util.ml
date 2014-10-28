@@ -130,6 +130,13 @@ let strict_superset l1 l2 =
   (List.length l1) > (List.length l2)
   && List.for_all l2 ~f:(List.mem l1)
 
+let lsplit2_on_str s ~on =
+  match String.substr_index s ~pattern:on with
+  | Some split_index ->
+    Some (String.slice s 0 split_index,
+          String.slice s (split_index + (String.length on)) (String.length s))
+  | None -> None
+
 exception ParseError of string
 
 let parse parse_f str =
