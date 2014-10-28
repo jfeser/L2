@@ -13,6 +13,13 @@ module TypMemoizer = Sstream.Memoizer (Typ) (TypedExpr)
 module SimpleMemoizer =
   Sstream.Memoizer (struct type t = typed_expr list with compare, sexp end) (Expr)
 
+type config = {
+  verbose: bool;
+  untyped: bool;
+  deduction: bool;
+  infer_base: bool;
+}
+
 let matrix_of_texpr_list ~size (texprs: typed_expr list) : typed_expr Sstream.matrix =
   let init_sizes = List.map texprs ~f:(fun e -> e, size e) in
   let max_size =
@@ -197,13 +204,10 @@ let rec enumerate
                              | None -> false))
 
 let solve_single
-    ?(verbose=false)
-    ?(simple_search=false)
-    ?(deduce_examples=true)
-    ?(infer_base=false)
     ?(init=[])
     ?(ops=Expr.Op.all)
     ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
+    ~config
     (examples: example list) =
   let initial_spec =
     let target_name = Example.name examples in
@@ -229,11 +233,11 @@ let solve_single
     | [] -> []
     | specs ->
       let child_specs = List.concat_map specs ~f:(fun parent ->
-          (Spec.map_bodies ~deduce_examples parent)
-          @ (Spec.filter_bodies ~deduce_examples parent)
-          @ (Spec.fold_bodies ~deduce_examples ~infer_base parent)
-          @ (Spec.foldt_bodies ~deduce_examples ~infer_base parent)
-          @ (Spec.recurs_bodies ~deduce_examples parent)
+          (Spec.map_bodies ~deduce_examples:config.deduction parent)
+          @ (Spec.filter_bodies ~deduce_examples:config.deduction parent)
+          @ (Spec.fold_bodies ~deduce_examples:config.deduction ~infer_base:config.infer_base parent)
+          @ (Spec.foldt_bodies ~deduce_examples:config.deduction ~infer_base:config.infer_base parent)
+          @ (Spec.recurs_bodies ~deduce_examples:config.deduction parent)
         )
       in
       specs @ (generate_specs child_specs)
@@ -250,14 +254,14 @@ let solve_single
        let args = List.map arg_typs ~f:(fun typ -> Fresh.name "x", typ) in
        let arg_names, _ = List.unzip args in
        let init'' = init' @ (List.map args ~f:(fun (name, typ) -> Id (name, typ))) in
-       if simple_search then
+       if config.untyped then
          simple_enumerate init''
          |> Sstream.map_matrix ~f:(fun expr -> `Lambda (arg_names, expr))
        else
          enumerate init'' ret_typ
          |> Sstream.map_matrix ~f:(fun texpr -> `Lambda (arg_names, expr_of_texpr texpr))
     | typ ->
-      if simple_search then
+      if config.untyped then
         simple_enumerate init'
       else
         enumerate init' typ |> Sstream.map_matrix ~f:expr_of_texpr
@@ -291,7 +295,7 @@ let solve_single
     let rec search' depth : (expr -> expr) option =
       if depth >= max_depth 
       then begin
-        if verbose
+        if config.verbose
         then begin
           printf "Searched %s to depth %d.\n" (Spec.to_string spec) depth;
           flush stdout;
@@ -312,14 +316,12 @@ let solve_single
   in
   search_unbounded 1 specs
 
-let default_init = ["0"; "1"; "[]"; "#f";] |> List.map ~f:(fun str ->
-    parse_expr str |> infer (Ctx.empty ()))
+let default_init =
+  ["0"; "1"; "[]"; "#f";]
+  |> List.map ~f:(fun str -> parse_expr str |> infer (Ctx.empty ()))
 
-let solve 
-    ?(verbose=false) 
-    ?(simple_search=false)
-    ?(deduce_examples=true)
-    ?(infer_base=false)
+let solve
+    ?(config={verbose=false; untyped=false; deduction=true; infer_base=false})
     ?(bk=[])
     ?(init=default_init)
     (examples: example list)
@@ -356,4 +358,4 @@ let solve
   in
 
   Ctx.bind (Ctx.empty ()) (Example.name examples)
-    ((solve_single ~verbose ~init ~verify ~simple_search ~deduce_examples ~infer_base examples) (`Id "_"))
+    ((solve_single ~init ~verify ~config examples) (`Id "_"))

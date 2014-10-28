@@ -476,14 +476,13 @@ let testcases =
     (* ""; *)
   ]
 
-let time_solve csv verbose untyped deduce infer (name, bk_strs, example_strs, desc) =
+
+    let] time_solve csv config (name, bk_strs, example_strs, desc) =
   begin
     let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Util.parse_expr impl) in
     let examples = List.map example_strs ~f:Util.parse_example in
     let start_time = Time.now () in
-    let solutions =
-      Search.solve ~verbose ~simple_search:untyped ~deduce_examples:deduce ~infer_base:infer ~bk examples
-    in
+    let solutions = Search.solve ~config ~bk examples in
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
     let solutions_str =
@@ -550,7 +549,9 @@ let command =
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun table csv verbose untyped no_deduce infer use_stdin testcase_names () ->
+    (fun table csv verbose untyped no_deduce infer_base use_stdin testcase_names () ->
+       let open Search in
+       let config = { verbose; untyped; deduction=(not no_deduce); infer_base; } in
        if use_stdin then
          match In_channel.input_all stdin |> Util.lsplit2_on_str ~on:"\n\n" with
          | Some (bk_str, examples_str) ->
@@ -562,15 +563,13 @@ let command =
                  | None -> failwith "Bad background knowledge specification.")
            in
            let example_strs = String.split_lines examples_str in
-           let _ = time_solve false verbose untyped (not no_deduce) infer ("", bk_strs, example_strs, "") in
-           ()
+           let _ = time_solve false config ("", bk_strs, example_strs, "") in ()
          | None -> failwith "Invalid specification."
        else
          let testcases' = match testcase_names with
            | [] -> testcases
            | _ -> List.filter testcases ~f:(fun (name, _, _, _) -> List.mem testcase_names name)
          in
-         let _ = List.map testcases' ~f:(time_solve csv verbose untyped (not no_deduce) infer) in
-         ())
+         let _ = List.map testcases' ~f:(time_solve csv config) in ())
 
 let () = Command.run command
