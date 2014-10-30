@@ -20,6 +20,10 @@ type config = {
   infer_base: bool;
 }
 
+let default_init =
+  ["0"; "1"; "inf"; "[]"; "#f"]
+  |> List.map ~f:(fun str -> parse_expr str |> infer (Ctx.empty ()))
+
 let matrix_of_texpr_list ~size (texprs: typed_expr list) : typed_expr Sstream.matrix =
   let init_sizes = List.map texprs ~f:(fun e -> e, size e) in
   let max_size =
@@ -315,10 +319,6 @@ let solve_single
     | None -> search_unbounded (depth + 1) specs
   in
   search_unbounded 1 specs
-
-let default_init =
-  ["0"; "1"; "[]"; "#f";]
-  |> List.map ~f:(fun str -> parse_expr str |> infer (Ctx.empty ()))
 
 let solve
     ?(config={verbose=false; untyped=false; deduction=true; infer_base=false})
