@@ -404,7 +404,10 @@ let command =
     spec
     (fun table csv verbose untyped no_deduce infer_base use_stdin testcase_names () ->
        let open Search in
-       let config = { verbose; untyped; deduction=(not no_deduce); infer_base; } in
+       let config = {
+         default_config with
+         verbose; untyped; deduction=(not no_deduce); infer_base;
+       } in
        if use_stdin then
          match In_channel.input_all stdin |> Util.lsplit2_on_str ~on:"\n\n" with
          | Some (bk_str, examples_str) ->
