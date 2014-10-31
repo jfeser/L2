@@ -32,24 +32,22 @@ let arg_error op args =
 (** Raise a wrong # of arguments error. *)
 let argn_error id = raise (RuntimeError ("Wrong # of arguments to " ^ id))
 
-let stdlib =
-  ["inf", `Num Int.max_value]
-  @ ([
-      "foldr", "(lambda (l f i) (if (= l []) i (f (foldr (cdr l) f i) (car l))))";
-      "foldl", "(lambda (l f i) (if (= l []) i (foldl (cdr l) f (f i (car l)))))";
-      "map", "(lambda (l f) (if (= l []) [] (cons (f (car l)) (map (cdr l) f))))";
-      "filter", "(lambda (l f) (if (= l []) []
+let stdlib = [
+  "foldr", "(lambda (l f i) (if (= l []) i (f (foldr (cdr l) f i) (car l))))";
+  "foldl", "(lambda (l f i) (if (= l []) i (foldl (cdr l) f (f i (car l)))))";
+  "map", "(lambda (l f) (if (= l []) [] (cons (f (car l)) (map (cdr l) f))))";
+  "filter", "(lambda (l f) (if (= l []) []
              (if (f (car l))
              (cons (car l) (filter (cdr l) f))
              (filter (cdr l) f))))";
-      "mapt", "(lambda (t f)
+  "mapt", "(lambda (t f)
            (if (= t {}) {}
            (tree (f (value t)) (map (children t) (lambda (c) (mapt c f))))))";
-      "foldt", "(lambda (t f i) 
+  "foldt", "(lambda (t f i) 
             (if (= t {}) i 
             (f (map (children t) (lambda (ct) (foldt ct f i)))
             (value t))))";
-    ] |> List.map ~f:(fun (name, str) -> name, Util.parse_expr str))
+] |> List.map ~f:(fun (name, str) -> name, Util.parse_expr str)
 
 let eval_ctx_of_alist =
   List.fold_left ~init:(Ctx.empty ())

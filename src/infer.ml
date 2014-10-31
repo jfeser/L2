@@ -219,7 +219,6 @@ let stdlib_tctx = [
   "map", "(list[a], (a -> b)) -> list[b]";
   "mapt", "(tree[a], (a -> b)) -> tree[b]";
   "filter", "(list[a], (a -> bool)) -> list[a]";
-  "inf", "num";
 ] |> List.map ~f:(fun (name, str) -> name, Util.parse_typ str) |> Ctx.of_alist_exn
 
 (** Infer the type of an expression in context. Returns an expression
