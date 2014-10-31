@@ -350,7 +350,7 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
       match target (`Id "_") with
       | `Let (name, body, _) ->
         let _ = infer (Ctx.bind tctx name (fresh_free 0)) body in
-        Verify.verify_examples ~ctx:vctx target examples
+        Verify.verify_examples ~limit ~ctx:vctx target examples
       | _ -> failwith "Bad result from solve_single."
     with
     | TypeError _ -> false
