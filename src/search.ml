@@ -14,7 +14,7 @@ module SimpleMemoizer =
   Sstream.Memoizer (struct type t = typed_expr list with compare, sexp end) (Expr)
 
 type config = {
-  verbose: bool;
+  verbosity: int;
   untyped: bool;
   deduction: bool;
   infer_base: bool;
@@ -22,7 +22,7 @@ type config = {
 }
 
 let default_config = {
-  verbose=false;
+  verbosity=0;
   untyped=false;
   deduction=true;
   infer_base=true;
@@ -290,7 +290,7 @@ let solve_single
     |> Sstream.map_matrix 
       ~f:(fun ctx -> 
           let target = spec.Spec.target ctx in
-          (* print_endline (Expr.to_string (target (`Id "_"))); *)
+          log config.verbosity 2 (sprintf "Examined %s." (Expr.to_string (target (`Id "_"))));
           if verify target examples then Some target else None)
   in
 
@@ -300,11 +300,7 @@ let solve_single
     let rec search' depth : (expr -> expr) option =
       if depth >= max_depth 
       then begin
-        if config.verbose
-        then begin
-          printf "Searched %s to depth %d.\n" (Spec.to_string spec) depth;
-          flush stdout;
-        end else ();
+        log config.verbosity 1 (sprintf "Searched %s to depth %d." (Spec.to_string spec) depth);
         None 
       end else
         let row = Sstream.next solver in

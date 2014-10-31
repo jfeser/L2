@@ -137,6 +137,12 @@ let lsplit2_on_str s ~on =
           String.slice s (split_index + (String.length on)) (String.length s))
   | None -> None
 
+let log verbosity level str =
+  if verbosity >= level then begin
+    print_endline str;
+    flush stdout;
+  end else ()
+
 exception ParseError of string
 
 let parse parse_f str =
