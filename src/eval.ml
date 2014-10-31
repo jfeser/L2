@@ -123,10 +123,10 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
                        if y = 0 then raise (RuntimeError "Divide by zero.") else `Num (x mod y)
                     | _ -> arg_error op args)
           | Eq -> (match ev_all args with
-                   | [x; y] -> try `Bool (x = y) with Invalid_argument _ -> arg_error op args
+                   | [x; y] -> (try `Bool (x = y) with Invalid_argument _ -> arg_error op args)
                    | _ -> arg_error op args)
           | Neq -> (match ev_all args with
-                    | [x; y] -> try `Bool (x <> y) with Invalid_argument _ -> arg_error op args
+                    | [x; y] -> (try `Bool (x <> y) with Invalid_argument _ -> arg_error op args)
                     | _ -> arg_error op args)
           | Lt -> (match ev_all args with
                    | [`Num x; `Num y] -> `Bool (x < y)
