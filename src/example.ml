@@ -30,9 +30,9 @@ let name (exs: t list) : id =
 let split (exs: t list) : (string * t list) list =
     List.map exs ~f:(fun ex -> let name, _, _ = to_triple ex in name, ex)
     |> List.group ~break:(fun (n1, _) (n2, _) -> n1 <> n2)
-    |> List.map ~f:(fun exs ->
-                    let (name, _)::_ = exs in
-                    name, List.map exs ~f:Tuple.T2.get2)
+    |> List.map ~f:(fun exs -> match exs with
+        | (name, _)::_ -> name, List.map exs ~f:Tuple.T2.get2
+        | _ -> failwith "Expected a non-empty list.")
 
 (** Infer a function signature from input/output examples. *)
 let signature ?(ctx=Ctx.empty ()) (examples: t list) : typ =
