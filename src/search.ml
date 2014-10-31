@@ -100,6 +100,7 @@ let rec simple_enumerate
 let rec enumerate
     ?(ops=Expr.Op.all)
     ?(memo=TypMemoizer.empty ())
+    config
     init 
     typ 
   : typed_expr Sstream.matrix =
@@ -149,7 +150,7 @@ let rec enumerate
       slazy (fun () ->
           map_matrix
             (TypMemoizer.get memo current_typ' (fun () ->
-                 enumerate ~memo:memo init current_typ'))
+                 enumerate config ~memo:memo init current_typ'))
             ~f:(fun arg -> prev_args @ [arg]))
     in
     match arg_typs with
@@ -209,12 +210,15 @@ let rec enumerate
         | _ -> arrow_error ())
     |> List.map ~f:(fun (func, func_typ) -> apply_matrix func func_typ)
   in
+  
   merge (init_matrix::(op_matrices @ apply_matrices))
   |> map ~f:(List.filter ~f:(fun x ->
       let e = expr_of_texpr x in
+      if config.deduction then
       match Rewrite.simplify (List.map init ~f:expr_of_texpr) e with
       | Some e' -> Expr.cost e' >= Expr.cost e
-      | None -> false))
+        | None -> false
+      else true))
 
 let solve_single
     ?(init=[])
@@ -264,13 +268,13 @@ let solve_single
         simple_enumerate init''
         |> Sstream.map_matrix ~f:(fun expr -> `Lambda (arg_names, expr))
       else
-        enumerate init'' ret_typ
+        enumerate config init'' ret_typ
         |> Sstream.map_matrix ~f:(fun texpr -> `Lambda (arg_names, expr_of_texpr texpr))
     | typ ->
       if config.untyped then
         simple_enumerate init'
       else
-        enumerate init' typ |> Sstream.map_matrix ~f:expr_of_texpr
+        enumerate config init' typ |> Sstream.map_matrix ~f:expr_of_texpr
   in
 
   let choose name hole ctx : (expr Ctx.t) Sstream.matrix =
