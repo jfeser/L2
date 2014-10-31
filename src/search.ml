@@ -212,8 +212,8 @@ let rec enumerate
   merge (init_matrix::(op_matrices @ apply_matrices))
   |> map ~f:(List.filter ~f:(fun x ->
       let e = expr_of_texpr x in
-      match Rewrite.rewrite e with
-      | Some e' -> Expr.size e' >= Expr.size e
+      match Rewrite.simplify (List.map init ~f:expr_of_texpr) e with
+      | Some e' -> Expr.cost e' >= Expr.cost e
       | None -> false))
 
 let solve_single
