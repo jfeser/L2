@@ -21,16 +21,29 @@ module Spec = struct
   type t = {
     target: expr Ctx.t -> expr -> expr;
     holes: hole Ctx.t;
+    cost: int;
   }
 
+  let costs = [
+    "foldr", 2;
+    "foldl", 2;
+    "foldt", 2;
+    "rec", 3;
+    "map", 1;
+    "mapt", 1;
+    "filter", 1;
+  ] |> Ctx.of_alist_exn
+  
   let to_string (spec: t) : string =
     let (hole_bodies: expr Ctx.t) = Ctx.mapi spec.holes ~f:(fun ~key:name ~data:_ -> `Id name) in
-    Expr.to_string (spec.target hole_bodies (`Id "_"))
+    spec.target hole_bodies (`Id "_") |> Expr.to_string
 
   (* Map is an appropriate implementation when one of the inputs is a
      list and the output is a list of the same length. *)
   let map_bodies ?(deduce_examples=true) (spec: t) : t list =
-    let map_example lambda_name input result : example = (`Apply (`Id lambda_name, [input])), result in
+    let map_example lambda_name input result : example =
+      (`Apply (`Id lambda_name, [input])), result
+    in
     let map_examples examples lambda_name lambda_arg_name =
       let ex =
         List.concat_map examples ~f:(fun ((_, result), vctx) ->
@@ -83,7 +96,8 @@ module Spec = struct
           |> Ctx.to_alist
         in
 
-        let map_specs args map_name = 
+        let map_specs args map_name =
+          let cost = Ctx.lookup_exn costs map_name in
           List.filter_map args ~f:(fun (input_name, input_elem_typ) ->
               let lambda_name = Fresh.name "f" in
               match map_examples examples lambda_name input_name with
@@ -99,7 +113,11 @@ module Spec = struct
                   in
                   spec.target ctx'
                 in
-                Some { target; holes = Ctx.bind (Ctx.unbind spec.holes name) lambda_name hole' }
+                Some {
+                  target;
+                  holes = Ctx.bind (Ctx.unbind spec.holes name) lambda_name hole';
+                  cost = spec.cost + cost;
+                }
               | None -> None)
         in
         (map_specs tree_args "mapt") @ (map_specs list_args "map")
@@ -139,6 +157,7 @@ module Spec = struct
     in
 
     let fill name hole =
+      let cost = Ctx.lookup_exn costs "filter" in
       match hole.signature with
       | Arrow_t (arg_typs, App_t ("list", [res_elem_typ])) ->
         let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
@@ -176,7 +195,11 @@ module Spec = struct
                 let ctx' = Ctx.bind ctx name expr in
                 spec.target ctx'
               in
-              Some { target; holes = Ctx.bind (Ctx.unbind spec.holes name) lambda_name hole' }
+              Some {
+                target;
+                holes = Ctx.bind (Ctx.unbind spec.holes name) lambda_name hole';
+                cost = spec.cost + cost;
+              }
             | None -> None)
       | _ -> []
     in
@@ -251,6 +274,8 @@ module Spec = struct
     in
 
     let fill name hole : t list =
+      let foldl_cost = Ctx.lookup_exn costs "foldl" in
+      let foldr_cost = Ctx.lookup_exn costs "foldr" in
       match hole.signature with
       | Arrow_t (arg_typs, res_typ) ->
         let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
@@ -300,10 +325,16 @@ module Spec = struct
               let baseless_holes =
                 Ctx.bind (Ctx.bind holes' lambda_name lambda_hole) init_name init_hole
               in
-              let baseless_specs =
-                [ { target = baseless_target "foldl"; holes = baseless_holes; };
-                  { target = baseless_target "foldr"; holes = baseless_holes; }; ]
-              in
+              let baseless_specs = [
+                { target = baseless_target "foldl";
+                  holes = baseless_holes;
+                  cost = spec.cost + foldl_cost;
+                }; {
+                  target = baseless_target "foldr";
+                  holes = baseless_holes;
+                  cost = spec.cost + foldr_cost;
+                };
+              ] in
 
               if infer_base then
                 match extract_base_case examples input_name with
@@ -319,12 +350,16 @@ module Spec = struct
                   (match foldl_examples examples lambda_name input_name base with
                    | Some examples ->
                      [ { target = target "foldl";
-                         holes = Ctx.bind holes' lambda_name { lambda_hole with examples; }; } ]
+                         holes = Ctx.bind holes' lambda_name { lambda_hole with examples; };
+                         cost = spec.cost + foldl_cost;
+                       } ]
                    | None -> []) @
                   (match foldr_examples examples lambda_name input_name base with
                    | Some examples ->
                      [ { target = target "foldr";
-                         holes = Ctx.bind holes' lambda_name { lambda_hole with examples; }; } ]
+                         holes = Ctx.bind holes' lambda_name { lambda_hole with examples; };
+                         cost = spec.cost + foldr_cost;
+                       } ]
                    | None -> [])
                 | None -> baseless_specs
               else baseless_specs
@@ -362,6 +397,7 @@ module Spec = struct
           |> Ctx.to_alist
         in
 
+        let cost = Ctx.lookup_exn costs "foldt" in
         List.concat_map trees ~f:(fun (input_name, input_elem_typ) ->
             let init_name = Fresh.name "i" in
             match init_examples examples init_name input_name with
@@ -390,7 +426,9 @@ module Spec = struct
               in
               let baseless_specs = 
                 [ { target = baseless_target;
-                    holes = Ctx.bind (Ctx.bind holes' lambda_name lambda_hole) init_name init_hole; } ]
+                    holes = Ctx.bind (Ctx.bind holes' lambda_name lambda_hole) init_name init_hole;
+                    cost = spec.cost + cost;
+                  } ]
               in
 
               if infer_base then
@@ -402,7 +440,10 @@ module Spec = struct
                     let ctx' = Ctx.bind ctx name expr in
                     spec.target ctx'
                   in
-                  [ { target; holes = Ctx.bind holes' lambda_name lambda_hole; } ]
+                  [ { target;
+                      holes = Ctx.bind holes' lambda_name lambda_hole;
+                      cost = spec.cost + cost;
+                    } ]
                 | None -> baseless_specs
               else baseless_specs
             | None -> [])
@@ -449,6 +490,7 @@ module Spec = struct
           |> Ctx.to_alist
         in
 
+        let cost = Ctx.lookup_exn costs "rec" in
         List.filter_map lists ~f:(fun (input_name, input_elem_typ) ->
             let base_name = Fresh.name "f" in
             let recurs_name = Fresh.name "f" in
@@ -469,14 +511,15 @@ module Spec = struct
                 let base = Ctx.lookup_exn ctx base_name in
                 let recurs = Ctx.lookup_exn ctx recurs_name in
                 let expr =
-                  `Lambda (arg_names,
-                           `Let (recurs_name,
-                                 `Lambda (arg_names, 
-                                          `Op (If, [`Op (Eq, [`Id input_name; `List []]); 
-                                                    base; 
-                                                    `Apply (recurs, [`Op (Car, [`Id input_name]); 
-                                                                     `Op (Cdr, [`Id input_name])])])),
-                                 `Apply (`Id recurs_name, [`Id input_name])))
+                  `Lambda
+                    (arg_names,
+                     `Let (recurs_name,
+                           `Lambda (arg_names, 
+                                    `Op (If, [`Op (Eq, [`Id input_name; `List []]); 
+                                              base; 
+                                              `Apply (recurs, [`Op (Car, [`Id input_name]); 
+                                                               `Op (Cdr, [`Id input_name])])])),
+                           `Apply (`Id recurs_name, [`Id input_name])))
 
                 in
                 let ctx' = Ctx.bind ctx name expr in
@@ -487,6 +530,7 @@ module Spec = struct
                 holes = Ctx.bind (Ctx.bind (Ctx.unbind spec.holes name)
                                     recurs_name recurs_hole)
                     base_name base_hole;
+                cost = spec.cost + cost;
               }
             | _ -> None)
       | _ -> []

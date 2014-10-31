@@ -52,7 +52,7 @@ let rec simple_enumerate
   : expr Sstream.matrix =
   let open Sstream in
   let init_matrix =
-    matrix_of_texpr_list ~size:(fun e -> Expr.size (expr_of_texpr e)) init
+    matrix_of_texpr_list ~size:(fun e -> Expr.cost (expr_of_texpr e)) init
     |> map_matrix ~f:(expr_of_texpr)
   in
 
@@ -110,7 +110,7 @@ let rec enumerate
      stream. *)
   let init_matrix = 
     List.filter init ~f:(fun e -> is_unifiable typ (typ_of_expr e))
-    |> matrix_of_texpr_list ~size:(fun e -> Expr.size (expr_of_texpr e))
+    |> matrix_of_texpr_list ~size:(fun e -> Expr.cost (expr_of_texpr e))
   in
 
   (* Generate an argument list matrix that conforms to the provided list of types. *)
@@ -237,6 +237,7 @@ let solve_single
             tctx = Ctx.empty ();
           };
         ];
+      Spec.cost = 1;
     }
   in
 
