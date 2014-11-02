@@ -30,7 +30,7 @@ let default_config = {
 }
 
 let default_init =
-  ["0"; "1"; "[]"; "#f"]
+  ["0"; "1"; "inf"; "[]"; "#f"]
   |> List.map ~f:(fun str -> parse_expr str |> infer (Ctx.empty ()))
 
 let matrix_of_texpr_list ~size (texprs: typed_expr list) : typed_expr Sstream.matrix =
