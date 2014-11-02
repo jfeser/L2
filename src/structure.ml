@@ -25,13 +25,13 @@ module Spec = struct
   }
 
   let costs = [
-    "foldr", 2;
-    "foldl", 2;
-    "foldt", 2;
-    "rec", 3;
-    "map", 1;
-    "mapt", 1;
-    "filter", 1;
+    "foldr", 7;
+    "foldl", 7;
+    "foldt", 7;
+    "rec", 100;
+    "map", 7;
+    "mapt", 7;
+    "filter", 7;
   ] |> Ctx.of_alist_exn
   
   let to_string (spec: t) : string =
