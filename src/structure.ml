@@ -25,10 +25,10 @@ module Spec = struct
   }
 
   let costs = [
-    "foldr", 7;
-    "foldl", 7;
-    "foldt", 7;
-    "rec", 100;
+    "foldr", 8;
+    "foldl", 8;
+    "foldt", 8;
+    "rec", 40;
     "map", 7;
     "mapt", 7;
     "filter", 7;
@@ -351,14 +351,14 @@ module Spec = struct
                    | Some examples ->
                      [ { target = target "foldl";
                          holes = Ctx.bind holes' lambda_name { lambda_hole with examples; };
-                         cost = spec.cost + foldl_cost;
+                         cost = spec.cost + foldl_cost - 1;
                        } ]
                    | None -> []) @
                   (match foldr_examples examples lambda_name input_name base with
                    | Some examples ->
                      [ { target = target "foldr";
                          holes = Ctx.bind holes' lambda_name { lambda_hole with examples; };
-                         cost = spec.cost + foldr_cost;
+                         cost = spec.cost + foldr_cost - 1;
                        } ]
                    | None -> [])
                 | None -> baseless_specs

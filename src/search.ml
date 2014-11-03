@@ -288,8 +288,9 @@ let solve_single
     Sstream.map_matrix (matrix_of_hole hole) ~f:(Ctx.bind ctx name)
   in
 
-  let total_cost hypo_cost enum_cost =
-    hypo_cost + (if enum_cost < 8 then enum_cost else Int.pow 2 enum_cost)
+  let total_cost (hypo_cost: int) (enum_cost: int) : int =
+    hypo_cost + (Int.of_float (1.5 ** (Float.of_int enum_cost)))
+    (* hypo_cost + (if enum_cost <= 6 then enum_cost else enum_cost * 2) *)
   in
 
   let solver_of_spec spec =
@@ -314,7 +315,7 @@ let solve_single
      hypothesis. *)
   let search max_cost spec : (expr -> expr) option =
     let solver = solver_of_spec spec in
-    let rec search' exh_cost : (expr -> expr) option =
+    let rec search' (exh_cost: int) : (expr -> expr) option =
       if (total_cost spec.cost exh_cost) >= max_cost then begin
         (if exh_cost > 0 then
            log config.verbosity 1

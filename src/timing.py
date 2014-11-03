@@ -4,16 +4,14 @@ import subprocess
 import sys
 
 # MAX_MEMORY = int(4e9) # 4 Gb
-TIMEOUT = 5 * 60
+TIMEOUT = 10 * 60
 
 testcase_names = [
-    "car",
-    "cdr",
     "dupli",
-    "incr",
     "add",
     "evens",
     "reverse",
+    "droplast",
     "last",
     "length",
     "max",
@@ -21,26 +19,32 @@ testcase_names = [
     "multlast",
     "append",
     "member",
-    "incrs",
-    "zeroes",
     "concat",
+    "sum",
+    "incrs",
     "sums",
     "join",
-    "value",
     "incrt",
     "sumt",
     "leaves",
     "count_leaves",
     "membert",
+    "maxt",
     "flatten",
-    "flattenl",
     "height",
-    "average",
-    "dropaverage",
+    "prependt",
+    "appendt",
+    "replacet",
+    "sumnodes",
+    "flattenl",
+    "sumtrees",
     "dropmax",
     "shiftl",
     "shiftr",
     "dedup",
+    "selectnodes",
+    "dropmins",
+    "cprod",
 ]
 
 # def setlimits():
