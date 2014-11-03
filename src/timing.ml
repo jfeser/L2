@@ -390,9 +390,10 @@ let command =
   let spec = 
     let open Command.Spec in
     empty
-    +> flag "-t" ~aliases:["--table"] no_arg ~doc:" print out a result table in LaTeX format"
+    (* +> flag "-t" ~aliases:["--table"] no_arg ~doc:" print out a result table in LaTeX format" *)
     +> flag "-c" ~aliases:["--csv"] no_arg ~doc:" print out results in csv format"
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
+    +> flag "-V" ~aliases:["--very-verbose"] no_arg ~doc:" print _so many_ progress messages while searching"
     +> flag "-u" ~aliases:["--untyped"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> flag "-x" ~aliases:["--no-examples"] no_arg ~doc:" do not deduce examples when generalizing"
     +> flag "-i" ~aliases:["--infer-base"] no_arg ~doc:" infer the base case of folds (unsound)"
@@ -402,11 +403,15 @@ let command =
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun table csv verbose untyped no_deduce infer_base use_stdin testcase_names () ->
+    (fun csv verbose very_verbose untyped no_deduce infer_base use_stdin testcase_names () ->
        let open Search in
        let config = {
          default_config with
-         verbose; untyped; deduction=(not no_deduce); infer_base;
+         untyped; deduction=(not no_deduce); infer_base;
+         verbosity =
+           if verbose || very_verbose then
+             if very_verbose then 2 else 1
+           else 0;
        } in
        if use_stdin then
          match In_channel.input_all stdin |> Util.lsplit2_on_str ~on:"\n\n" with

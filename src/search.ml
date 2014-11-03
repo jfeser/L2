@@ -5,7 +5,7 @@ open Ast
 open Infer
 open Structure
 open Util
-
+    
 module Typ = struct type t = Ast.typ with compare, sexp end
 module TypedExpr = struct type t = typed_expr end
 module TypMemoizer = Sstream.Memoizer (Typ) (TypedExpr)
@@ -14,7 +14,7 @@ module SimpleMemoizer =
   Sstream.Memoizer (struct type t = typed_expr list with compare, sexp end) (Expr)
 
 type config = {
-  verbose: bool;
+  verbosity: int;
   untyped: bool;
   deduction: bool;
   infer_base: bool;
@@ -22,7 +22,7 @@ type config = {
 }
 
 let default_config = {
-  verbose=false;
+  verbosity=0;
   untyped=false;
   deduction=true;
   infer_base=true;
@@ -52,7 +52,7 @@ let rec simple_enumerate
   : expr Sstream.matrix =
   let open Sstream in
   let init_matrix =
-    matrix_of_texpr_list ~size:(fun e -> Expr.size (expr_of_texpr e)) init
+    matrix_of_texpr_list ~size:(fun e -> Expr.cost (expr_of_texpr e)) init
     |> map_matrix ~f:(expr_of_texpr)
   in
 
@@ -67,23 +67,23 @@ let rec simple_enumerate
     | [] -> failwith "Cannot generate args matrix with no arguments."
   in
 
-  let callable_matrix apply_callable callable_typ = match callable_typ with
+  let callable_matrix cost apply_callable callable_typ = match callable_typ with
     | Arrow_t (arg_typs, _) ->
       let num_args = List.length arg_typs in
-      let prefix = repeat_n num_args [] in
+      let prefix = repeat_n (num_args + cost - 1) [] in
       let matrix = slazy (fun () -> map_matrix (args_matrix num_args) ~f:apply_callable) in
       concat prefix matrix
     | _ -> arrow_error ()
   in
   let op_matrix op op_typ =
-    callable_matrix (fun args -> `Op (op, args)) op_typ
+    callable_matrix (Expr.Op.cost op) (fun args -> `Op (op, args)) op_typ
   in
   let apply_matrix func func_typ =
-    callable_matrix (fun args -> `Apply (func, args)) func_typ
+    callable_matrix 1 (fun args -> `Apply (func, args)) func_typ
   in
 
   let (op_matrices : expr matrix list) =
-    List.map Expr.Op.all ~f:(fun op -> 
+    List.map Expr.Op.all ~f:(fun op ->
         let meta = Expr.Op.meta op in 
         op_matrix op meta.Expr.Op.typ)
   in
@@ -100,6 +100,7 @@ let rec simple_enumerate
 let rec enumerate
     ?(ops=Expr.Op.all)
     ?(memo=TypMemoizer.empty ())
+    config
     init 
     typ 
   : typed_expr Sstream.matrix =
@@ -110,7 +111,7 @@ let rec enumerate
      stream. *)
   let init_matrix = 
     List.filter init ~f:(fun e -> is_unifiable typ (typ_of_expr e))
-    |> matrix_of_texpr_list ~size:(fun e -> Expr.size (expr_of_texpr e))
+    |> matrix_of_texpr_list ~size:(fun e -> Expr.cost (expr_of_texpr e))
   in
 
   (* Generate an argument list matrix that conforms to the provided list of types. *)
@@ -149,7 +150,7 @@ let rec enumerate
       slazy (fun () ->
           map_matrix
             (TypMemoizer.get memo current_typ' (fun () ->
-                 enumerate ~memo:memo init current_typ'))
+                 enumerate config ~memo:memo init current_typ'))
             ~f:(fun arg -> prev_args @ [arg]))
     in
     match arg_typs with
@@ -157,18 +158,19 @@ let rec enumerate
     | [] -> failwith "Cannot generate args matrix with no arguments."
   in
 
-  let callable_matrix apply_callable callable_typ = match callable_typ with
+  let callable_matrix cost apply_callable callable_typ = match callable_typ with
     | Arrow_t (arg_typs, ret_typ) ->
-      let prefix = repeat_n (List.length arg_typs) [] in
+      let num_args = List.length arg_typs in
+      let prefix = repeat_n (cost + num_args - 1) [] in
       let matrix = slazy (fun () -> map_matrix (args_matrix arg_typs) ~f:(apply_callable ret_typ)) in
       concat prefix matrix
     | _ -> arrow_error ()
   in
   let op_matrix op op_typ =
-    callable_matrix (fun ret_typ args -> Op ((op, args), ret_typ)) op_typ
+    callable_matrix (Expr.Op.cost op) (fun ret_typ args -> Op ((op, args), ret_typ)) op_typ
   in
   let apply_matrix func func_typ =
-    callable_matrix (fun ret_typ args -> Apply ((func, args), ret_typ)) func_typ
+    callable_matrix 1 (fun ret_typ args -> Apply ((func, args), ret_typ)) func_typ
   in
 
   (* The op stream is infinite, so it needs more careful handling. *)
@@ -209,12 +211,21 @@ let rec enumerate
         | _ -> arrow_error ())
     |> List.map ~f:(fun (func, func_typ) -> apply_matrix func func_typ)
   in
+  
   merge (init_matrix::(op_matrices @ apply_matrices))
   |> map ~f:(List.filter ~f:(fun x ->
       let e = expr_of_texpr x in
-      match Rewrite.rewrite e with
-      | Some e' -> Expr.size e' >= Expr.size e
-      | None -> false))
+      if config.deduction then
+        match Rewrite.simplify (List.map init ~f:expr_of_texpr) e with
+        | Some e' -> Expr.cost e' >= Expr.cost e
+        | None -> false
+      else true))
+
+type hypothesis = {
+  skel : Spec.t;
+  max_exh_cost : int;
+  generalized : bool;
+}
 
 let solve_single
     ?(init=[])
@@ -237,6 +248,7 @@ let solve_single
             tctx = Ctx.empty ();
           };
         ];
+      Spec.cost = 0;
     }
   in
 
@@ -263,21 +275,26 @@ let solve_single
         simple_enumerate init''
         |> Sstream.map_matrix ~f:(fun expr -> `Lambda (arg_names, expr))
       else
-        enumerate init'' ret_typ
+        enumerate config init'' ret_typ
         |> Sstream.map_matrix ~f:(fun texpr -> `Lambda (arg_names, expr_of_texpr texpr))
     | typ ->
       if config.untyped then
         simple_enumerate init'
       else
-        enumerate init' typ |> Sstream.map_matrix ~f:expr_of_texpr
+        enumerate config init' typ |> Sstream.map_matrix ~f:expr_of_texpr
   in
 
   let choose name hole ctx : (expr Ctx.t) Sstream.matrix =
     Sstream.map_matrix (matrix_of_hole hole) ~f:(Ctx.bind ctx name)
   in
 
+  let total_cost (hypo_cost: int) (enum_cost: int) : int =
+    hypo_cost + (Int.of_float (1.5 ** (Float.of_int enum_cost)))
+    (* hypo_cost + (if enum_cost <= 6 then enum_cost else enum_cost * 2) *)
+  in
+
   let solver_of_spec spec =
-    let ctx_matrix = match Ctx.to_alist spec.Spec.holes with
+    let matrix = match Ctx.to_alist spec.Spec.holes with
       | [] -> failwith "Specification has no holes."
       | (name, hole)::hs ->
         (List.fold_left hs
@@ -286,44 +303,64 @@ let solve_single
                Sstream.compose matrix (choose name' hole')))
           (Ctx.empty ())
     in
-    ctx_matrix
-    |> Sstream.map_matrix 
-      ~f:(fun ctx -> 
-          let target = spec.Spec.target ctx in
-          (* print_endline (Expr.to_string (target (`Id "_"))); *)
-          if verify target examples then Some target else None)
+
+    Sstream.map_matrix matrix ~f:(fun ctx -> 
+        let target = spec.Spec.target ctx in
+        log config.verbosity 2 (sprintf "Examined %s." (Expr.to_string (target (`Id "_"))));
+        if verify target examples then Some target else None)
   in
 
-  (* Search a spec up to a specified maximum depth. *)
-  let search max_depth spec : (expr -> expr) option =
+  (* Search a spec up to a specified maximum cost. The amount of
+     exhaustive search that this involves depends on the cost of the
+     hypothesis. *)
+  let search max_cost spec : (expr -> expr) option =
     let solver = solver_of_spec spec in
-    let rec search' depth : (expr -> expr) option =
-      if depth >= max_depth 
-      then begin
-        if config.verbose
-        then begin
-          printf "Searched %s to depth %d.\n" (Spec.to_string spec) depth;
-          flush stdout;
-        end else ();
-        None 
+    let rec search' (exh_cost: int) : (expr -> expr) option =
+      if (total_cost spec.cost exh_cost) >= max_cost then begin
+        (if exh_cost > 0 then
+           log config.verbosity 1
+             (sprintf "Searched %s to exhaustive cost %d." (Spec.to_string spec) exh_cost));
+        None
       end else
         let row = Sstream.next solver in
         match List.find_map row ~f:ident with
         | Some result -> Some result
-        | None -> search' (depth + 1)
+        | None -> search' (exh_cost + 1)
     in search' 0
   in
 
-  let rec search_unbounded depth specs =
-    match List.find_map specs ~f:(search depth) with
+  let rec search_unbounded (cost: int) (hypos: hypothesis list) =
+    let can_search hypo =
+      total_cost hypo.skel.cost (hypo.max_exh_cost + 1) <= cost
+    in
+    log config.verbosity 1 (sprintf "Searching up to cost %d." cost);
+    let m_result = List.find_map hypos ~f:(fun hypo ->
+        (* Check whether it is possible to search more than has been
+           searched with the current cost. Since the total cost can be
+           non-linear, this must be explicitly checked. *)
+        if can_search hypo then search cost hypo.skel else None)
+    in
+    match m_result with
     | Some result -> result
     | None ->
-      if depth >= config.max_exhaustive_depth then
-        search_unbounded 1 (generate_specs specs)
-      else
-        search_unbounded (depth + 1) specs
+      let hypos = List.map hypos ~f:(fun h ->
+          if can_search h
+          then {h with max_exh_cost = h.max_exh_cost + 1}
+          else h)
+      in
+      let generalizable, rest = List.partition_tf hypos ~f:(fun h ->
+          (not h.generalized) && (total_cost h.skel.cost 0 < cost))
+      in
+      let new_hypos =
+        List.map generalizable ~f:(fun h -> h.skel)
+        |> generate_specs
+        |> List.map ~f:(fun s -> { skel = s; max_exh_cost = 0; generalized = false; })
+      in
+      search_unbounded (cost + 1)
+        (new_hypos @ rest
+         @ List.map generalizable ~f:(fun h -> { h with generalized = true; }))
   in
-  search_unbounded 1 [initial_spec]
+  search_unbounded 1 [{ skel = initial_spec; max_exh_cost = 0; generalized = false; }]
 
 let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
   (* Check examples. *)
@@ -349,7 +386,7 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
       match target (`Id "_") with
       | `Let (name, body, _) ->
         let _ = infer (Ctx.bind tctx name (fresh_free 0)) body in
-        Verify.verify_examples ~ctx:vctx target examples
+        Verify.verify_examples ~limit ~ctx:vctx target examples
       | _ -> failwith "Bad result from solve_single."
     with
     | TypeError _ -> false

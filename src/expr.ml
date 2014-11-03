@@ -8,43 +8,55 @@ type t = expr with compare, sexp
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
+  module OpMap = Map.Make(
+    struct
+      type t = op
+      let t_of_sexp = op_of_sexp
+      let sexp_of_t = sexp_of_op
+      let compare = compare_op
+    end)
+  
   type t = op with compare, sexp
-
+  
   (** Type for storing operator metadata. *)
   type metadata = {
     typ    : typ;
     commut : bool;
     assoc  : bool;
     str    : string;
+    cost   : int;
   }
 
   let metadata_by_op = 
     let t = Util.parse_typ in
     [
-      Plus,     { typ = t "(num, num) -> num"             ; commut = true;  assoc = true;  str = "+"; };
-      Minus,    { typ = t "(num, num) -> num"             ; commut = false; assoc = false; str = "-"; };
-      Mul,      { typ = t "(num, num) -> num"             ; commut = true;  assoc = true;  str = "*"; };
-      Div,      { typ = t "(num, num) -> num"             ; commut = false; assoc = false; str = "/"; };
-      Mod,      { typ = t "(num, num) -> num"             ; commut = false; assoc = false; str = "%"; };
-      Eq,       { typ = t "(a, a) -> bool"                ; commut = true;  assoc = false; str = "="; };
-      Neq,      { typ = t "(a, a) -> bool"                ; commut = true;  assoc = false; str = "!="; };
-      Lt,       { typ = t "(num, num) -> bool"            ; commut = false; assoc = false; str = "<"; };
-      Leq,      { typ = t "(num, num) -> bool"            ; commut = false; assoc = false; str = "<="; };
-      Gt,       { typ = t "(num, num) -> bool"            ; commut = false; assoc = false; str = ">"; };
-      Geq,      { typ = t "(num, num) -> bool"            ; commut = false; assoc = false; str = ">="; };
-      And,      { typ = t "(bool, bool) -> bool"          ; commut = true;  assoc = true;  str = "&"; };
-      Or,       { typ = t "(bool, bool) -> bool"          ; commut = true;  assoc = true;  str = "|"; };
-      Not,      { typ = t "(bool) -> bool"                ; commut = false; assoc = false; str = "~"; };
-      If,       { typ = t "(bool, a, a) -> a"             ; commut = false; assoc = false; str = "if"; };
-      Cons,     { typ = t "(a, list[a]) -> list[a]"       ; commut = false; assoc = false; str = "cons"; };
-      Car,      { typ = t "(list[a]) -> a"                ; commut = false; assoc = false; str = "car"; };
-      Cdr,      { typ = t "(list[a]) -> list[a]"          ; commut = false; assoc = false; str = "cdr"; };
-      Tree,     { typ = t "(a, list[tree[a]]) -> tree[a]" ; commut = false; assoc = false; str = "tree"};
-      Children, { typ = t "(tree[a]) -> list[tree[a]]"    ; commut = false; assoc = false; str = "children" };
-      Value,    { typ = t "(tree[a]) -> a"                ; commut = false; assoc = false; str = "value" };
-    ]
+      Plus,     { typ = t "(num, num) -> num"; commut = true; assoc = true; str = "+"; cost = 1; };
+      Minus,    { typ = t "(num, num) -> num"; commut = false; assoc = false; str = "-"; cost = 1; };
+      Mul,      { typ = t "(num, num) -> num"; commut = true; assoc = true;  str = "*"; cost = 1; };
+      Div,      { typ = t "(num, num) -> num"; commut = false; assoc = false; str = "/"; cost = 1; };
+      Mod,      { typ = t "(num, num) -> num"; commut = false; assoc = false; str = "%"; cost = 1; };
+      Eq,       { typ = t "(a, a) -> bool"; commut = true; assoc = false; str = "="; cost = 1; };
+      Neq,      { typ = t "(a, a) -> bool"; commut = true; assoc = false; str = "!="; cost = 1; };
+      Lt,       { typ = t "(num, num) -> bool"; commut = false; assoc = false; str = "<"; cost = 1; };
+      Leq,      { typ = t "(num, num) -> bool"; commut = false; assoc = false; str = "<="; cost = 1; };
+      Gt,       { typ = t "(num, num) -> bool"; commut = false; assoc = false; str = ">"; cost = 1; };
+      Geq,      { typ = t "(num, num) -> bool"; commut = false; assoc = false; str = ">="; cost = 1; };
+      And,      { typ = t "(bool, bool) -> bool"; commut = true; assoc = true;  str = "&"; cost = 1; };
+      Or,       { typ = t "(bool, bool) -> bool"; commut = true; assoc = true;  str = "|"; cost = 1; };
+      Not,      { typ = t "(bool) -> bool"; commut = false; assoc = false; str = "~"; cost = 1; };
+      If,       { typ = t "(bool, a, a) -> a"; commut = false; assoc = false; str = "if"; cost = 2; };
+      Cons,     { typ = t "(a, list[a]) -> list[a]";
+                  commut = false; assoc = false; str = "cons"; cost = 1; };
+      Car,      { typ = t "(list[a]) -> a"; commut = false; assoc = false; str = "car"; cost = 1; };
+      Cdr,      { typ = t "(list[a]) -> list[a]"; commut = false; assoc = false; str = "cdr"; cost = 1; };
+      Tree,     { typ = t "(a, list[tree[a]]) -> tree[a]";
+                  commut = false; assoc = false; str = "tree"; cost = 1; };
+      Children, { typ = t "(tree[a]) -> list[tree[a]]";
+                  commut = false; assoc = false; str = "children"; cost = 1; };
+      Value,    { typ = t "(tree[a]) -> a"; commut = false; assoc = false; str = "value"; cost = 1; };
+    ] |> OpMap.of_alist_exn
 
-  let all = List.map metadata_by_op ~f:(fun (op, _) -> op)
+  let all = OpMap.keys metadata_by_op
   let control = [ If; ]
   let cmp = [ Eq; Neq; Lt; Leq; Gt; Geq; ]
   let logic = [ And; Or; Not; ]
@@ -53,14 +65,14 @@ module Op = struct
   let simple_arith = [ Plus; Minus; ]
   let arith = [ Plus; Minus; Mul; Div; Mod; ]
 
-  let op_by_str = metadata_by_op
-                  |> List.map ~f:(fun (op, meta) -> meta.str, op)
-                  |> String.Map.of_alist_exn
+  let op_by_str = 
+    metadata_by_op
+    |> OpMap.to_alist
+    |> List.map ~f:(fun (op, meta) -> meta.str, op)
+    |> String.Map.of_alist_exn
 
   (** Get operator record from operator. *)
-  let meta op =
-    let (_, meta) = List.find_exn metadata_by_op ~f:(fun (op', _) -> op = op') in
-    meta
+  let meta = OpMap.find_exn metadata_by_op 
 
   let typ op = (meta op).typ
   let arity op = match (meta op).typ with
@@ -68,24 +80,26 @@ module Op = struct
     | _ -> raise Not_found
   let assoc op = (meta op).assoc
   let commut op = (meta op).commut
+  let cost op = (meta op).cost
 
   let to_string op = (meta op).str
   let of_string str = String.Map.find_exn op_by_str str
 end
 
-(** Calculate the size of an expression. *)
-let rec size (e: t) : int =
+let rec cost ?(op_cost=Op.cost) (e: t) : int =
   let sum = List.fold_left ~init:0 ~f:(+) in
   match e with
   | `Id _
   | `Num _
   | `Bool _ -> 1
-  | `Op (_, args) -> 1 + (sum (List.map args ~f:size))
-  | `List l -> 1 + (sum (List.map l ~f:size))
+  | `Op (op, args) -> (op_cost op) + (sum (List.map args ~f:cost))
+  | `List l -> 1 + (sum (List.map l ~f:cost))
   | `Tree t -> Tree.size t
-  | `Let (_, a, b) -> 1 + size a + size b
-  | `Lambda (args, body) -> 1 + (List.length args) + size body
-  | `Apply (a, l) -> 1 + size a + (sum (List.map l ~f:size))
+  | `Let (_, a, b) -> 1 + cost a + cost b
+  | `Lambda (args, body) -> 1 + (List.length args) + cost body
+  | `Apply (a, l) -> 1 + cost a + (sum (List.map l ~f:cost))
+
+let size = cost ~op_cost:(fun _ -> 1)
 
 let normalize (expr: t) : expr = 
   let count = ref (-1) in
