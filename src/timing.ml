@@ -279,7 +279,6 @@ let testcases =
       "(sumtrees [{5 {6}} {1}]) -> [11 1]";
     ], "";
 
-
     "dropmax", [
       "max", "(lambda (a) (foldl a (lambda (c b) (if (< c b) b c)) 0))";
     ], [
@@ -321,6 +320,36 @@ let testcases =
       "(dedup [1 2 3 2 1]) -> [3 2 1]";
     ], "Removes duplicate elements from a list. Requires the specification of $member$.";
 
+    "searchnodes", [
+      "member", "(lambda (b a) (foldl b (lambda (d c) (| d (= a c))) #f))";
+    ], [
+      "(searchnodes {} 1) -> #f";
+      "(searchnodes {[3 2] {[4 1]}} 2) -> #t";
+      "(searchnodes {[3 2] {[4 1]}} 8) -> #f";
+      "(searchnodes {[3 4] {[5]} {[6 4]}} 6) -> #t";
+      "(searchnodes {[1 3] {[5]} {[2 3]}} 3) -> #t";
+      "(searchnodes {[1 3] {[5]} {[2 3]}} 4) -> #f";
+    ], "";
+
+    "selectnodes", [
+      "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
+      "pred", "(lambda (a) (= 0 (% a 10)))";
+    ], [
+      "(selectnodes {}) -> []";
+      "(selectnodes {1 {10} {25}}) -> [10]";
+      "(selectnodes {1 {10} {20}}) -> [10 20]";
+      "(selectnodes {30 {15} {25}}) -> [30]";
+    ], "";
+
+    "dropmins", [
+      "min", "(lambda (a) (foldl a (lambda (c b) (if (< c b) c b)) inf))";
+    ], [
+      "(dropmins []) -> []";
+      "(dropmins [[1]]) -> [[]]";
+      "(dropmins [[1 3 5] [5 3 2]]) -> [[3 5] [5 3]]";
+      "(dropmins [[8 4 7 2] [4 6 2 9] [3 4 1 0]]) -> [[8 4 7] [4 6 9] [3 4 1]]";
+    ], "";
+    
     "cprod", [],
     [
       "(f []) -> [[]]";
