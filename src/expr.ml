@@ -44,7 +44,7 @@ module Op = struct
       And,      { typ = t "(bool, bool) -> bool"; commut = true; assoc = true;  str = "&"; cost = 1; };
       Or,       { typ = t "(bool, bool) -> bool"; commut = true; assoc = true;  str = "|"; cost = 1; };
       Not,      { typ = t "(bool) -> bool"; commut = false; assoc = false; str = "~"; cost = 1; };
-      If,       { typ = t "(bool, a, a) -> a"; commut = false; assoc = false; str = "if"; cost = 2; };
+      If,       { typ = t "(bool, a, a) -> a"; commut = false; assoc = false; str = "if"; cost = 1; };
       Cons,     { typ = t "(a, list[a]) -> list[a]";
                   commut = false; assoc = false; str = "cons"; cost = 1; };
       Car,      { typ = t "(list[a]) -> a"; commut = false; assoc = false; str = "car"; cost = 1; };
