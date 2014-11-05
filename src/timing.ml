@@ -111,6 +111,7 @@ let testcases =
     [
       "(concat [] []) -> []";
       "(concat [0] []) -> [0]";
+      "(concat [] [0]) -> [0]";
       "(concat [1 0] [0]) -> [1 0 0]";
       "(concat [1 0 2] [3 4]) -> [1 0 2 3 4]";
     ], "Appends a list to the end of another list.";
