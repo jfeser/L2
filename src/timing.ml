@@ -376,7 +376,7 @@ let time_solve csv config (name, bk_strs, example_strs, desc) =
       |> String.concat ~sep:"\n"
     in
     if csv then begin
-      printf "%s,%f\n" name (Time.Span.to_sec solve_time);
+      printf "%s,%f,%s\n" name (Time.Span.to_sec solve_time) solutions_str;
     end else begin
       printf "Solved %s in %s. Solutions:\n%s\n\n"
         name (Time.Span.to_short_string solve_time) solutions_str;
