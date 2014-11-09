@@ -289,7 +289,7 @@ let testcases =
     ], "Removes the largest number in a list. Requires the specification of $max$.";
 
     "shiftl", [
-      "append", "(lambda (b a) (foldr b (lambda (d c) (cons c d)) (cons a [])))";
+        "reverse", "(lambda (a) (foldl a (lambda (c b) (cons b c)) []))";
     ], [
       "(shiftl []) -> []";
       "(shiftl [1]) -> [1]";
@@ -299,7 +299,7 @@ let testcases =
     ], "Shift all items in a list to the left. Requires the specification of $append$.";
 
     "shiftr", [
-      "last", "(lambda (a) (foldl a (lambda (c b) b) 0))";
+        "reverse", "(lambda (a) (foldl a (lambda (c b) (cons b c)) []))";
     ], [
       "(shiftr []) -> []";
       "(shiftr [1]) -> [1]";
