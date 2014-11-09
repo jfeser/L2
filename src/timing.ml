@@ -427,13 +427,16 @@ let command =
     +> flag "-u" ~aliases:["--untyped"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> flag "-x" ~aliases:["--no-examples"] no_arg ~doc:" do not deduce examples when generalizing"
     +> flag "-i" ~aliases:["--infer-base"] no_arg ~doc:" infer the base case of folds (unsound)"
+    (* +> flag "-r" ~aliases:["--repeat"] int ~doc:" repeat the synthesis n times and report the average runtime" *)
     +> flag "-s" ~aliases:["--stdin"] no_arg ~doc:" read specification from standard input"
+    +> flag "-b" ~aliases:["--background"] (listed string) ~doc:" use background knowledge"
     +> anon (sequence ("testcase" %: string))
   in
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun csv verbose very_verbose untyped no_deduce infer_base use_stdin testcase_names () ->
+    (fun csv verbose very_verbose untyped no_deduce
+         infer_base use_stdin bk_strs testcase_names () ->
        let open Search in
        let config = {
          default_config with
@@ -444,18 +447,13 @@ let command =
            else 0;
        } in
        if use_stdin then
-         match In_channel.input_all stdin |> Util.lsplit2_on_str ~on:"\n\n" with
-         | Some (bk_str, examples_str) ->
-           let bk_strs =
-             String.split_lines bk_str
-             |> List.map ~f:(fun str ->
-                 match Util.lsplit2_on_str str ~on:" " with
-                 | Some (name, impl) -> (name, impl)
-                 | None -> failwith "Bad background knowledge specification.")
-           in
-           let example_strs = String.split_lines examples_str in
-           let _ = time_solve false config ("", bk_strs, example_strs, "") in ()
-         | None -> failwith "Invalid specification."
+         let example_strs = In_channel.input_all stdin |> String.split_lines in
+         let bk = List.concat_map
+                    bk_strs
+                    ~f:(fun bk_str -> match Util.lsplit2_on_str bk_str ~on:" " with
+                                      | Some bk -> [bk]
+                                      | None -> []) in
+         let _ = time_solve csv config ("", bk, example_strs, "") in ()
        else
          let testcases' = match testcase_names with
            | [] -> testcases
