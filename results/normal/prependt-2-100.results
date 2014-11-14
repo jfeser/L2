@@ -1,0 +1,16 @@
+{"name": "prependt", "time": 0.000705, "examples": ["(prependt {} 8) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000388, "examples": ["(prependt {} 6) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000596, "examples": ["(prependt {} 2) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000633, "examples": ["(prependt {} 5) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000426, "examples": ["(prependt {} 6) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000386, "examples": ["(prependt {} 2) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000374, "examples": ["(prependt {} 5) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000405, "examples": ["(prependt {} 4) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000391, "examples": ["(prependt {} 0) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000372, "examples": ["(prependt {} 1) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000403, "examples": ["(prependt {} 0) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000376, "examples": ["(prependt {} 9) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000385, "examples": ["(prependt {} 3) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000474, "examples": ["(prependt {} 4) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000436, "examples": ["(prependt {} 0) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}
+{"name": "prependt", "time": 0.000371, "examples": ["(prependt {} 1) -> {}"], "solution": "(let prependt (let a (lambda (c b) c) _) _)"}

@@ -1,0 +1,70 @@
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000686, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [9]) -> [9 9]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c b)) b)) _) _)", "time": 0.057159, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [6]) -> [6 6]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c b)) b)) _) _)", "time": 0.070893, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [0]) -> [0 0]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons 0 b)) b)) _) _)", "time": 0.102758, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [9]) -> [9 9]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c b)) b)) _) _)", "time": 0.122979, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [8 6 2 9]) -> [8 8 6 6 2 2 9 9]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.716836, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [7 7 8 3 9]) -> [7 7 7 7 8 8 3 3 9 9]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.699932, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [4 1 0 1]) -> [4 4 1 1 0 0 1 1]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.846339, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [3 7]) -> [3 3 7 7]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.819557, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [9 2 5]) -> [9 9 2 2 5 5]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.837521, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [8 6 2 3]) -> [8 8 6 6 2 2 3 3]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.838803, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [2 3 9 6]) -> [2 2 3 3 9 9 6 6]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.737455, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [1 9 6 8]) -> [1 1 9 9 6 6 8 8]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.867339, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [1 1 4 2 0]) -> [1 1 1 1 4 4 2 2 0 0]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.752301, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [6 8 3]) -> [6 6 8 8 3 3]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.71331, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [4 1 4 9 6]) -> [4 4 1 1 4 4 9 9 6 6]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.87609, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [0 5 7 1]) -> [0 0 5 5 7 7 1 1]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.806969, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000526, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [1 0 9]) -> [1 1 0 0 9 9]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.782811, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [2 1 8 1]) -> [2 2 1 1 8 8 1 1]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.670971, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [8 3 6 6]) -> [8 8 3 3 6 6 6 6]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.628765, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [9]) -> [9 9]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c b)) b)) _) _)", "time": 0.077081, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [8 8]) -> [8 8 8 8]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c d)) b)) _) _)", "time": 0.100264, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [2 8 4]) -> [2 2 8 8 4 4]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.699891, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000466, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000636, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [3]) -> [3 3]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c b)) b)) _) _)", "time": 0.109653, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000499, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [4]) -> [4 4]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c b)) b)) _) _)", "time": 0.125408, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [4 7 4 3 2]) -> [4 4 7 7 4 4 3 3 2 2]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.634527, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [3 4]) -> [3 3 4 4]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.640595, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [1 5]) -> [1 1 5 5]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.643453, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [6 0 4 6 9]) -> [6 6 0 0 4 4 6 6 9 9]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.716299, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [1 8 3 9]) -> [1 1 8 8 3 3 9 9]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.659891, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [3 2]) -> [3 3 2 2]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.677537, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [4 8]) -> [4 4 8 8]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.679183, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [2 4 3 9]) -> [2 2 4 4 3 3 9 9]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.654402, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [5 9 3 5]) -> [5 5 9 9 3 3 5 5]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.76028, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [3]) -> [3 3]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c b)) b)) _) _)", "time": 0.103165, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [2 5 2 8 0]) -> [2 2 5 5 2 2 8 8 0 0]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.669519, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [4 6 8]) -> [4 4 6 6 8 8]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.560644, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [8 2 8 3]) -> [8 8 2 2 8 8 3 3]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.575382, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000501, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [3]) -> [3 3]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c b)) b)) _) _)", "time": 0.099728, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [5 2 0 3 6]) -> [5 5 2 2 0 0 3 3 6 6]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.642571, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000438, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [0 6]) -> [0 0 6 6]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.663609, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [9 3 5 4]) -> [9 9 3 3 5 5 4 4]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.545604, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [8]) -> [8 8]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c b)) b)) _) _)", "time": 0.138123, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [8 4 5 2]) -> [8 8 4 4 5 5 2 2]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.514583, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [8 2 4]) -> [8 8 2 2 4 4]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.515482, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000392, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [5 6 0 4]) -> [5 5 6 6 0 0 4 4]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.541156, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000556, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000399, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000399, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [6 7 6 7]) -> [6 6 7 7 6 6 7 7]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.623204, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [1 5 5 5]) -> [1 1 5 5 5 5 5 5]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.510222, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [1 8 1 2]) -> [1 1 8 8 1 1 2 2]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.713084, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [5 5 1]) -> [5 5 5 5 1 1]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.460626, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [4 3 1 5]) -> [4 4 3 3 1 1 5 5]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.71669, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000863, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [4 7 4 4 8]) -> [4 4 7 7 4 4 4 4 8 8]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.781291, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [9]) -> [9 9]"], "solution": "(let dupli (let a (lambda (b) (foldl b (lambda (d c) (cons c b)) b)) _) _)", "time": 0.063928, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [0 5 5 2]) -> [0 0 5 5 5 5 2 2]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.727959, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [3 8 5]) -> [3 3 8 8 5 5]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.442874, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.00045, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli []) -> []"], "solution": "(let dupli (let a (lambda (b) []) _) _)", "time": 0.000425, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [8 9]) -> [8 8 9 9]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.658271, "name": "dupli"}
+{"examples": ["(dupli []) -> []", "(dupli [9 4 8 5]) -> [9 9 4 4 8 8 5 5]"], "solution": "(let dupli (let a (lambda (b) (foldr b (lambda (d c) (cons c (cons c d))) [])) _) _)", "time": 0.716803, "name": "dupli"}

@@ -1,0 +1,48 @@
+{"name": "max", "time": 0.000613, "solution": "(let max (let a (lambda (b) (car b)) _) _)", "examples": ["(max [8 1 4]) -> 8", "(max [5 2]) -> 5", "(max [2]) -> 2"]}
+{"name": "max", "time": 0.007758, "solution": "(let max (let a (lambda (b) (car (cdr (cdr b)))) _) _)", "examples": ["(max [3 5 5]) -> 5", "(max [3 8 9 1]) -> 9", "(max [7 6 7]) -> 7"]}
+{"name": "max", "time": 0.041191, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "examples": ["(max [7]) -> 7", "(max [2]) -> 2", "(max [3 6 7]) -> 7"]}
+{"name": "max", "time": 0.043221, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "examples": ["(max [3 3 4 9]) -> 9", "(max [3 6]) -> 6", "(max [3 2 6]) -> 6"]}
+{"name": "max", "time": 7.891643, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [4 1]) -> 4", "(max [8 4 5]) -> 8", "(max [1 3 5 0]) -> 5"]}
+{"name": "max", "time": 0.025594, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "examples": ["(max [5]) -> 5", "(max [8 4 4 8 8]) -> 8", "(max [0 2]) -> 2"]}
+{"name": "max", "time": 7.927205, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [3 7]) -> 7", "(max [3 2 6 7 1]) -> 7", "(max [0 0 9 5]) -> 9"]}
+{"name": "max", "time": 7.773708, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [1 3]) -> 3", "(max [7 2 0]) -> 7", "(max [2 5 3]) -> 5"]}
+{"name": "max", "time": 8.217002, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (= 0 d) c d)) 0)) _) _)", "examples": ["(max [8 3 4 8]) -> 8", "(max [0 6 5]) -> 6", "(max [5]) -> 5"]}
+{"name": "max", "time": 8.258303, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [7 0 2]) -> 7", "(max [1 8 0 8]) -> 8", "(max [2 5 6 1]) -> 6"]}
+{"name": "max", "time": 8.207184, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [0]) -> 0", "(max [5 4 5 5 7]) -> 7", "(max [6 7 4 3 6]) -> 7"]}
+{"name": "max", "time": 8.137008, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [0]) -> 0", "(max [5 9 0 2 1]) -> 9", "(max [8 4 4 5]) -> 8"]}
+{"name": "max", "time": 8.331862, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (= 1 c) d c)) 0)) _) _)", "examples": ["(max [1 3]) -> 3", "(max [8 8 1]) -> 8", "(max [6 3 1 9]) -> 9"]}
+{"name": "max", "time": 8.402171, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< 1 d) d c)) 0)) _) _)", "examples": ["(max [7]) -> 7", "(max [1]) -> 1", "(max [0 1 9 7 1]) -> 9"]}
+{"name": "max", "time": 8.562334, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [9 2 5 2 4]) -> 9", "(max [8 4 5 9]) -> 9", "(max [8]) -> 8"]}
+{"name": "max", "time": 8.886669, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [7 2 3 1]) -> 7", "(max [4 7 5]) -> 7", "(max [2 4 9]) -> 9"]}
+{"name": "max", "time": 8.872681, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< 1 d) d c)) 0)) _) _)", "examples": ["(max [9 9 2 8 1]) -> 9", "(max [0]) -> 0", "(max [0 1 4]) -> 4"]}
+{"name": "max", "time": 9.112596, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [5 9 2 3 2]) -> 9", "(max [4 7 2]) -> 7", "(max [7 1]) -> 7"]}
+{"name": "max", "time": 9.077299, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [1 3 5]) -> 5", "(max [4]) -> 4", "(max [1 9 6 0 2]) -> 9"]}
+{"name": "max", "time": 0.051237, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "examples": ["(max [3]) -> 3", "(max [0 4]) -> 4", "(max [1 5 9 9]) -> 9"]}
+{"name": "max", "time": 9.345114, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [4 3 0 9 6]) -> 9", "(max [5 1 1 4]) -> 5", "(max [9 7]) -> 9"]}
+{"name": "max", "time": 0.000762, "solution": "(let max (let a (lambda (b) (car b)) _) _)", "examples": ["(max [6 4]) -> 6", "(max [6 5]) -> 6", "(max [5]) -> 5"]}
+{"name": "max", "time": 9.391447, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [1 0]) -> 1", "(max [1 1 6]) -> 6", "(max [9 6 5 0]) -> 9"]}
+{"name": "max", "time": 3.429544, "solution": "(let max (let a (lambda (b) (foldr b (lambda (d c) (+ c (% 1 d))) 1)) _) _)", "examples": ["(max [3]) -> 3", "(max [5 0 3]) -> 5", "(max [6 7]) -> 7"]}
+{"name": "max", "time": 0.041094, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "examples": ["(max [3 6]) -> 6", "(max [3 1 4 6 9]) -> 9", "(max [1 3 3 8]) -> 8"]}
+{"name": "max", "time": 0.000642, "solution": "(let max (let a (lambda (b) (car b)) _) _)", "examples": ["(max [9 4 7 3]) -> 9", "(max [8 2]) -> 8", "(max [3]) -> 3"]}
+{"name": "max", "time": 7.523605, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [9 8 2 0 8]) -> 9", "(max [7 2 5 3]) -> 7", "(max [2 8 1 9]) -> 9"]}
+{"name": "max", "time": 7.818548, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (+ c (+ c (car b)))) 0)) _) _)", "examples": ["(max [2 0]) -> 2", "(max [7 5 0]) -> 7", "(max [1 9 9 4 4]) -> 9"]}
+{"name": "max", "time": 0.001279, "solution": "(let max (let a (lambda (b) (car b)) _) _)", "examples": ["(max [5 2]) -> 5", "(max [8 7 0 7]) -> 8", "(max [0]) -> 0"]}
+{"name": "max", "time": 8.341959, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (+ d (% c d))) (car b))) _) _)", "examples": ["(max [2 3]) -> 3", "(max [4 9 7 2]) -> 9", "(max [4 1 5 9]) -> 9"]}
+{"name": "max", "time": 8.351831, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [7 2 3]) -> 7", "(max [6 8 4 6 9]) -> 9", "(max [3 2 2 2]) -> 3"]}
+{"name": "max", "time": 0.001008, "solution": "(let max (let a (lambda (b) (car b)) _) _)", "examples": ["(max [4]) -> 4", "(max [3 0]) -> 3", "(max [5 4]) -> 5"]}
+{"name": "max", "time": 6.89734, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (= 0 d) c d)) 0)) _) _)", "examples": ["(max [0 1]) -> 1", "(max [0 8 5 5 0]) -> 8", "(max [6]) -> 6"]}
+{"name": "max", "time": 8.414165, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (+ 1 d)) (- (car b) 1))) _) _)", "examples": ["(max [2 5 6 4 0]) -> 6", "(max [5]) -> 5", "(max [5 6]) -> 6"]}
+{"name": "max", "time": 0.068628, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "examples": ["(max [0]) -> 0", "(max [6 3 7]) -> 7", "(max [1 3]) -> 3"]}
+{"name": "max", "time": 8.143287, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [6 0]) -> 6", "(max [4 0 6]) -> 6", "(max [1 9 8 5 5]) -> 9"]}
+{"name": "max", "time": 9.483699, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [6 9 6 6]) -> 9", "(max [8 0 1 5]) -> 8", "(max [2 9]) -> 9"]}
+{"name": "max", "time": 9.615309, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [4 0 9 8 8]) -> 9", "(max [4]) -> 4", "(max [3 5 5]) -> 5"]}
+{"name": "max", "time": 8.254407, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (= 0 c) d c)) 0)) _) _)", "examples": ["(max [6 6 0]) -> 6", "(max [7 6 8 8]) -> 8", "(max [1]) -> 1"]}
+{"name": "max", "time": 9.791466, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [4 1 0 8 8]) -> 8", "(max [2 8 2 0]) -> 8", "(max [4 3 3 2]) -> 4"]}
+{"name": "max", "time": 9.013822, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< 1 c) c d)) 0)) _) _)", "examples": ["(max [5 1]) -> 5", "(max [6 4 6 0]) -> 6", "(max [1 4 5 9]) -> 9"]}
+{"name": "max", "time": 10.060559, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [9 5 2]) -> 9", "(max [1 5 0 1 4]) -> 5", "(max [7 8 9 6 1]) -> 9"]}
+{"name": "max", "time": 9.289743, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [5 8 0 6 5]) -> 8", "(max [8 4]) -> 8", "(max [0 5]) -> 5"]}
+{"name": "max", "time": 10.275056, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [3 5 9 5 0]) -> 9", "(max [6 0 1 9]) -> 9", "(max [2 8 3 5 3]) -> 8"]}
+{"name": "max", "time": 7.851279, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [5]) -> 5", "(max [2 0]) -> 2", "(max [3 4 6 8 7]) -> 8"]}
+{"name": "max", "time": 6.435662, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (if (< d c) c d)) 0)) _) _)", "examples": ["(max [8 2 9 7]) -> 9", "(max [2 8 9 9 9]) -> 9", "(max [7 9]) -> 9"]}
+{"name": "max", "time": 0.033774, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "examples": ["(max [5]) -> 5", "(max [8]) -> 8", "(max [1 9]) -> 9"]}
+{"name": "max", "time": 7.176886, "solution": "(let max (let a (lambda (b) (foldl b (lambda (d c) (- (car (cdr b)) d)) (car b))) _) _)", "examples": ["(max [9 5]) -> 9", "(max [1 1]) -> 1", "(max [0 3 1]) -> 3"]}

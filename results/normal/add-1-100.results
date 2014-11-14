@@ -1,0 +1,66 @@
+{"examples": ["(add [] 2) -> []"], "name": "add", "time": 0.000453, "solution": "(let add (let a (lambda (c b) []) _) _)"}
+{"examples": ["(add [4 2 6 4] 3) -> [7 5 9 7]"], "name": "add", "time": 0.034128, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [9 7 4 8 8] 7) -> [16 14 11 15 15]"], "name": "add", "time": 0.034331, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [3 5] 6) -> [9 11]"], "name": "add", "time": 0.037037, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [7 6] 0) -> [7 6]"], "name": "add", "time": 0.000382, "solution": "(let add (let a (lambda (c b) c) _) _)"}
+{"examples": ["(add [9 6 5 8] 9) -> [18 15 14 17]"], "name": "add", "time": 0.034277, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [8 0 7 3 7] 8) -> [16 8 15 11 15]"], "name": "add", "time": 0.034355, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [0 4 5 5] 3) -> [3 7 8 8]"], "name": "add", "time": 0.034142, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [0 1] 6) -> [6 7]"], "name": "add", "time": 0.033892, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [] 6) -> []"], "name": "add", "time": 0.00038, "solution": "(let add (let a (lambda (c b) []) _) _)"}
+{"examples": ["(add [6 0 5] 5) -> [11 5 10]"], "name": "add", "time": 0.033628, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [2] 1) -> [3]"], "name": "add", "time": 0.032995, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [4 5 2 8] 0) -> [4 5 2 8]"], "name": "add", "time": 0.000329, "solution": "(let add (let a (lambda (c b) c) _) _)"}
+{"examples": ["(add [0 4 6 9 3] 4) -> [4 8 10 13 7]"], "name": "add", "time": 0.034455, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [] 2) -> []"], "name": "add", "time": 0.000365, "solution": "(let add (let a (lambda (c b) []) _) _)"}
+{"examples": ["(add [1 4 8 5] 6) -> [7 10 14 11]"], "name": "add", "time": 0.034615, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [3 2] 7) -> [10 9]"], "name": "add", "time": 0.034023, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [2 4 8 5 9] 4) -> [6 8 12 9 13]"], "name": "add", "time": 0.035201, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [] 6) -> []"], "name": "add", "time": 0.000356, "solution": "(let add (let a (lambda (c b) []) _) _)"}
+{"examples": ["(add [9] 7) -> [16]"], "name": "add", "time": 0.033438, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [4 2] 0) -> [4 2]"], "name": "add", "time": 0.00033, "solution": "(let add (let a (lambda (c b) c) _) _)"}
+{"examples": ["(add [] 7) -> []"], "name": "add", "time": 0.000454, "solution": "(let add (let a (lambda (c b) []) _) _)"}
+{"examples": ["(add [7 6 6 0] 9) -> [16 15 15 9]"], "name": "add", "time": 0.034655, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [2 0] 7) -> [9 7]"], "name": "add", "time": 0.033584, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [2 0 1] 8) -> [10 8 9]"], "name": "add", "time": 0.033862, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [7 0 9 8] 6) -> [13 6 15 14]"], "name": "add", "time": 0.034349, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [4 6 4 7 6] 5) -> [9 11 9 12 11]"], "name": "add", "time": 0.035148, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [6 0 8 2] 2) -> [8 2 10 4]"], "name": "add", "time": 0.034557, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [] 4) -> []"], "name": "add", "time": 0.000376, "solution": "(let add (let a (lambda (c b) []) _) _)"}
+{"examples": ["(add [7 4 4] 8) -> [15 12 12]"], "name": "add", "time": 0.033802, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [6 3 8] 7) -> [13 10 15]"], "name": "add", "time": 0.034484, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [0 6 2 2] 3) -> [3 9 5 5]"], "name": "add", "time": 0.034828, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [] 8) -> []"], "name": "add", "time": 0.00038, "solution": "(let add (let a (lambda (c b) []) _) _)"}
+{"examples": ["(add [3 1] 5) -> [8 6]"], "name": "add", "time": 0.034048, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [9 9 0 7 6] 9) -> [18 18 9 16 15]"], "name": "add", "time": 0.034917, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [2 7 6 3 2] 9) -> [11 16 15 12 11]"], "name": "add", "time": 0.035673, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [6 8 5 8 2] 4) -> [10 12 9 12 6]"], "name": "add", "time": 0.035037, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [3] 8) -> [11]"], "name": "add", "time": 0.033275, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [6 9 2] 0) -> [6 9 2]"], "name": "add", "time": 0.000303, "solution": "(let add (let a (lambda (c b) c) _) _)"}
+{"examples": ["(add [0 9 4 6 2] 6) -> [6 15 10 12 8]"], "name": "add", "time": 0.035415, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [9 8 3] 1) -> [10 9 4]"], "name": "add", "time": 0.034006, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [1 5 0 0 1] 8) -> [9 13 8 8 9]"], "name": "add", "time": 0.034975, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [0 3] 6) -> [6 9]"], "name": "add", "time": 0.034085, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [5 1 6 3 0] 9) -> [14 10 15 12 9]"], "name": "add", "time": 0.034052, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [0 6 8 1 4] 5) -> [5 11 13 6 9]"], "name": "add", "time": 0.034801, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [9] 1) -> [10]"], "name": "add", "time": 0.033406, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [7 9 7 9] 1) -> [8 10 8 10]"], "name": "add", "time": 0.033948, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [1 1] 4) -> [5 5]"], "name": "add", "time": 0.033668, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b 1)))) _) _)"}
+{"examples": ["(add [7 2 6 5] 9) -> [16 11 15 14]"], "name": "add", "time": 0.035128, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [6 9 5 9 4] 0) -> [6 9 5 9 4]"], "name": "add", "time": 0.000332, "solution": "(let add (let a (lambda (c b) c) _) _)"}
+{"examples": ["(add [1 2 3] 0) -> [1 2 3]"], "name": "add", "time": 0.000314, "solution": "(let add (let a (lambda (c b) c) _) _)"}
+{"examples": ["(add [9 2 5] 7) -> [16 9 12]"], "name": "add", "time": 0.034129, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [2 9 7 0] 2) -> [4 11 9 2]"], "name": "add", "time": 0.034263, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [7] 0) -> [7]"], "name": "add", "time": 0.000309, "solution": "(let add (let a (lambda (c b) c) _) _)"}
+{"examples": ["(add [9] 9) -> [18]"], "name": "add", "time": 0.022988, "solution": "(let add (let a (lambda (c b) (cons (+ b b) [])) _) _)"}
+{"examples": ["(add [] 5) -> []"], "name": "add", "time": 0.000364, "solution": "(let add (let a (lambda (c b) []) _) _)"}
+{"examples": ["(add [9 5 2 8 9] 5) -> [14 10 7 13 14]"], "name": "add", "time": 0.034177, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [0 2 5 6 3] 9) -> [9 11 14 15 12]"], "name": "add", "time": 0.034935, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [0 6 6 3 6] 0) -> [0 6 6 3 6]"], "name": "add", "time": 0.000303, "solution": "(let add (let a (lambda (c b) c) _) _)"}
+{"examples": ["(add [4 7 6 0] 8) -> [12 15 14 8]"], "name": "add", "time": 0.035206, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [9 5 4 9] 4) -> [13 9 8 13]"], "name": "add", "time": 0.034736, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [] 1) -> []"], "name": "add", "time": 0.000364, "solution": "(let add (let a (lambda (c b) []) _) _)"}
+{"examples": ["(add [1 7 9 4] 5) -> [6 12 14 9]"], "name": "add", "time": 0.035157, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [6 5 3 4 3] 9) -> [15 14 12 13 12]"], "name": "add", "time": 0.035659, "solution": "(let add (let a (lambda (c b) (map c (lambda (d) (+ b d)))) _) _)"}
+{"examples": ["(add [] 8) -> []"], "name": "add", "time": 0.000364, "solution": "(let add (let a (lambda (c b) []) _) _)"}
+{"examples": ["(add [] 8) -> []"], "name": "add", "time": 0.000456, "solution": "(let add (let a (lambda (c b) []) _) _)"}

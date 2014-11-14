@@ -1,0 +1,54 @@
+{"name": "last", "examples": ["(last [1 1]) -> 1", "(last [0 9]) -> 9"], "solution": "(let last (let a (lambda (b) (car (cdr b))) _) _)", "time": 0.0049}
+{"name": "last", "examples": ["(last [9]) -> 9", "(last [3 2 1 0 2]) -> 2"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.035596}
+{"name": "last", "examples": ["(last [3 9 5 8]) -> 8", "(last [4 1]) -> 1"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.034776}
+{"name": "last", "examples": ["(last [2 8 8 4 3]) -> 3", "(last [2 5 4 9 5]) -> 5"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.028009}
+{"name": "last", "examples": ["(last [8 6 9 1 5]) -> 5", "(last [6 3]) -> 3"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.033618}
+{"name": "last", "examples": ["(last [4 9 2]) -> 2", "(last [4 3]) -> 3"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.029656}
+{"name": "last", "examples": ["(last [6 9 0 4 3]) -> 3", "(last [5 2]) -> 2"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.034192}
+{"name": "last", "examples": ["(last [7 8 7 3]) -> 3", "(last [3]) -> 3"], "solution": "(let last (let a (lambda (b) (+ 1 (+ 1 1))) _) _)", "time": 0.037332}
+{"name": "last", "examples": ["(last [1]) -> 1", "(last [2 6 1 2 6]) -> 6"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.031497}
+{"name": "last", "examples": ["(last [5 1]) -> 1", "(last [5 6 6 5 5]) -> 5"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.028136}
+{"name": "last", "examples": ["(last [3 3]) -> 3", "(last [8 0 0]) -> 0"], "solution": "(let last (let a (lambda (b) (car (cdr b))) _) _)", "time": 0.004482}
+{"name": "last", "examples": ["(last [3 9 3 6 6]) -> 6", "(last [6 2]) -> 2"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.026844}
+{"name": "last", "examples": ["(last [7 7 7 7 5]) -> 5", "(last [1 8 8]) -> 8"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.028647}
+{"name": "last", "examples": ["(last [8 2 2]) -> 2", "(last [9 4]) -> 4"], "solution": "(let last (let a (lambda (b) (car (cdr b))) _) _)", "time": 0.006877}
+{"name": "last", "examples": ["(last [7]) -> 7", "(last [3 0 7 9]) -> 9"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.030711}
+{"name": "last", "examples": ["(last [6 5 9 4 5]) -> 5", "(last [0]) -> 0"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.023836}
+{"name": "last", "examples": ["(last [6 4 9]) -> 9", "(last [1 5 5 4]) -> 4"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.025383}
+{"name": "last", "examples": ["(last [8 8]) -> 8", "(last [0 9]) -> 9"], "solution": "(let last (let a (lambda (b) (car (cdr b))) _) _)", "time": 0.005655}
+{"name": "last", "examples": ["(last [9 0]) -> 0", "(last [1]) -> 1"], "solution": "(let last (let a (lambda (b) (/ 1 (car b))) _) _)", "time": 0.008627}
+{"name": "last", "examples": ["(last [4 5]) -> 5", "(last [5]) -> 5"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.036821}
+{"name": "last", "examples": ["(last [8 8]) -> 8", "(last [2 5 0]) -> 0"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.03505}
+{"name": "last", "examples": ["(last [0 8 8 2]) -> 2", "(last [4 8 3 5]) -> 5"], "solution": "(let last (let a (lambda (b) (car (cdr (cdr (cdr b))))) _) _)", "time": 0.024276}
+{"name": "last", "examples": ["(last [4 9 6 5 3]) -> 3", "(last [6 0 3]) -> 3"], "solution": "(let last (let a (lambda (b) (+ 1 (+ 1 1))) _) _)", "time": 0.035356}
+{"name": "last", "examples": ["(last [4]) -> 4", "(last [0 5]) -> 5"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.028024}
+{"name": "last", "examples": ["(last [9]) -> 9", "(last [3 7 7 0 9]) -> 9"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.042941}
+{"name": "last", "examples": ["(last [5 7 5]) -> 5", "(last [1 8 1 8]) -> 8"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.039825}
+{"name": "last", "examples": ["(last [9 7]) -> 7", "(last [2 1 0 7 2]) -> 2"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.028507}
+{"name": "last", "examples": ["(last [4 8 9 7 0]) -> 0", "(last [3 4]) -> 4"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.02805}
+{"name": "last", "examples": ["(last [6 4 4 4 2]) -> 2", "(last [1 4 0]) -> 0"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.034111}
+{"name": "last", "examples": ["(last [3]) -> 3", "(last [8 8 3 7]) -> 7"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.028749}
+{"name": "last", "examples": ["(last [5 9 9 1]) -> 1", "(last [0 2 5]) -> 5"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.031181}
+{"name": "last", "examples": ["(last [7 6 4 3 4]) -> 4", "(last [5]) -> 5"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.028223}
+{"name": "last", "examples": ["(last [7 5 6]) -> 6", "(last [5]) -> 5"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.029951}
+{"name": "last", "examples": ["(last [9 1]) -> 1", "(last [4 5]) -> 5"], "solution": "(let last (let a (lambda (b) (car (cdr b))) _) _)", "time": 0.00467}
+{"name": "last", "examples": ["(last [3 2]) -> 2", "(last [0 3 8 6]) -> 6"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.024597}
+{"name": "last", "examples": ["(last [8 6]) -> 6", "(last [4]) -> 4"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.024054}
+{"name": "last", "examples": ["(last [0 9 8 5 4]) -> 4", "(last [4]) -> 4"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.03166}
+{"name": "last", "examples": ["(last [5 4 4]) -> 4", "(last [6 5 7]) -> 7"], "solution": "(let last (let a (lambda (b) (car (cdr (cdr b)))) _) _)", "time": 0.009935}
+{"name": "last", "examples": ["(last [1 4 5 6 7]) -> 7", "(last [9 7 2 6]) -> 6"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.026269}
+{"name": "last", "examples": ["(last [1]) -> 1", "(last [8]) -> 8"], "solution": "(let last (let a (lambda (b) (car b)) _) _)", "time": 0.000821}
+{"name": "last", "examples": ["(last [1]) -> 1", "(last [2 6 2 7 9]) -> 9"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.037131}
+{"name": "last", "examples": ["(last [8 2]) -> 2", "(last [1 4 3 0 8]) -> 8"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.029648}
+{"name": "last", "examples": ["(last [4 9 0 2]) -> 2", "(last [6 4]) -> 4"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.025792}
+{"name": "last", "examples": ["(last [8 6 4 3]) -> 3", "(last [4 0 9 5 4]) -> 4"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.029536}
+{"name": "last", "examples": ["(last [5]) -> 5", "(last [5 3]) -> 3"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.030734}
+{"name": "last", "examples": ["(last [4 1 5 2 0]) -> 0", "(last [0 9 6 7 7]) -> 7"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.036638}
+{"name": "last", "examples": ["(last [5 8]) -> 8", "(last [3 3 8 7 4]) -> 4"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.042605}
+{"name": "last", "examples": ["(last [8 0 5 3]) -> 3", "(last [4]) -> 4"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.041105}
+{"name": "last", "examples": ["(last [2 5]) -> 5", "(last [5 6 8 2]) -> 2"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.033851}
+{"name": "last", "examples": ["(last [0 3 5 9]) -> 9", "(last [2]) -> 2"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.041548}
+{"name": "last", "examples": ["(last [2 5 1 0]) -> 0", "(last [9 3]) -> 3"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.024721}
+{"name": "last", "examples": ["(last [1 7 7 3]) -> 3", "(last [3 4 3 3 1]) -> 1"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.032902}
+{"name": "last", "examples": ["(last [1 0 4 2 2]) -> 2", "(last [4 6 2 5 5]) -> 5"], "solution": "(let last (let a (lambda (b) (+ 1 (car b))) _) _)", "time": 0.010112}
+{"name": "last", "examples": ["(last [9 2 9 0]) -> 0", "(last [2 2 0 9 2]) -> 2"], "solution": "(let last (let a (lambda (b) (foldl b (lambda (d c) c) 0)) _) _)", "time": 0.027279}

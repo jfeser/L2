@@ -1,0 +1,16 @@
+{"time": 0.000597, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.00064, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000445, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000376, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.00074, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000703, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000594, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000634, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000367, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.00052, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000379, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000351, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000382, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000427, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.000344, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
+{"time": 0.00034, "examples": ["(incrt {}) -> {}"], "name": "incrt", "solution": "(let incrt (let a (lambda (b) b) _) _)"}
