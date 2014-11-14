@@ -43,6 +43,7 @@ let testcases =
       "(droplast [1 2]) -> [1]";
       "(droplast [1 2 5 7 8]) -> [1 2 5 7]";
       "(droplast [1 1 1 1 1 1 1]) -> [1 1 1 1 1 1]";
+      "(droplast [1 1 1 1 1 1]) -> [1 1 1 1 1]";
     ], "";
 
     "last", [],
@@ -203,6 +204,7 @@ let testcases =
 
     "maxt", [],
     [
+      "(maxt {}) -> 0";
       "(maxt {1}) -> 1";
       "(maxt {5 {2} {3}}) -> 5";
       "(maxt {5 {2} {6}}) -> 6";
@@ -334,7 +336,7 @@ let testcases =
 
     "selectnodes", [
       "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
-      "pred", "(lambda (a) (= 0 (% a 10)))";
+      "pred", "(lambda (a) (= 0 (% a 2)))";
     ], [
       "(selectnodes {}) -> []";
       "(selectnodes {1 {10} {25}}) -> [10]";
