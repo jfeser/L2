@@ -1,37 +1,55 @@
 #!/usr/bin/env python3
 
 from collections import OrderedDict
+import csv
 from itertools import product
-from multiprocessing import Pool
+import json
+from multiprocessing import Manager, Pool
+import pickle
 import random
-from subprocess import Popen, PIPE, TimeoutExpired
+from subprocess import Popen, PIPE, STDOUT, TimeoutExpired
 import sys
 import time
 
-TIMEOUT = 5 * 60
+TIMEOUT = 10 * 60
 MAX_NUMBER = 10
 MAX_LENGTH = 5
 MAX_BRANCH = 3
 MAX_DEPTH = 3
-NUM_EXAMPLES = 2
-NUM_PROCESSES = 1
+NUM_WORKERS = 16
+
+TIMEOUT_PATH = '/home/jkf1/timeout/timeout'
+PICKLE_PATH = '/home/jkf1/sygus/results/classifier.pickle'
+NUM_TRIALS = 100
+MIN_CORRECT = 90
 
 def generate_num():
     return random.choice(range(MAX_NUMBER))
 
-def generate_num_list():
+def generate_num_list(empty=False):
+    if empty:
+        return ([],)
     return ([generate_num() for i in range(random.randint(0, MAX_LENGTH))],)
 
-def generate_num_list_num():
+def generate_num_list_num(empty=False):
+    if empty:
+        return ([], generate_num())
     return (generate_num_list()[0], generate_num())
 
-def generate_num_list_num_list():
+def generate_num_list_num_list(empty=False):
+    if empty:
+        return ([], [])
     return (generate_num_list()[0], generate_num_list()[0])
 
-def generate_num_list_list():
+def generate_num_list_list(empty=False):
+    if empty:
+        return ([],)
     return ([generate_num_list()[0] for i in range(random.randint(0, MAX_LENGTH))],)
 
-def generate_num_tree():
+def generate_num_tree(empty=False):
+    if empty:
+        return ({},)
+    
     height = random.randint(0, MAX_DEPTH)
     def gnt(depth):
         if depth <= 0:
@@ -45,10 +63,14 @@ def generate_num_tree():
     else:
         return gnt(height)
 
-def generate_num_tree_list():
+def generate_num_tree_list(empty=False):
+    if empty:
+        return ([],)
     return ([generate_num_tree()[0] for i in range(random.randint(0, MAX_LENGTH))],)
     
-def generate_num_list_tree():
+def generate_num_list_tree(empty=False):
+    if empty:
+        return ({},)
     height = random.randint(0, MAX_DEPTH)
     def gt(depth):
         if depth <= 0:
@@ -62,15 +84,22 @@ def generate_num_list_tree():
     else:
         return gt(height)
 
-def generate_num_list_tree_num():
-    return (generate_num_list_tree()[0], generate_num())
+def generate_num_list_tree_num(empty=False):
+    return (generate_num_list_tree(empty)[0], generate_num())
 
-def generate_num_list_tree_num_num():
-    return (generate_num_list_tree()[0], generate_num(), generate_num())
+def generate_num_list_tree_num_num(empty=False):
+    return (generate_num_list_tree(empty)[0], generate_num(), generate_num())
 
-def generate_num_tree_num():
+def generate_num_tree_num(empty=False):
+    if empty:
+        return ({}, generate_num())
     return (generate_num_tree()[0], generate_num())
-    
+
+def generate_num_tree_num_tree(empty=False):
+    if empty:
+        return ({}, {})
+    return (generate_num_tree()[0], generate_num_tree()[0])
+
 def to_string(x):
     if type(x) is list:
         return '[{}]'.format(' '.join(to_string(e) for e in x))
@@ -88,6 +117,9 @@ def to_string(x):
         return {True: '#t', False: '#f'}[x]
     else:
         return str(x)
+
+def tree(n, cs):
+    return {'value':n, 'children': cs}
 
 def mapt(t, f):
     if t == {}:
@@ -120,6 +152,15 @@ def foldr(l, f, i):
         return i
     else:
         return f(foldr(l[1:], f, i), l[0])
+
+def _filter(l, f):
+    if l == []:
+        return []
+    else:
+        if f(l[0]):
+            return [l[0]] + _filter(l[1:], f)
+        else:
+            return _filter(l[1:], f)
     
 def selectnodes(t):
     join = lambda a: foldl(a, lambda c,b: foldr(c, lambda e,d: [d] + e, b), [])
@@ -134,6 +175,12 @@ def searchnodes(t, x):
             return True
         else:
             return any([searchnodes(c, x) for c in t['children']])
+
+def droplast(l):
+    if len(l) > 0:
+        return l[:-1]
+    else:
+        raise IndexError
 
 testcases = {
     'dupli': {
@@ -157,7 +204,7 @@ testcases = {
     },
 
     'droplast': {
-        'impl': lambda l: l[:-1],
+        'impl': droplast,
         'input_generator': generate_num_list,
     },
     
@@ -339,7 +386,7 @@ testcases = {
         'requires': {
             "member": "(lambda (b a) (foldl b (lambda (d c) (| d (= a c))) #f))"
         },
-        'impl': lambda l: list(OrderedDict.fromkeys(l)),
+        'impl': lambda b: foldr(b, lambda d,c: d if c in d else [c] + d, []),
         'input_generator': generate_num_list,
     },
 
@@ -348,7 +395,7 @@ testcases = {
             "join": "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))",
             "pred": "(lambda (a) (= 0 (% a 2)))"
         },
-        'impl': selectnodes,
+        'impl': lambda b: foldt(b, lambda d,c: foldl(d, lambda f,e: _filter(f, lambda g: g % 2 == 0), [c] + sum(d, [])), []),
         'input_generator': generate_num_tree,
     },
 
@@ -359,118 +406,208 @@ testcases = {
         'impl': searchnodes,
         'input_generator': generate_num_list_tree_num,
     },
+
+    'count_nodes': {
+        'impl': lambda t: foldt(t, lambda cs,c: 1 + sum(cs), 0),
+        'input_generator': generate_num_tree,
+    },
+
+    'dropmins': {
+        'impl': lambda ls: [[x for x in l if x != min(l)] if len(l) > 0 else [] for l in ls],
+        'input_generator': generate_num_list_list,
+    },
+
+    'tconcat': {
+        'impl': lambda c, b: foldt(c, lambda e, d: foldl(e, lambda g, f: tree(d, e), tree(d, [b] + e)), c),
+        'input_generator': generate_num_tree_num_tree,
+    },
 }
 
 def generate_examples(name, num_examples):
     testcase = testcases[name]
     examples = []
-    while len(examples) < num_examples:
+
+    inputs = testcase['input_generator'](empty=True)
+    try:
+        output = testcase['impl'](*inputs)
+        examples.append((inputs, output))
+    except:
+        pass
+    
+    while len(examples) < num_examples - 1:
         inputs = testcase['input_generator']()
         try:
             output = testcase['impl'](*inputs)
             examples.append((inputs, output))
         except:
-            testcase['impl'](*inputs)
             pass
 
-    examples_str = ''
+    examples_strs = []
     for example in examples:
         inputs_str = ' '.join([to_string(i) for i in example[0]])
-        examples_str += '({} {}) -> {}\n'.format(name, inputs_str, to_string(example[1]))
-    return examples_str
+        examples_strs.append('({} {}) -> {}'.format(name, inputs_str, to_string(example[1])))
+    return examples_strs
 
-def run(name, num_examples=5):
+def run(name, num_examples):
     testcase = testcases[name]
 
     # Generate examples
-    examples_strs = []
-    examples_strs.append(generate_examples(name, num_examples))
+    examples_strs = generate_examples(name, num_examples)
     examples_str = '\n'.join(examples_strs)
 
+    ret = {
+        'name': name,
+        'examples': examples_strs,
+    }
+    
     # Synthesize
-    print('Running {} with examples:\n{}'.format(name, examples_str))
-    sys.stdout.flush()
-
     bk_cmd = []
     if 'requires' in testcase:
         for name in testcase['requires']:
             bk_cmd += ['-b', name + ' ' + testcase['requires'][name]]
             
-    p = Popen(['../../timeout/timeout', '-t', str(TIMEOUT),
+    p = Popen([TIMEOUT_PATH,
+               '--no-info-on-success',
+               '-t', str(TIMEOUT),
                '-m', '8000000',
-               '../src/timing.native'] + bk_cmd + ['-i', '-c', '-s'],
-              stdin=PIPE, stdout=PIPE)
-    try:
-        output = p.communicate(input=examples_str.encode('utf-8'))[0]
-        ret = output.decode('utf-8')
-    except TimeoutExpired:
-        ret = 'Time expired when running {}. (Timeout: {} sec)\n'.format(testcase, TIMEOUT)
-    return examples_str + ret
+               '../src/timing.native'] + bk_cmd + ['-c', '-s', '-i'],
+              stdin=PIPE, stdout=PIPE, stderr=STDOUT)
+    
+    output = p.communicate(input=examples_str.encode('utf-8'))[0].decode('utf-8')
+    if 'MAXMEM' in output:
+        ret['time'] = 'timeout'
+    else:
+        ret['time'] = float(output.split(',')[1])
+        ret['solution'] = output.split(',')[2].strip()
+    return ret
 
-def runp(name):
-    random.seed()
-    return run(name, num_examples=num_examples)
-
-def run_repeated(name, num_trials, num_examples):
-    with open('{}-{}-{}.results'.format(name, num_examples, num_trials), 'w') as output:
-        results = []
-        for n in [name] * num_trials:
-            output.write(runp(n))
-            output.write('\n')
-            output.flush()
+def listener(filename, q):
+    '''listens for messages on the q, writes to file. '''
+    with open(filename, 'w') as f:
+        while 1:
+            m = q.get()
+            if m == 'kill':
+                break
             
-        # with Pool(processes=NUM_PROCESSES) as pool:
-        #     results = pool.map(runp, [name] * num_trials)
+            f.write(str(m) + '\n')
+            f.flush()
 
-        # for result in results:
-        #     output.write(result)
-        #     output.write('\n')
+            print('.', end='')
+            sys.stdout.flush()
+
+def worker(name, num_examples, q):
+    result = run(name, num_examples)
+    q.put(json.dumps(result))
+    return result
+            
+def run_repeated(name, num_trials, num_examples, incorrect):
+    manager = Manager()
+    q = manager.Queue()
+    pool = Pool(NUM_WORKERS + 1) # Add one process for the listener
+
+    # Start a listener that writes to the output file.
+    filename = '{}-{}-{}.results'.format(name, num_examples, num_trials)
+    pool.apply_async(listener, (filename, q))
+
+    # Start worker jobs that run trials.
+    jobs = []
+    for i in range(num_trials):
+        job = pool.apply_async(worker, (name, num_examples, q))
+        jobs.append(job)
+    
+    results = []
+    for job in jobs:
+        results.append(job.get())
+
+        # Check results for early exit
+        num_incorrect = 0
+        for result in results:
+            if is_incorrect(result, incorrect):
+                num_incorrect += 1
+        if num_incorrect > NUM_TRIALS - MIN_CORRECT:
+            pool.terminate() # Kill the rest of the jobs in the pool.
+            break
+
+    q.put('kill') # Tell the listener to stop running.
+    pool.close()  
+    
+    print()
     return results
 
-def check_results(results):
-    correct = 0
-    incorrect = 0
-    total = len(results)
+def is_correct(result, correct):
+    return 'solution' in result and result['solution'] in correct[result['name']]
 
-    while correct + incorrect < total:
-        print(results[0], end='')
-        is_correct = input('? ') == 'y'
-        if is_correct:
-            correct += len([r for r in results if r == results[0]])
-            results = [r for r in results if r != results[0]]
+def is_incorrect(result, incorrect):
+    return 'solution' not in result or result['solution'] in incorrect[result['name']]
+
+def check_results(results, num_trials, correct):
+    num_correct = 0
+    for result in results:
+        if is_correct(result, correct):
+            num_correct += 1
+
+    print('{}/{} are correct.'.format(num_correct, num_trials))
+            
+    if num_correct < MIN_CORRECT:
+        return -1
+    elif num_correct == MIN_CORRECT:
+        return 0
+    else:
+        return 1
+            
+def run_binsearch(name, num_trials, min_examples, max_examples, correct, incorrect):
+    orig_max = max_examples
+    best = None
+    searched = set([])
+
+    def done(num_examples):
+        if best is None:
+            print('Failure! {} requires more than {} examples.'.format(name, orig_max))
+            exit(-1)
         else:
-            incorrect += len([r for r in results if r == results[0]])
-            results = [r for r in results if r != results[0]]
-    return correct / total
+            print('Success! {} requires {} examples.'.format(name, num_examples))
+            exit(0)
+    
+    while True:
+        num_examples = (max_examples + min_examples) // 2
+        if num_examples in searched:
+            done(num_examples)
+        
+        print('Running {} with {} examples...'.format(name, num_examples))
+        results = run_repeated(name, num_trials, num_examples, incorrect)
 
-tests = [
-    # ('flattenl', 2, 5),
-    # ('leaves', 6, 7),
-    # ('selectnodes', 2, 5),
-    ('searchnodes', 29),
-    # ('maxt', 5, 20),
-    # ('cprod', 2, 7),
-    # ('droplast', 3, 7),
-    # ('dedup', 10, 20),
-]
+        k = check_results(results, num_trials, correct)
+        if k == 0:
+            print('Success! {} requires {} examples.'.format(name, num_examples))
+            exit(0)
+        elif k > 0:
+            if best is None:
+                best = num_examples
+            else:
+                best = min(best, num_examples)
+            max_examples = num_examples
+        else:
+            min_examples = num_examples
+            
+        if min_examples == max_examples:
+            done(num_examples)
+                
+        searched.add(num_examples)
 
 if __name__ == '__main__':
-    num_trials = int(sys.argv[1])
-    for test in tests:
-        name = test[0]
+    # Read command line arguments.
+    name = sys.argv[1]
+    min_examples = int(sys.argv[2])
+    max_examples = int(sys.argv[3])
 
-        if len(test) == 3:
-            min_examples = test[1]
-            max_examples = test[2]
-            r = range(min_examples, max_examples + 1)
-        elif len(test) == 2:
-            ne = test[1]
-            r = range(ne, ne + 1)
-    
-        for num_examples in r:
-            start = time.time()
-            run_repeated(name, num_trials, num_examples)
-            end = time.time()
-            print('Run {} {}-example trials of {} in {}.'.\
-                  format(num_trials, num_examples, name, end - start))
-            sys.stdout.flush()
+    # Read pickle.
+    with open(PICKLE_PATH, 'rb') as classifier_file:
+        classifier = pickle.load(classifier_file)
+        correct = classifier[0]
+        incorrect = classifier[1]
+
+    if name not in correct:
+        print('{} has no correct results defined.'.format(name))
+        exit(-1)
+
+    run_binsearch(name, NUM_TRIALS, min_examples, max_examples, correct, incorrect)
