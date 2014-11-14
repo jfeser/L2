@@ -1,0 +1,36 @@
+We present a method for example-guided synthesis of functional
+programs over recursive data structures.  Given a set of input-output
+examples, our method synthesizes a program in a functional language
+with higher-order combinators like {\tt map} and {\tt fold}.  The
+synthesized program is guaranteed to be the simplest program in the
+language to fit the examples.
+
+Our approach combines three technical ideas: inductive generalization,
+deduction, and enumerative search.  First, we generalize the
+input-output examples
+%$examples into incomplete programs that are our 
+into {\em hypotheses} about the structure of the target program. For
+each hypothesis, we use deduction to infer new input/output examples
+for the missing subexpressions. This leads to a new 
+subproblem where the goal is to synthesize expressions within each
+hypothesis. Since not every hypothesis can be realized into a program
+that fits the examples, we use a combination of best-first enumeration
+and deduction to search for a hypothesis that meets our needs.
+
+We have implemented our method in a tool called \sys, and we evaluate
+this tool on a large set of synthesis problems involving lists, trees,
+and nested data structures. The experiments demonstrate the
+scalability and broad scope of \sys. A highlight is the synthesis of a
+program believed to be the world's earliest functional pearl.
+
+%and evaluated it
+%on \todo{40?}  benchmark problems involving lists, trees, and nested
+%data structures.On most of these problems, \sys can synthesize the
+%desired program within a few seconds, from
+%less than \todo{5?} examples.
+
+
+
+
+
+

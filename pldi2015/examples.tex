@@ -1,0 +1,195 @@
+In this section, we illustrate our method's capabilities using three examples.
+
+\subsection{Manipulating lists of lists}
+
+Consider a high-school teacher who wants to modify a collection of
+student scores. These scores are represented as a list $x = [l_1,
+\dots, l_n]$ of lists, where each list $l_i$ contains the $i$-th
+student's scores. The teacher's goal is to write a function
+\verb+dropmins+ that transforms $x$ into a new list where each
+student's lowest score is dropped.  For instance, we require that
+
+{\footnotesize
+\begin{lstlisting}
+dropmins [[1,3,5],[5, 3, 2]] = [3, 5], [5, 3].
+\end{lstlisting}
+} 
+
+Our \sys system can synthesize the following implementation of this
+function:
+\begin{lstlisting}[language=Haskell]
+dropmins x = map f x 
+     where f y = filter g y 
+           where g z = foldl h False y
+                where h t w = t || (w < z)
+\end{lstlisting}
+% (we use Scheme-like notation): 
+% \lstset{language=Lisp,numbers=left}
+% \begin{lstlisting}
+% (lambda (b) 
+%   (map b (lambda (c) 
+%                  (filter c (lambda (d) 
+%                                 (foldl c (lambda (f e) (or f (< e d))) 
+%                                           #f))))))
+% \end{lstlisting}
+Here, \verb+foldl+, \verb+map+, and \verb+filter+ refer respectively
+to the standard left-fold, map, and filter operators~\footnote{While
+  \sys generates its outputs in a $\lambda$-calculus, we use a
+  Haskell-like notation for readability.}.
+
+In this example, note the complex interplay between scoping and higher-order functions where
+the {\tt map}, {\tt filter}, and {\tt fold} operations are nested in a
+highly nontrivial way. For example, the occurrence of {\tt z} in line 4 is bound by
+the enclosing definition of {\tt g}, and the occurrence of {\tt y} in
+line 3 is bound by the enclosing definition of {\tt f}.
+
+The input-output examples used in the synthesis task are: % as follows:
+
+{\small
+\begin{alltt}
+[] \(\mapsto\) []
+[[1]] \(\mapsto\) [[]]
+[[1, 3, 5], [5, 3, 2]] \(\mapsto\) [[3, 5], [5, 3]]
+[[8, 4, 7, 2], [4, 6, 2, 9], [3, 4, 1, 0]] \(\mapsto\) 
+        [[8, 4, 7] [4, 6, 9], [3, 4, 1]]
+\end{alltt}
+}
+
+\subsection{Transforming trees}\seclabel{selectnodes}
+
+
+Consider a user who wants to write a program to mine family trees. A
+node in such a tree represents a person; the node is annotated with a
+set of {\em attributes} including the year when the person was
+born. Given a family tree, the user's goal is to generate  a
+list of persons in the family who were born between 1800 and 1820.
+
+Suppose nodes of a family tree are labeled by pairs
+$(v, \id{by})$, where $\id{by}$ is the birth year of a particular person  and $v$ represents the remaining attributes of that
+person. Given such a family tree, our synthesis task is to produce a program that
+generates a list of all labels $(v, \id{by})$ that appear in the
+tree and satisfy the predicate ${\tt pr} \equiv \lambda \id{by}.\ 1800
+\le \id{by} \le 1820$.
+
+\sys synthesizes the following program for this task.
+% in \todo{44 seconds}.
+\lstset{language=Haskell,morekeywords={foldt}}
+\begin{lstlisting}
+selectnodes x =  foldt f [] x
+      where f z y =  foldl g (y:(concat z)) z
+            where g t = filter pr t
+\end{lstlisting}
+Here, the operator \verb+foldt+ performs a fold over an unordered
+tree, and \verb+concat+ takes in a list of lists $l_i$ and returns the
+union of the $l_i$-s.  Note that the predicate {\tt pr} is {\em external} to
+the function. The user supplies the definition of this predicate along
+with the examples. 
+
+%(lambda (b) 
+%  (foldt b (lambda (d c) 
+%                (foldl d (lambda (f e) 
+%                              (filter f (lambda (g) (pred g)))) 
+%                         (cons c (join d)))) 
+%            []))
+
+Let us represent trees using a bracket notation: \verb+<>+ represents
+the empty tree, and $\texttt{<}\mathit{lab}~S~T\texttt{>}$ is a tree
+rooted at $\mathit{lab}$ and containing  child
+subtrees $S$ and $T$. The examples needed to synthesize this program are as follows: 
+
+{\small
+\begin{alltt}
+<> \(\mapsto\) [] 
+<(a,1760) <(b,1803)> <(c,1795)>> \(\mapsto\) [(b,1803)]
+<(a,1771) <(b,1815)> <(c,1818)>> \(\mapsto\) 
+                   [(b,1815), (c,1818)]
+<(a,1812) <(b,1846)> <(c,1852)>> \(\mapsto\) [(a,1812)]
+\end{alltt}
+}
+
+Here,
+{\tt a}, {\tt b}, and {\tt c} are {\em symbolic constants} that
+represent arbitrary values of $v$ in labels $(v, \id{by})$. Note that there exist other 
+definitions of {\tt pr} -- different from the one
+that we are using here-- under which the synthesized program fits the
+examples. For instance, suppose we replaced our definition of {\tt pr}
+by the predicate $\lambda \id{by}.\ \id{by} \bmod 3 = 0$ in the
+synthesized program. The resulting program would still satisfy the
+examples. The reason why \sys does not output this alternative program
+is that it considers external predicates to be of especially low cost and 
+prioritizes them during synthesis.  This strategy formalizes the intuition
+that the user prefers the supplied predicate to appear in the synthesized program.
+
+%when a user supplies an external predicate, he or she prefers the
+%predicate to appear in the synthesized program.
+
+
+\subsection{A functional pearl}
+
+We have used \sys to  synthesize a program originally invented by
+\cite{barron-strachey}.  Danvy and Spivey  call this program
+``arrestingly beautiful'' and believe it to be ``the world's first
+functional pearl'' \cite{spivey-example}.
+
+Consider a function \verb+cprod+ whose input is a list of lists, and
+whose output is the Cartesian product of these lists. Here is an
+input-output example for this function:
+
+{\footnotesize
+\begin{alltt}
+[[1,2,3], [4], [5,6]] \(\mapsto\) 
+ [[1,4,5],[1,4,6],[2,4,5],[2,4,6],[3,4,5],[3,4,6]].
+\end{alltt}
+}
+
+Barron and Strachey  implement this function as follows\cite{barron-strachey}: 
+\lstset{language=Haskell}
+\begin{lstlisting}
+cprod xss = foldr f [[]] xss
+   where f xs yss = foldr g [] xs
+      where g x zss = foldr h zss yss
+         where h ys qss = (x : ys) : qss
+\end{lstlisting}
+% (we use Ocaml notation):
+% \lstset{language=ML}
+% \begin{lstlisting}
+% let cprod xss =
+%   let f xs yss = 
+%     let g x zss = 
+%       let h ys qss = (x :: ys) :: qss in
+%       foldr h yss zss 
+%     in
+%     foldr g xs [] in 
+%   foldr f xss [[]]
+% \end{lstlisting}
+
+Here, \verb+foldr+ is the standard right-fold
+operation. For an article-length explanation of how this function
+works, see \cite{spivey-example}.
+
+\begin{comment}
+  Note the complex interplay of scoping and higher-order functions:
+  there are three nested fold operations, the occurrence of {\tt x} in
+  Line 4 is bound by the enclosing definition of {\tt g}, and the
+  occurrence of {\tt yss} in Line 3 is bound by the enclosing
+  definition of {\tt f}. It seems safe to say that even expert
+  programmers would take a while to understand the program.
+\end{comment}
+
+We used \sys to synthesize the Cartesian
+product function from the following examples:
+
+{\small 
+\begin{alltt}
+[] \(\mapsto\) [[]]
+[[]] \(\mapsto\) []
+[[], []] \(\mapsto\) []
+[[1, 2, 3] [5, 6]] \(\mapsto\) 
+[[1, 5], [1, 6], [2, 5], [2, 6], [3, 5], [3, 6]]
+\end{alltt}
+}
+
+Remarkably, the program that \sys synthesizes using these examples is
+precisely the one given by Barron and Strachey. %'s implementation.
+
+
