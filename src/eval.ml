@@ -69,7 +69,10 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
                                   | `Both (_, v) | `Left v | `Right v -> Some v) in
   let rec ev ctx lim expr : value =
     if lim = 0 
-    then raise (RuntimeError (sprintf "Exceeded recursion limit: %s" (Expr.to_string expr)))
+    then (
+      printf "Exceeded recursion limit.\n";
+      raise (RuntimeError (sprintf "Exceeded recursion limit: %s" (Expr.to_string expr)))
+    )
     else
       let ev_all = List.map ~f:(ev ctx lim) in
       match expr with
