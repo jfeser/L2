@@ -492,7 +492,7 @@ let command =
                     bk_strs
                     ~f:(fun bk_str -> match Util.lsplit2_on_str bk_str ~on:" " with
                                       | Some bk -> [bk]
-                                      | None -> []) in
+                                      | None -> printf "Invalid background knowledge string: %s\n" bk_str; []) in
          let _ = time_solve csv config ("", bk, example_strs, "") in ()
        else
          let testcases' = match testcase_names with
