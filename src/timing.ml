@@ -407,10 +407,10 @@ let command =
     empty
     +> flag "-c" ~aliases:["--csv"] no_arg ~doc:" print out results in csv format"
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
-    +> flag "-V" ~aliases:["--very-verbose"] no_arg ~doc:" print _so many_ progress messages while searching"
-    +> flag "-u" ~aliases:["--untyped"] no_arg ~doc:" use a type-unsafe exhaustive search"
+    +> flag "-V" ~aliases:["--very-verbose"] no_arg ~doc:" print many progress messages while searching"
+    +> flag "-u" ~aliases:["--no-typed-search"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> flag "-x" ~aliases:["--no-examples"] no_arg ~doc:" do not deduce examples when generalizing"
-    +> flag "-i" ~aliases:["--infer-base"] no_arg ~doc:" infer the base case of folds (unsound)"
+    +> flag "-i" ~aliases:["--no-infer-base"] no_arg ~doc:" do not infer the base case of folds"
     +> flag "-s" ~aliases:["--stdin"] no_arg ~doc:" read specification from standard input"
     +> flag "-b" ~aliases:["--background"] (listed string) ~doc:" use background knowledge"
     +> anon (sequence ("testcase" %: string))
@@ -419,11 +419,11 @@ let command =
     ~summary:"Run test cases and print timing results"
     spec
     (fun csv verbose very_verbose untyped no_deduce
-         infer_base use_stdin bk_strs testcase_names () ->
+         no_infer use_stdin bk_strs testcase_names () ->
        let open Search in
        let config = {
          default_config with
-         untyped; deduction=(not no_deduce); infer_base;
+         untyped; deduction=(not no_deduce); infer_base=(not no_infer);
          verbosity =
            if verbose || very_verbose then
              if very_verbose then 2 else 1
