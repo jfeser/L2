@@ -1,0 +1,5 @@
+join (lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))
+
+(flatten {}) -> []
+(flatten {1}) -> [1]
+(flatten {1 {2} {3}}) -> [1 2 3]
