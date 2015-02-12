@@ -352,7 +352,7 @@ let testcases =
       "(dropmins [[1 3 5] [5 3 2]]) -> [[3 5] [5 3]]";
       "(dropmins [[8 4 7 2] [4 6 2 9] [3 4 1 0]]) -> [[8 4 7] [4 6 9] [3 4 1]]";
     ], "";
-    
+
     "cprod", [],
     [
       "(f []) -> [[]]";
@@ -375,29 +375,6 @@ let testcases =
       "(count_nodes {2 {3} {4}}) -> 3";
       "(count_nodes {2 {3 {0}} {4 {9} {8}}}) -> 6";
     ], "";
-    
-    (* "finddup", [ *)
-    (*   "member", "(lambda (b a) (foldl b (lambda (d c) (| d (= a c))) #f))";         *)
-    (*   ], *)
-    (* [ *)
-    (*   "(finddup []) -> []"; *)
-    (*   "(finddup [1 5 2]) -> []"; *)
-    (*   "(finddup [8 7 8 9]) -> [8]"; *)
-    (*   "(finddup [7 2 3 7 7 9 0 9]) -> [7 9]"; *)
-    (* ], ""; *)
-
-    (* "rotated", [], *)
-    (* [ *)
-    (*   "(rotatet {}) -> {}"; *)
-    (*   "(rotatet {5 {3 {2} {4}} {7}}) -> {3 {2} {5 {4} {7}}}"; *)
-    (* ], ""; *)
-
-    (* "insertt", [], *)
-    (* [ *)
-    (*   "(insertt {1} 1 2) -> {1 {2}}"; *)
-    (*   "(insertt {1 {3} {5}} 5 9) -> {1 {3} {5 {9}}}"; *)
-    (*   "(insertt {1 {3} {5}} 3 9) -> {1 {3 {9}} {5}}"; *)
-    (* ], ""; *)
   ]
 
 let time_solve csv config (name, bk_strs, example_strs, desc) =
@@ -424,50 +401,16 @@ let time_solve csv config (name, bk_strs, example_strs, desc) =
     name, solve_time, solutions_str, desc
   end
 
-(* let output_table results = *)
-(*   let pe = print_endline in *)
-(*   let pf = printf in *)
-(*   begin *)
-(*     pe "\\begin{tabular}{l | l l p{10cm}}"; *)
-(*     pe "\\toprule"; *)
-(*     pe "Category & Name & Time & Description \\\\"; *)
-(*     List.iter results ~f:(fun (cases, desc) ->  *)
-(*         begin *)
-(*           pf "\\midrule\\multirow{%d}{2cm}{%s} \\\\\n" (List.length cases) desc; *)
-(*           List.iter cases ~f:(fun (name, time, _, desc) ->  *)
-(*               pf "& %s & %s & %s \\\\\n" name (Time.Span.to_short_string time) desc); *)
-(*         end); *)
-(*     pe "\\bottomrule"; *)
-(*     pe "\\end{tabular}"; *)
-
-(*     pe "\\begin{tabular}{l | l p{10cm}}"; *)
-(*     pe "\\toprule"; *)
-(*     pe "Category & Name & Implementation \\\\"; *)
-(*     List.iter results ~f:(fun (cases, desc) ->  *)
-(*         begin *)
-(*           pf "\\midrule\\multirow{%d}{2cm}{%s} \\\\\n" (List.length cases) desc; *)
-(*           List.iter cases ~f:(fun (name, _, impl, _) -> *)
-(*               let impl' = List.fold_left ["%"; "#"; "_"] ~init:impl ~f:(fun impl' char -> *)
-(*                   String.substr_replace_all impl' ~pattern:char ~with_:("\\" ^ char)) *)
-(*               in *)
-(*               pf "& %s & %s \\\\\n" name impl'); *)
-(*         end); *)
-(*     pe "\\bottomrule"; *)
-(*     pe "\\end{tabular}"; *)
-(*   end *)
-
 let command =
-  let spec = 
+  let spec =
     let open Command.Spec in
     empty
-    (* +> flag "-t" ~aliases:["--table"] no_arg ~doc:" print out a result table in LaTeX format" *)
     +> flag "-c" ~aliases:["--csv"] no_arg ~doc:" print out results in csv format"
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
     +> flag "-V" ~aliases:["--very-verbose"] no_arg ~doc:" print _so many_ progress messages while searching"
     +> flag "-u" ~aliases:["--untyped"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> flag "-x" ~aliases:["--no-examples"] no_arg ~doc:" do not deduce examples when generalizing"
     +> flag "-i" ~aliases:["--infer-base"] no_arg ~doc:" infer the base case of folds (unsound)"
-    (* +> flag "-r" ~aliases:["--repeat"] int ~doc:" repeat the synthesis n times and report the average runtime" *)
     +> flag "-s" ~aliases:["--stdin"] no_arg ~doc:" read specification from standard input"
     +> flag "-b" ~aliases:["--background"] (listed string) ~doc:" use background knowledge"
     +> anon (sequence ("testcase" %: string))
