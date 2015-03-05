@@ -4,6 +4,71 @@ open Ast
 open Expr
 open Util
 
+exception TypeError of string
+
+(* A substitution is a mapping from free type variables to types. It
+can be applied to a type to fill in some or all of its free type
+variables. *)
+module IntMap = Map.Make(Int)
+type subst = typ IntMap.t
+
+let rec apply (s: subst) (t: typ) : typ =
+  match t with
+    | Const_t _ | Var_t {contents = Quant _} -> t
+    | Var_t {contents = Free (id, _)} ->
+      (match IntMap.find s id with
+       | Some t' -> t'
+       | None -> t)
+    | Var_t {contents = Link t} -> apply s t
+    | App_t (name, args) -> App_t (name, List.map ~f:(apply s) args)
+    | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(apply s) args, apply s ret)
+
+let compose (s1: subst) (s2: subst) : subst =
+  let merge outer inner =
+    IntMap.fold ~f:(fun ~key:name ~data:typ m ->
+                    IntMap.add ~key:name ~data:typ m) ~init:outer inner
+  in merge s1 (IntMap.map ~f:(fun t -> apply s1 t) s2)
+
+let rec unifier (t1: typ) (t2: typ) : subst =
+  let error msg =
+    let finalMsg =
+      if msg = ""
+      then sprintf "Failed to unify %s and %s." (typ_to_string t1) (typ_to_string t2)
+      else sprintf "Failed to unify %s and %s: %s" (typ_to_string t1) (typ_to_string t2) msg
+    in raise @@ TypeError finalMsg
+  in
+
+  (* Check whether the free variable 'id' occurs in type 'typ'. If it
+  does, we cannot substitute 'typ' for 'id' due to infinite
+  recursion. *)
+  let rec occurs (id: int) (typ: typ) : bool =
+    match typ with
+      | Const_t _ | Var_t {contents = Quant _} -> false
+      | Var_t ({contents = Free (id', _)}) -> id = id'
+      | Var_t {contents = Link t} -> occurs id t
+      | App_t (_, args) -> List.exists args ~f:(occurs id)
+      | Arrow_t (args, ret) -> List.exists args ~f:(occurs id) || occurs id ret
+  in
+
+  if t1 = t2 then IntMap.empty else
+    match t1, t2 with
+      | Var_t {contents = Link x}, y
+      | x, Var_t {contents = Link y} -> unifier x y
+      | Var_t {contents = Free (x, _)}, Var_t {contents = Free (y, _)} when x = y ->
+        error (sprintf "Free variable %d occurred in %s and %s."
+                       x (typ_to_string t1) (typ_to_string t2))
+      | t, Var_t ({contents = Free (id, _)}) | Var_t ({contents = Free (id, _)}), t ->
+        if occurs id t
+        then error (sprintf "Free variable %d occurs in %s." id (typ_to_string t))
+        else IntMap.singleton id t
+      | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
+        let s1 = List.fold2_exn ~f:(fun s a1 a2 -> compose s (unifier a1 a2)) ~init:IntMap.empty args1 args2 in
+        let s2 = unifier ret1 ret2 in
+        compose s1 s2
+      | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
+        List.fold2_exn ~f:(fun s a1 a2 -> compose s (unifier a1 a2)) ~init:IntMap.empty args1 args2
+      | _ -> error ""
+
 type typed_id = id * typ
 type typed_expr =
   | Num of int * typ
@@ -19,7 +84,7 @@ type typed_expr =
 
 let rec map f texpr = match texpr with
   | Num (x, t) -> Num (x, f t)
-  | Bool (x, t) -> Bool (x, f t) 
+  | Bool (x, t) -> Bool (x, f t)
   | List (x, t) -> List (List.map x ~f:(map f), f t)
   | Tree (x, t) -> Tree (Tree.map x ~f:(map f), f t)
   | Id (x, t) -> Id (x, f t)
@@ -30,7 +95,7 @@ let rec map f texpr = match texpr with
 
 let rec expr_of_texpr = function
   | Num (x, _) -> `Num x
-  | Bool (x, _) -> `Bool x 
+  | Bool (x, _) -> `Bool x
   | Id (x, _) -> `Id x
   | List (x, _) -> `List (List.map x ~f:(expr_of_texpr))
   | Tree (x, _) -> `Tree (Tree.map x ~f:(expr_of_texpr))
@@ -38,8 +103,6 @@ let rec expr_of_texpr = function
   | Apply ((x, y), _) -> `Apply (expr_of_texpr x, List.map y ~f:(expr_of_texpr))
   | Op ((x, y), _) -> `Op (x, List.map y ~f:(expr_of_texpr))
   | Let ((x, y, z), _) -> `Let (x, expr_of_texpr y, expr_of_texpr z)
-
-exception TypeError of string
 
 let fresh_free level = Var_t (ref (Free (Fresh.int (), level)))
 
@@ -66,7 +129,7 @@ let rec occurs id level typ = match typ with
   | Var_t ({contents = Free (id', level')} as typ') ->
      if id' = id
      then raise @@ TypeError (sprintf "Failed occurs check: ft%d in %s" id (typ_to_string typ))
-     else 
+     else
        (* The other type is being claimed by the let binding, if it is
        owned by a lower let. This prevents the free variable from
        being prematurely generalized. *)
@@ -114,7 +177,7 @@ let rec unify_exn t1 t2 =
     | Const_t t1', Const_t t2' when t1' = t2' -> ()
     | Var_t {contents = Link t1'}, t2'
     | t1', Var_t {contents = Link t2'} -> unify_exn t1' t2'
-    | Var_t {contents = Free (id1, _)}, Var_t {contents = Free (id2, _)} when id1 = id2 -> 
+    | Var_t {contents = Free (id1, _)}, Var_t {contents = Free (id2, _)} when id1 = id2 ->
        raise (TypeError "Free variable occurred in both types.")
     | Var_t ({contents = Free (id, level)} as t'), t
     | t, Var_t ({contents = Free (id, level)} as t') -> occurs id level t; t' := Link t
@@ -133,14 +196,14 @@ let unify t1 t2 = try Some (unify_exn t1 t2; t1) with TypeError _ -> None
 let is_unifiable t1 t2 = Option.is_some (unify (instantiate 0 t1) (instantiate 0 t2))
 
 let typ_of_expr = function
-  | Num (_, t) 
-  | Bool (_, t) 
-  | List (_, t) 
+  | Num (_, t)
+  | Bool (_, t)
+  | List (_, t)
   | Tree (_, t)
-  | Id (_, t) 
+  | Id (_, t)
   | Lambda (_, t)
-  | Apply (_, t) 
-  | Op (_, t) 
+  | Apply (_, t)
+  | Op (_, t)
   | Let (_, t) -> t
 
 let rec typeof ctx level (expr: expr) : typed_expr =
@@ -231,3 +294,8 @@ let infer ctx (expr: expr) : typed_expr =
                            | `Both (_, v) | `Left v | `Right v -> Some v) in
   let expr' = typeof ctx' 0 expr in
   map (generalize (-1)) expr'
+
+(** Parse a string and return a typed expression. *)
+let typed_expr_of_string (s: string) : typed_expr =
+  let expr = Util.parse_expr s in
+  infer (Ctx.empty ()) expr
