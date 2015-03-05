@@ -92,4 +92,4 @@ type expr =
   ] with compare, sexp
 
 type example = expr * expr with compare, sexp
-type constr = expr * (id list)
+type constr = expr * (id list) with compare, sexp

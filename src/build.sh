@@ -7,6 +7,7 @@ ocamlbuild \
     -use-ocamlfind \
     -syntax camlp4o \
     -pkg core \
+    -pkg Z3 \
     -pkg camlp4.lib \
     -pkg sexplib.syntax,comparelib.syntax,fieldslib.syntax,variantslib.syntax,bin_prot.syntax \
     -tag thread \
