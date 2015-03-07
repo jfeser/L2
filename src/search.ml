@@ -5,7 +5,7 @@ open Ast
 open Infer
 open Structure
 open Util
-    
+
 module Typ = struct type t = Ast.typ with compare, sexp end
 module TypedExpr = struct type t = typed_expr end
 module TypMemoizer = Sstream.Memoizer (Typ) (TypedExpr)
@@ -33,10 +33,12 @@ let default_init =
   ["0"; "1"; "inf"; "[]"; "#f"]
   |> List.map ~f:(fun str -> parse_expr str |> infer (Ctx.empty ()))
 
+let default_operators = List.filter ~f:((<>) Cons) Expr.Op.all
+
 let matrix_of_texpr_list ~size (texprs: typed_expr list) : typed_expr Sstream.matrix =
   let init_sizes = List.map texprs ~f:(fun e -> e, size e) in
   let max_size =
-    List.fold_left init_sizes ~init:0 ~f:(fun x (_, y) -> if x > y then x else y) 
+    List.fold_left init_sizes ~init:0 ~f:(fun x (_, y) -> if x > y then x else y)
   in
   List.range ~stop:`inclusive 1 max_size
   |> List.map ~f:(fun s ->
@@ -84,7 +86,7 @@ let rec simple_enumerate
 
   let (op_matrices : expr matrix list) =
     List.map Expr.Op.all ~f:(fun op ->
-        let meta = Expr.Op.meta op in 
+        let meta = Expr.Op.meta op in
         op_matrix op meta.Expr.Op.typ)
   in
 
@@ -98,29 +100,35 @@ let rec simple_enumerate
   merge (init_matrix::(op_matrices @ apply_matrices))
 
 let rec enumerate
-    ?(ops=Expr.Op.all)
+    ?(ops=default_operators)
     ?(memo=TypMemoizer.empty ())
     config
-    init 
-    typ 
+    init
+    typ
+    (check: typed_expr -> bool)
   : typed_expr Sstream.matrix =
   let open Sstream in
+
+  let base_terms = List.map ~f:expr_of_texpr init in
 
   (* Init is finite, so we can construct an init stream by breaking
      init into a list of size classes and returning that list as a
      stream. *)
-  let init_matrix = 
+  let init_matrix =
     List.filter init ~f:(fun e -> is_unifiable typ (typ_of_expr e))
     |> matrix_of_texpr_list ~size:(fun e -> Expr.cost (expr_of_texpr e))
   in
 
   (* Generate an argument list matrix that conforms to the provided list of types. *)
-  let args_matrix (arg_typs: typ list) =
+  let args_matrix (check: typed_expr list -> bool) (arg_typs: typ list) =
+    let dummy_args = List.map ~f:(fun t -> Id (Fresh.name "d", (generalize 0 t))) arg_typs in
     let choose (prev_args: typed_expr list) : (typed_expr list) matrix =
-      (* Split the argument type list into the types of the arguments
-         that have already been selected and the head of the list of
-         remaining types (which will be the type of the current
-         argument). *)
+      let prev_args_len = List.length prev_args in
+
+      (* Split the argument type list into the types of the
+         arguments that have already been selected and the head of
+         the list of remaining types (which will be the type of the
+         current argument). *)
       let prev_arg_typs, (current_typ::_) =
         (* Instantiate the argument types in the same context. Free
            type variables should be shared across arguments. For example,
@@ -145,37 +153,71 @@ let rec enumerate
 
       let current_typ' = normalize (generalize (-1) current_typ) in
 
+      let check' e =
+        check (prev_args @ [e] @ (List.drop dummy_args (prev_args_len + 1)))
+      in
+
       (* Generate the argument matrix lazily so that it will not be
          created until the prefix classes are exhausted. *)
       slazy (fun () ->
-          map_matrix
-            (TypMemoizer.get memo current_typ' (fun () ->
-                 enumerate config ~memo:memo init current_typ'))
-            ~f:(fun arg -> prev_args @ [arg]))
+          let should_prune_branch =
+            let dummy_arg_list = prev_args @ (List.drop dummy_args prev_args_len) in
+            not (check dummy_arg_list)
+          in
+
+          if should_prune_branch then Sstream.repeat [] else
+            map_matrix
+              (enumerate config ~memo:memo init current_typ' check')
+              ~f:(fun arg -> prev_args @ [arg]))
     in
     match arg_typs with
     | _::xs -> (List.fold_left xs ~init:choose ~f:(fun acc _ -> compose acc choose)) []
     | [] -> failwith "Cannot generate args matrix with no arguments."
   in
 
-  let callable_matrix cost apply_callable callable_typ = match callable_typ with
+  let callable_matrix check cost apply_callable callable_typ =
+    match callable_typ with
     | Arrow_t (arg_typs, ret_typ) ->
       let num_args = List.length arg_typs in
       let prefix = repeat_n (cost + num_args - 1) [] in
-      let matrix = slazy (fun () -> map_matrix (args_matrix arg_typs) ~f:(apply_callable ret_typ)) in
+      let matrix = slazy (fun () -> map_matrix (args_matrix check arg_typs) ~f:(apply_callable ret_typ)) in
       concat prefix matrix
     | _ -> arrow_error ()
   in
   let op_matrix op op_typ =
-    callable_matrix (Expr.Op.cost op) (fun ret_typ args -> Op ((op, args), ret_typ)) op_typ
+    callable_matrix
+      (fun args ->
+         let Arrow_t (_, ret_t) = op_typ in
+         check (Op ((op, args), ret_t)))
+      (Expr.Op.cost op)
+      (fun ret_typ args -> Op ((op, args), ret_typ))
+      op_typ
   in
   let apply_matrix func func_typ =
-    callable_matrix 1 (fun ret_typ args -> Apply ((func, args), ret_typ)) func_typ
+    callable_matrix
+      (fun args ->
+         let Arrow_t (_, ret_t) = func_typ in
+         check (Apply ((func, args), ret_t)))
+      1
+      (fun ret_typ args -> Apply ((func, args), ret_typ))
+      func_typ
   in
 
   (* The op stream is infinite, so it needs more careful handling. *)
   let op_matrices =
     List.map ops ~f:(fun op -> op, Expr.Op.meta op)
+    (* Filter all non operators that would not be redundant in the
+       current hypothesis. *)
+      (* |> List.filter ~f:(fun (op, meta) -> *)
+      (*   let h = *)
+      (*     let dummy_args = *)
+      (*       match meta.Expr.Op.typ with *)
+      (*       | Arrow_t (arg_typs, _) -> *)
+      (*         Fresh.names "d" (List.length arg_typs) |> List.map ~f:(fun n -> `Id n) *)
+      (*       | _ -> arrow_error () *)
+      (*     in hypo (`Op (op, dummy_args)) *)
+      (*   in not (Rewrite.is_redundant base_terms h)) *)
+
     (* Filter all operators that can return the correct type. *)
     |> List.filter ~f:(fun (_, meta) ->
         match meta.Expr.Op.typ with
@@ -199,7 +241,7 @@ let rec enumerate
 
   let apply_matrices =
     init
-    |> List.filter ~f:(fun texpr -> 
+    |> List.filter ~f:(fun texpr ->
         match typ_of_expr texpr with
         | Arrow_t (_, ret_typ) -> is_unifiable typ ret_typ
         | _ -> false)
@@ -211,8 +253,9 @@ let rec enumerate
         | _ -> arrow_error ())
     |> List.map ~f:(fun (func, func_typ) -> apply_matrix func func_typ)
   in
-  
+
   merge (init_matrix::(op_matrices @ apply_matrices))
+  (* |> map ~f:(fun row -> List.iter ~f:(fun x -> printf "Examined: %s\n" (Expr.to_string (expr_of_texpr x))) row; row) *)
   |> map ~f:(List.filter ~f:(fun x ->
       let e = expr_of_texpr x in
       if config.deduction then
@@ -242,7 +285,7 @@ let solve_single
     { Spec.target;
       Spec.holes =
         Ctx.of_alist_exn [
-          target_name, 
+          target_name,
           { examples = List.map examples ~f:(fun ex -> ex, Ctx.empty ());
             signature = Example.signature examples;
             tctx = Ctx.empty ();
@@ -251,6 +294,9 @@ let solve_single
       Spec.cost = 0;
     }
   in
+
+  let zctx = Z3.mk_context [] in
+  (* let lemmas = Deduction.infer_length_constraint zctx examples in *)
 
   let generate_specs (specs: Spec.t list) : Spec.t list =
     List.concat_map specs ~f:(fun parent ->
@@ -262,7 +308,8 @@ let solve_single
       )
   in
 
-  let matrix_of_hole hole =
+  (** Given a hole, create a matrix of expressions that can fill the hole. *)
+  let matrix_of_hole (check: typed_expr -> bool) (hole: hole) : expr Sstream.matrix =
     let init' =
       (Ctx.to_alist hole.tctx |> List.map ~f:(fun (name, typ) -> Id (name, typ))) @ init
     in
@@ -271,40 +318,83 @@ let solve_single
       let args = List.map arg_typs ~f:(fun typ -> Fresh.name "x", typ) in
       let arg_names, _ = List.unzip args in
       let init'' = init' @ (List.map args ~f:(fun (name, typ) -> Id (name, typ))) in
+
       if config.untyped then
         simple_enumerate init''
         |> Sstream.map_matrix ~f:(fun expr -> `Lambda (arg_names, expr))
       else
         enumerate config init'' ret_typ
-        |> Sstream.map_matrix ~f:(fun texpr -> `Lambda (arg_names, expr_of_texpr texpr))
+          (fun e -> check (Lambda ((arg_names, e), hole.signature)))
+        |> Sstream.map_matrix ~f:(fun e -> `Lambda (arg_names, expr_of_texpr e))
     | typ ->
       if config.untyped then
         simple_enumerate init'
       else
-        enumerate config init' typ |> Sstream.map_matrix ~f:expr_of_texpr
-  in
-
-  let choose name hole ctx : (expr Ctx.t) Sstream.matrix =
-    Sstream.map_matrix (matrix_of_hole hole) ~f:(Ctx.bind ctx name)
+        enumerate config init' typ check
+        |> Sstream.map_matrix ~f:expr_of_texpr
   in
 
   let total_cost (hypo_cost: int) (enum_cost: int) : int =
     hypo_cost + (Int.of_float (1.5 ** (Float.of_int enum_cost)))
-    (* hypo_cost + (if enum_cost <= 6 then enum_cost else enum_cost * 2) *)
   in
 
-  let solver_of_spec spec =
-    let matrix = match Ctx.to_alist spec.Spec.holes with
+  (** Given a specification, create a stream of options. Any
+      expression that verifies correctly will be a Some variant. *)
+  let solver_of_spec (spec: Spec.t) : (expr -> expr) option Sstream.matrix =
+    let choose
+        (check: typed_expr -> bool)
+        (name: string)
+        (hole: hole)
+        (ctx: expr Ctx.t) : (expr Ctx.t) Sstream.matrix =
+      Sstream.map_matrix (matrix_of_hole check hole) ~f:(Ctx.bind ctx name)
+    in
+
+    let matrix =
+      let named_holes = Ctx.to_alist spec.Spec.holes in
+      (* The initial context binds each hole to an identifier. This
+         allows the context to be used to generate a target function even
+         when some of the holes are not filled by an expression. *)
+      let init_ctx =
+        Ctx.mapi ~f:(fun ~key ~data -> `Id key) spec.Spec.holes
+      in
+
+      let init_tctx =
+        Ctx.map ~f:(fun hole -> hole.signature) spec.Spec.holes
+      in
+
+      let check name e =
+        let nesting_depth_cap = 2 in
+        let tctx = Ctx.merge_right init_tctx (free e |>  Ctx.of_alist_exn) in
+        let max_depth = max (Ctx.data tctx |> List.map ~f:type_nesting_depth) in
+        if max_depth > nesting_depth_cap then false else
+          let ctx = Ctx.bind init_ctx name (expr_of_texpr e) in
+          let target = (spec.Spec.target ctx) (`Id "_") in
+          let _ = printf "Checking %s with %s\n" (Expr.to_string target) (Ctx.to_string tctx Expr.typ_to_string) in
+          match target with
+          | `Let (name, body, _) ->
+            if Rewrite.is_redundant [] body then false else true
+              (try
+                 let typed_target =
+                   infer (Ctx.bind tctx name (Var_t (ref (Quant "a")))) body
+                 in
+                 let res = Deduction.check_constraints zctx examples typed_target in
+                 printf "Meets constraints? %b\n" res;
+                 res
+               with TypeError msg -> printf "Checking %s failed: %s\n" (Expr.to_string target) msg; false)
+          | _ -> failwith "Bad result from solve_single."
+      in
+
+      match named_holes with
       | [] -> failwith "Specification has no holes."
       | (name, hole)::hs ->
         (List.fold_left hs
-           ~init:(choose name hole)
+           ~init:(choose (check name) name hole)
            ~f:(fun matrix (name', hole') ->
-               Sstream.compose matrix (choose name' hole')))
+               Sstream.compose matrix (choose (check name') name' hole')))
           (Ctx.empty ())
     in
 
-    Sstream.map_matrix matrix ~f:(fun ctx -> 
+    Sstream.map_matrix matrix ~f:(fun ctx ->
         let target = spec.Spec.target ctx in
         log config.verbosity 2 (sprintf "Examined %s." (Expr.to_string (target (`Id "_"))));
         if verify target examples then Some target else None)

@@ -31,7 +31,7 @@ module Ctx = struct
 
   (** Bind a type or value to an id, returning a new context. *)
   let bind ctx id data = ref (SMap.add !ctx ~key:id ~data:data)
-  let bind_alist ctx alist = 
+  let bind_alist ctx alist =
     List.fold alist ~init:ctx ~f:(fun ctx' (id, data) -> bind ctx' id data)
 
   (** Remove a binding from a context, returning a new context. *)
@@ -44,6 +44,10 @@ module Ctx = struct
   let remove ctx id = ctx := SMap.remove !ctx id
 
   let merge c1 c2 ~f:f = ref (SMap.merge !c1 !c2 ~f:f)
+  let merge_right (c1: 'a t) (c2: 'a t) : 'a t =
+    merge ~f:(fun ~key v -> match v with
+        | `Both (_, v) | `Left v | `Right v -> Some v)
+      c1 c2
   let map ctx ~f:f = ref (SMap.map !ctx ~f:f)
   let mapi ctx ~f:f = ref (SMap.mapi !ctx ~f:f)
   let filter ctx ~f:f = ref (SMap.filter !ctx ~f:f)
@@ -52,11 +56,14 @@ module Ctx = struct
   let equal cmp c1 c2 = SMap.equal cmp !c1 !c2
 
   let keys ctx = SMap.keys !ctx
+  let data ctx = SMap.data !ctx
 
   let of_alist alist = ref (SMap.of_alist alist)
   let of_alist_exn alist = ref (SMap.of_alist_exn alist)
+  let of_alist_mult alist = ref (SMap.of_alist_multi alist)
+
   let to_alist ctx = SMap.to_alist !ctx
-  let to_string ctx str =
+  let to_string (ctx: 'a t) (str: 'a -> string) : string =
     to_alist ctx
     |> List.map ~f:(fun (key, value) -> key ^ ": " ^ (str value))
     |> String.concat ~sep:", "
@@ -121,6 +128,12 @@ let rec unzip3 l =
      let a, b, c = unzip3 xs in
      (a1::a), (b1::b), (c1::c)
   | [] -> [], [], []
+
+let rec zip3_exn (l1: 'a list) (l2: 'b list) (l3: 'c list) : ('a * 'b * 'c) list =
+  match l1, l2, l3 with
+  | x::xs, y::ys, z::zs -> (x, y, z)::(zip3_exn xs ys zs)
+  | [], [], [] -> []
+  | _ -> failwith "Lists have different lengths."
 
 let superset l1 l2 =
   (List.length l1) >= (List.length l2)

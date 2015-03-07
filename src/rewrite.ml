@@ -2,7 +2,6 @@ open Core.Std
 open Core.Option
 
 open Ast
-open Expr
 open Util
 
 exception BadExpression
@@ -28,10 +27,10 @@ let is_base (base_terms: expr list) (expr: expr) : expr option =
   let rec is_base_r (expr: expr) : bool = match expr with
     | `Id _ -> true
     | `Num _  | `Bool _ | `List _ | `Tree _ -> List.mem base_terms expr
-    | `Let (id, v, e) -> (is_base_r v) && (is_base_r e)
-    | `Lambda (a, e)  -> is_base_r e
+    | `Let (_, v, e) -> (is_base_r v) && (is_base_r e)
+    | `Lambda (_, e)  -> is_base_r e
     | `Apply (f, a)   -> (is_base_r f) && (List.for_all a ~f:is_base_r)
-    | `Op (op, args)  -> List.for_all args ~f:is_base_r
+    | `Op (_, args)  -> List.for_all args ~f:is_base_r
   in if is_base_r expr then Some expr else None
 
 let fold_constants (expr: expr) : expr option =
@@ -46,8 +45,8 @@ let fold_constants (expr: expr) : expr option =
     | `Let (id, v, e) -> let fe = fold e in if is_constant fe then fe else `Let (id, fold v, fe)
     | `Lambda (a, e)  -> let fe = fold e in if is_constant fe then fe else `Lambda (a, fe)
     | `Apply (f, a)   -> `Apply (fold f, fold_all a)
-    | `Op (op, args)  -> 
-      let rec value_to_const (value: Eval.value) : expr option =        
+    | `Op (op, args)  ->
+      let rec value_to_const (value: Eval.value) : expr option =
         match value with
         | `Num x -> Some (`Num x)
         | `Bool x -> Some (`Bool x)
@@ -66,7 +65,7 @@ let fold_constants (expr: expr) : expr option =
       in
       let folded_args = fold_all args in
       let new_op = `Op (op, folded_args) in
-      if List.for_all ~f:is_constant folded_args then 
+      if List.for_all ~f:is_constant folded_args then
         try
           let value = Eval.eval (Ctx.empty ()) new_op in
           match value_to_const value with
@@ -87,7 +86,6 @@ let rewrite (expr: expr) : expr option =
     | `Let (id, v, e) -> `Let (id, rewrite_r v, rewrite_r e)
     | `Apply (f, a)   -> `Apply (rewrite_r f, rewrite_all a)
     | `Op (op, raw_args) ->
-      let open Op in
       let args = rewrite_all raw_args in
       (match op with
        | Plus -> (match args with
@@ -114,7 +112,7 @@ let rewrite (expr: expr) : expr option =
            | [_; `Num 0] -> raise BadExpression
            | [x; `Num 1] -> x
            | [x; y] when x = y -> `Num 1
-           | [x; y] when x < y -> `Num 0 (* Remember that we use integer division. *)
+           | [`Num x; `Num y] when x < y -> `Num 0 (* Remember that we use integer division. *)
            | _ -> `Op (op, args))
        | Mod -> (match args with
            | [`Num 0; _] | [_; `Num 1] -> `Num 0
@@ -179,13 +177,18 @@ let rewrite (expr: expr) : expr option =
        | Cons -> (match args with
            | [`Op (Car, [x]); `Op (Cdr, [y])] when x = y -> x
            | _ -> `Op (op, args))
+       | RCons -> (match args with
+           | [`Op (Cdr, [y]); `Op (Car, [x])] when x = y -> x
+           | _ -> `Op (op, args))
        | Car -> (match args with
            | [`List []] -> raise BadExpression
            | [`Op (Cons, [x; _])] -> x
+           | [`Op (RCons, [_; x])] -> x
            | _ -> `Op (op, args))
        | Cdr -> (match args with
            | [`List []] -> raise BadExpression
-           | [`Op (Cons, [_; x])] -> x
+           | [`Op (Cons, [_; x])]
+           | [`Op (RCons, [x; _])] -> x
            | _ -> `Op (op, args))
        | If -> (match args with
            | [`Bool true; x; _] -> x
@@ -208,3 +211,11 @@ let simplify base_terms expr =
   match expr |> fold_constants >>= rewrite >>= fold_constants >>= (is_base base_terms) with
   | Some expr -> Some expr
   | None -> rewrite expr
+
+let is_redundant (base_terms: expr list) (expr: expr) : bool =
+  let result = match rewrite expr with
+    | Some expr' -> Expr.cost expr' < Expr.cost expr
+    | None -> true
+  in
+  if result then printf "Redundant %s = %B\n" (Expr.to_string expr) result;
+  result

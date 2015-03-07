@@ -57,10 +57,10 @@ lambda_body:
  | LAMBDA; args = sexp(list(ID)); body = expr; { `Lambda (args, body) }
 
 call_body:
- | f = expr; args = list(expr); 
-   { 
+ | f = expr; args = list(expr);
+   {
      match f with
-     | `Id f_id -> 
+     | `Id f_id ->
         (match f_id with
          | "+"        -> `Op (Plus, args)
          | "-"        -> `Op (Minus, args)
@@ -77,6 +77,7 @@ call_body:
          | "|"        -> `Op (Or, args)
          | "~"        -> `Op (Not, args)
          | "if"       -> `Op (If, args)
+         | "rcons"    -> `Op (RCons, args)
          | "cons"     -> `Op (Cons, args)
          | "car"      -> `Op (Car, args)
          | "cdr"      -> `Op (Cdr, args)
@@ -84,7 +85,7 @@ call_body:
          | "children" -> `Op (Children, args)
          | "value"    -> `Op (Value, args)
          | _          -> `Apply (f, args))
-     | _ -> `Apply (f, args) 
+     | _ -> `Apply (f, args)
    }
 
 constr:

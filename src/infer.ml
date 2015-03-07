@@ -123,22 +123,30 @@ let normalize typ =
   in
   norm (Ctx.empty ()) typ
 
-let rec occurs id level typ = match typ with
-  | Const_t _
-  | Var_t {contents = Quant _} -> ()
-  | Var_t ({contents = Free (id', level')} as typ') ->
-     if id' = id
-     then raise @@ TypeError (sprintf "Failed occurs check: ft%d in %s" id (typ_to_string typ))
-     else
-       (* The other type is being claimed by the let binding, if it is
-       owned by a lower let. This prevents the free variable from
-       being prematurely generalized. *)
-       if level' > level
-       then typ' := Free (id', level)
-       else ()
-  | Var_t {contents = Link typ'} -> occurs id level typ'
-  | App_t (_, args) -> List.iter args ~f:(fun arg -> occurs id level arg)
-  | Arrow_t (args, ret) -> List.iter args ~f:(fun arg -> occurs id level arg); occurs id level ret
+let occurs id level typ =
+  let error msg =
+    raise @@ TypeError (sprintf "Failed occurs check in %s: %s"
+                          (typ_to_string typ) msg)
+  in
+  let rec occurs' id level typ =
+    match typ with
+    | Const_t _
+    | Var_t {contents = Quant _} -> ()
+    | Var_t ({contents = Free (id', level')} as typ') ->
+      if id' = id
+      then error (sprintf "ft%d occurred twice" id)
+      else
+        (* The other type is being claimed by the let binding, if it is
+           owned by a lower let. This prevents the free variable from
+           being prematurely generalized. *)
+      if level' > level
+      then typ' := Free (id', level)
+      else ()
+    | Var_t {contents = Link typ'} -> occurs' id level typ'
+    | App_t (_, args) -> List.iter args ~f:(fun arg -> occurs' id level arg)
+    | Arrow_t (args, ret) ->
+      List.iter args ~f:(fun arg -> occurs' id level arg); occurs' id level ret
+  in occurs' id level typ
 
 (** The level is associated with the let expression that "owns" a
 particular free type variable. When that let expression is completely
@@ -169,8 +177,8 @@ let instantiate ?ctx:(ctx = Ctx.empty ()) level typ =
 
 let rec unify_exn t1 t2 =
   let error () = raise @@ TypeError (sprintf "Failed to unify %s and %s."
-                                             (typ_to_string t1)
-                                             (typ_to_string t2))
+                                       (typ_to_string t1)
+                                       (typ_to_string t2))
   in
   if t1 = t2 then () else
     match t1, t2 with
@@ -206,74 +214,84 @@ let typ_of_expr = function
   | Op (_, t)
   | Let (_, t) -> t
 
-let rec typeof ctx level (expr: expr) : typed_expr =
-  let rec typeof_func num_args typ =
-    match typ with
-    | Arrow_t (args, ret) -> args, ret
-    | Var_t {contents = Link typ} -> typeof_func num_args typ
-    | Var_t ({contents = Free (_, level)} as typ) ->
+let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : typed_expr =
+  let error msg =
+    raise @@ TypeError (sprintf "In %s: %s" (Expr.to_string expr) msg)
+  in
+
+  let rec typeof' ctx level expr =
+    let rec typeof_func num_args typ =
+      match typ with
+      | Arrow_t (args, ret) -> args, ret
+      | Var_t {contents = Link typ} -> typeof_func num_args typ
+      | Var_t ({contents = Free (_, level)} as typ) ->
         let args = List.range 0 num_args |> List.map ~f:(fun _ -> fresh_free level) in
         let ret = fresh_free level in
         typ := Link (Arrow_t (args, ret));
         args, ret
-    | _ -> raise @@ TypeError "Not a function."
-  in
-  let rec typeof_tree t : typed_expr Tree.t * typ =
-    let open Tree in
-    match t with
-    | Empty -> Empty, App_t ("tree", [fresh_free level])
-    | Node (x, y) ->
-       let x' = typeof ctx level x in
-       let typ = App_t ("tree", [typ_of_expr x']) in
-       let y', y_typs = List.map y ~f:typeof_tree |> List.unzip in
-       List.iter y_typs ~f:(unify_exn typ); Node (x', y'), typ
-  in
-  match expr with
-  | `Num x -> Num (x, Const_t Num_t)
-  | `Bool x -> Bool (x, Const_t Bool_t)
-  | `Tree x -> let x', typ = typeof_tree x in Tree (x', typ)
-  | `List [] -> List ([], App_t ("list", [fresh_free level]))
-  | `List elems ->
-     List.fold_left elems
-                    ~init:(typeof ctx level (`List []))
-                    ~f:(fun texpr elem ->
-                        match texpr with
-                        | List (elems, App_t ("list", [typ])) ->
-                           let elem' = typeof ctx level elem in
-                           unify_exn typ (typ_of_expr elem');
-                           List (List.append elems [elem'], App_t ("list", [typ]))
-                        | _ -> assert false)
-  | `Id name -> Id (name, instantiate level (Ctx.lookup_exn ctx name))
-  | `Lambda (args, body) ->
-     (* Generate fresh type variables for each argument and bind them
-        into the existing context. *)
-     let ctx' = List.fold args
-                          ~init:ctx
-                          ~f:(fun ctx' arg -> Ctx.bind ctx' arg (fresh_free level)) in
-     let arg_typs = List.map args ~f:(fun arg -> Ctx.lookup_exn ctx' arg) in
-     let body' = typeof ctx' level body in
-     Lambda ((args, body'), Arrow_t (arg_typs, typ_of_expr body'))
-  | `Apply (func, args) ->
-     let func' = typeof ctx level func in
-     let args' = List.map args ~f:(typeof ctx level) in
-     let arg_typs, ret_typ = typeof_func (List.length args) (typ_of_expr func') in
-     (match List.zip arg_typs args' with
-      | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (typ_of_expr arg'))
-      | None -> raise @@ TypeError "Wrong number of arguments.");
-     Apply ((func', args'), ret_typ)
-  | `Op (op, args) ->
-     let args' = List.map args ~f:(typeof ctx level) in
-     let arg_typs, ret_typ = typeof_func (List.length args) (instantiate level (Op.typ op)) in
-     (match List.zip arg_typs args' with
-      | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (typ_of_expr arg'))
-      | None -> raise @@ TypeError "Wrong number of arguments.");
-     Op ((op, args'), ret_typ)
-  | `Let (name, bound, body) ->
-     let bound' = typeof ctx (level + 1) bound in
-     let body' =
-       let bound_typ = generalize level (typ_of_expr bound') in
-       typeof (Ctx.bind ctx name bound_typ) level body in
-     Let ((name, bound', body'), typ_of_expr body')
+      | _ -> error "Not a function."
+    in
+    let rec typeof_tree t : typed_expr Tree.t * typ =
+      let open Tree in
+      match t with
+      | Empty -> Empty, App_t ("tree", [fresh_free level])
+      | Node (x, y) ->
+        let x' = typeof' ctx level x in
+        let typ = App_t ("tree", [typ_of_expr x']) in
+        let y', y_typs = List.map y ~f:typeof_tree |> List.unzip in
+        List.iter y_typs ~f:(unify_exn typ); Node (x', y'), typ
+    in
+    match expr with
+    | `Num x -> Num (x, Const_t Num_t)
+    | `Bool x -> Bool (x, Const_t Bool_t)
+    | `Tree x -> let x', typ = typeof_tree x in Tree (x', typ)
+    | `List [] -> List ([], App_t ("list", [fresh_free level]))
+    | `List elems ->
+      List.fold_left elems
+        ~init:(typeof' ctx level (`List []))
+        ~f:(fun texpr elem ->
+            match texpr with
+            | List (elems, App_t ("list", [typ])) ->
+              let elem' = typeof' ctx level elem in
+              unify_exn typ (typ_of_expr elem');
+              List (List.append elems [elem'], App_t ("list", [typ]))
+            | _ -> assert false)
+    | `Id name ->
+      (match Ctx.lookup ctx name with
+       | Some t -> Id (name, instantiate level t)
+       | None -> error (sprintf "%s is unbound in context %s."
+                          name (Ctx.to_string ctx typ_to_string)))
+    | `Lambda (args, body) ->
+      (* Generate fresh type variables for each argument and bind them
+         into the existing context. *)
+      let ctx' = List.fold args
+          ~init:ctx
+          ~f:(fun ctx' arg -> Ctx.bind ctx' arg (fresh_free level)) in
+      let arg_typs = List.map args ~f:(fun arg -> Ctx.lookup_exn ctx' arg) in
+      let body' = typeof' ctx' level body in
+      Lambda ((args, body'), Arrow_t (arg_typs, typ_of_expr body'))
+    | `Apply (func, args) ->
+      let func' = typeof' ctx level func in
+      let args' = List.map args ~f:(typeof' ctx level) in
+      let arg_typs, ret_typ = typeof_func (List.length args) (typ_of_expr func') in
+      (match List.zip arg_typs args' with
+       | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (typ_of_expr arg'))
+       | None -> error "Wrong number of arguments.");
+      Apply ((func', args'), ret_typ)
+    | `Op (op, args) ->
+      let args' = List.map args ~f:(typeof' ctx level) in
+      let arg_typs, ret_typ = typeof_func (List.length args) (instantiate level (Op.typ op)) in
+      (match List.zip arg_typs args' with
+       | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (typ_of_expr arg'))
+       | None -> error "Wrong number of arguments.");
+      Op ((op, args'), ret_typ)
+    | `Let (name, bound, body) ->
+      let bound' = typeof' ctx (level + 1) bound in
+      let body' =
+        let bound_typ = generalize level (typ_of_expr bound') in
+        typeof' (Ctx.bind ctx name bound_typ) level body in
+      Let ((name, bound', body'), typ_of_expr body')
+  in typeof' ctx level expr
 
 let stdlib_tctx = [
   "foldr", "(list[a], ((b, a) -> b), b) -> b";
@@ -289,9 +307,9 @@ let stdlib_tctx = [
 tree annotated with types. *)
 let infer ctx (expr: expr) : typed_expr =
   let ctx' = Ctx.merge stdlib_tctx ctx
-                       ~f:(fun ~key:_ value ->
-                           match value with
-                           | `Both (_, v) | `Left v | `Right v -> Some v) in
+      ~f:(fun ~key:_ value ->
+          match value with
+          | `Both (_, v) | `Left v | `Right v -> Some v) in
   let expr' = typeof ctx' 0 expr in
   map (generalize (-1)) expr'
 
@@ -299,3 +317,59 @@ let infer ctx (expr: expr) : typed_expr =
 let typed_expr_of_string (s: string) : typed_expr =
   let expr = Util.parse_expr s in
   infer (Ctx.empty ()) expr
+
+(** Return a list of names that are free in the given expression,
+    along with their types. *)
+module IdTypeSet = Set.Make(struct
+    type t = id * typ with compare, sexp
+  end)
+
+let stdlib_names = Ctx.keys stdlib_tctx |> String.Set.of_list
+let free ?(bound=stdlib_names) (e: typed_expr) : (id * typ) list =
+  let rec f bound e : IdTypeSet.t = match e with
+    | Num _ | Bool _ -> IdTypeSet.empty
+    | Id (x, t) -> if String.Set.mem bound x then IdTypeSet.empty
+      else IdTypeSet.singleton (x, t)
+    | List (x, _) -> List.map ~f:(f bound) x |> IdTypeSet.union_list
+    | Tree (x, _) ->
+      Tree.flatten x |> List.map ~f:(f bound) |> IdTypeSet.union_list
+    | Lambda ((args, body), _) ->
+      f (String.Set.union bound (String.Set.of_list args)) body
+    | Apply ((func, args), _) ->
+      IdTypeSet.union_list ((f bound func)::(List.map ~f:(f bound) args))
+    | Op ((_, args), _) -> List.map ~f:(f bound) args |> IdTypeSet.union_list
+    | Let ((x, e1, e2), _) ->
+      let bound' = String.Set.add bound x in
+      IdTypeSet.union (f bound' e1) (f bound' e2)
+  in f bound e |> IdTypeSet.to_list
+
+(** Check whether expression e contains expression x. *)
+(* let contains (x: typed_expr) (e: typed_expr) : bool = match e with *)
+(*   | Num _ | Bool _ | Id _ -> e = x *)
+(*   | List (l, _) -> List.find ~f:(contains x) l *)
+(*   | Tree (l, _) -> Tree.flatten x |> List.find ~f:(contains x) *)
+(*   | Lambda ((_, body), _) -> contains x body *)
+(*   | Apply ((func, args), _) -> *)
+(*     contains x args || List.find ~f:(contains x) args *)
+(*   | Op ((_, args), _) -> List.find ~f:(contains x) args *)
+(*   | Let ((_, e1, e2), _) -> contains x e1 || contains x e2 *)
+
+(* let contains_name (x: typed_exper) (n: string) : bool = match e with *)
+(*   | Num _ | Bool _ -> false *)
+(*   | Id n' -> n' = n *)
+(*   | List (l, _) -> List.find ~f:(contains_name x) l *)
+(*   | Tree (l, _) -> Tree.flatten x |> List.find ~f:(contains_name x) *)
+(*   | Lambda ((_, body), _) -> contains_name x body *)
+(*   | Apply ((func, args), _) -> *)
+(*     contains_name x args || List.find ~f:(contains_name x) args *)
+(*   | Op ((_, args), _) -> List.find ~f:(contains_name x) args *)
+(*   | Let ((_, e1, e2), _) -> contains_name x e1 || contains_name x e2 *)
+
+let rec type_nesting_depth (t: typ) : int =
+  match t with
+  | Const_t _ | Var_t _ -> 1
+  | App_t (_, args) -> 1 + (max (List.map ~f:type_nesting_depth args))
+  | Arrow_t (args, ret) ->
+    let args_max = (max (List.map ~f:type_nesting_depth args)) in
+    let ret_depth = type_nesting_depth ret in
+    if args_max > ret_depth then args_max else ret_depth

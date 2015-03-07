@@ -5,7 +5,7 @@ module Tree = struct
     | Empty
     | Node of 'a * 'a t list
     with compare, sexp
-    
+
   let rec to_string t ~str =
     match t with
     | Empty -> "{}"
@@ -23,7 +23,7 @@ module Tree = struct
 
   let rec equal t1 t2 ~cmp = match t1, t2 with
     | Empty, Empty -> true
-    | Node (x1, c1), Node (x2, c2) -> 
+    | Node (x1, c1), Node (x2, c2) ->
        if cmp x1 x2
        then (match List.zip c1 c2 with
              | Some pairs -> List.for_all pairs ~f:(fun (ce1, ce2) -> equal ce1 ce2 ~cmp:cmp)
@@ -70,7 +70,8 @@ type op =
   | And
   | Or
   | Not
-  | If 
+  | If
+  | RCons
   | Cons
   | Car
   | Cdr
@@ -79,7 +80,7 @@ type op =
   | Children
   with compare, sexp
 
-type expr = 
+type expr =
   [ `Num of int
   | `Bool of bool
   | `List of expr list

@@ -24,7 +24,7 @@ let rec value_to_string v =
 
 (** Raise a bad argument error. *)
 let arg_error op args =
-  raise (RuntimeError 
+  raise (RuntimeError
            (Printf.sprintf "Bad arguments to %s: (%s)."
                            (Expr.Op.to_string op)
                            (String.concat ~sep:" " (List.map ~f:Expr.to_string args))))
@@ -45,8 +45,8 @@ let stdlib =
       "mapt", "(lambda (t f)
            (if (= t {}) {}
            (tree (f (value t)) (map (children t) (lambda (c) (mapt c f))))))";
-      "foldt", "(lambda (t f i) 
-            (if (= t {}) i 
+      "foldt", "(lambda (t f i)
+            (if (= t {}) i
             (f (map (children t) (lambda (ct) (foldt ct f i)))
             (value t))))";
     ] |> List.map ~f:(fun (name, str) -> name, Util.parse_expr str))
@@ -57,7 +57,7 @@ let eval_ctx_of_alist =
                      let ctx' = Ctx.bind ctx name `Unit in
                      let value = `Closure (lambda, ctx') in
                      Ctx.update ctx' name value;
-                     Ctx.bind ctx name value)  
+                     Ctx.bind ctx name value)
 
 let (stdlib_vctx: value Ctx.t) = eval_ctx_of_alist stdlib
 
@@ -68,7 +68,7 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
                                   match value with
                                   | `Both (_, v) | `Left v | `Right v -> Some v) in
   let rec ev ctx lim expr : value =
-    if lim = 0 
+    if lim = 0
     then (
       printf "Exceeded recursion limit.\n";
       raise (RuntimeError (sprintf "Exceeded recursion limit: %s" (Expr.to_string expr)))
@@ -81,7 +81,7 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
       | `List x -> `List (ev_all x)
       | `Tree x -> `Tree (Tree.map x ~f:(ev ctx lim))
       | `Id id  -> Ctx.lookup_exn ctx id
-      | `Let (name, bound, body) -> 
+      | `Let (name, bound, body) ->
          let ctx' = Ctx.bind ctx name `Unit in
          Ctx.update ctx' name (ev ctx' lim bound);
          ev ctx' lim body
@@ -118,7 +118,7 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
                     | [`Num x; `Num y] -> `Num (x * y)
                     | _ -> arg_error op args)
           | Div -> (match ev_all args with
-                    | [`Num x; `Num y] -> 
+                    | [`Num x; `Num y] ->
                        if y = 0 then raise (RuntimeError "Divide by zero.") else `Num (x / y)
                     | _ -> arg_error op args)
           | Mod -> (match ev_all args with
@@ -149,6 +149,9 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
           | Or -> (match ev_all args with
                    | [`Bool x; `Bool y] -> `Bool (x || y)
                    | _ -> arg_error op args)
+          | RCons -> (match ev_all args with
+                      | [`List y; x] -> `List (x :: y)
+                      | _ -> arg_error op args)
           | Cons -> (match ev_all args with
                      | [x; `List y] -> `List (x :: y)
                      | _ -> arg_error op args)

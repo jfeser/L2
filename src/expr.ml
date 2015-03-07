@@ -15,9 +15,9 @@ module Op = struct
       let sexp_of_t = sexp_of_op
       let compare = compare_op
     end)
-  
+
   type t = op with compare, sexp
-  
+
   (** Type for storing operator metadata. *)
   type metadata = {
     typ    : typ;
@@ -27,7 +27,7 @@ module Op = struct
     cost   : int;
   }
 
-  let metadata_by_op = 
+  let metadata_by_op =
     let t = Util.parse_typ in
     [
       Plus,     { typ = t "(num, num) -> num"; commut = true; assoc = true; str = "+"; cost = 1; };
@@ -45,6 +45,7 @@ module Op = struct
       Or,       { typ = t "(bool, bool) -> bool"; commut = true; assoc = true;  str = "|"; cost = 1; };
       Not,      { typ = t "(bool) -> bool"; commut = false; assoc = false; str = "~"; cost = 1; };
       If,       { typ = t "(bool, a, a) -> a"; commut = false; assoc = false; str = "if"; cost = 1; };
+      RCons,    { typ = t "(list[a], a) -> list[a]"; commut = false; assoc = false; str = "rcons"; cost = 1; };
       Cons,     { typ = t "(a, list[a]) -> list[a]";
                   commut = false; assoc = false; str = "cons"; cost = 1; };
       Car,      { typ = t "(list[a]) -> a"; commut = false; assoc = false; str = "car"; cost = 1; };
@@ -65,14 +66,14 @@ module Op = struct
   let simple_arith = [ Plus; Minus; ]
   let arith = [ Plus; Minus; Mul; Div; Mod; ]
 
-  let op_by_str = 
+  let op_by_str =
     metadata_by_op
     |> OpMap.to_alist
     |> List.map ~f:(fun (op, meta) -> meta.str, op)
     |> String.Map.of_alist_exn
 
   (** Get operator record from operator. *)
-  let meta = OpMap.find_exn metadata_by_op 
+  let meta = OpMap.find_exn metadata_by_op
 
   let typ op = (meta op).typ
   let arity op = match (meta op).typ with
@@ -101,7 +102,7 @@ let rec cost ?(op_cost=Op.cost) (e: t) : int =
 
 let size = cost ~op_cost:(fun _ -> 1)
 
-let normalize (expr: t) : expr = 
+let normalize (expr: t) : expr =
   let count = ref (-1) in
   let fresh_name () =
     let n = incr count; !count in
@@ -139,7 +140,7 @@ let normalize (expr: t) : expr =
 (** Convert and expression to a string. *)
 let rec to_string (expr: t) : string =
   let list_to_string l =
-    String.concat ~sep:" " (List.map ~f:to_string l) 
+    String.concat ~sep:" " (List.map ~f:to_string l)
   in
   match expr with
   | `Num x -> Int.to_string x
