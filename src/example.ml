@@ -38,7 +38,7 @@ let split (exs: t list) : (string * t list) list =
 let signature ?(ctx=Ctx.empty ()) (examples: t list) : typ =
   let _, inputs, results = List.map examples ~f:to_triple |> unzip3 in
   let res_typ =
-    match Infer.typ_of_expr (Infer.infer ctx (`List results)) with
+    match Infer.TypedExpr.to_type (Infer.infer ctx (`List results)) with
     | App_t ("list", [t]) -> t
     | t -> failwith (sprintf "Unexpected result type: %s" (Expr.typ_to_string t))
   in
@@ -64,7 +64,7 @@ let check (examples: (t * expr Ctx.t) list) : bool =
   not (List.exists
          examples
          ~f:(fun ((lhs, rhs), vctx) ->
-             List.exists 
+             List.exists
                examples
-               ~f:(fun ((lhs', rhs'), vctx') -> 
+               ~f:(fun ((lhs', rhs'), vctx') ->
                    Ctx.equal Expr.equal vctx vctx' && lhs = lhs' && rhs <> rhs')))

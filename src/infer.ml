@@ -1,19 +1,74 @@
 open Core.Std
 open Printf
+
 open Ast
 open Expr
 open Util
 
 exception TypeError of string
 
-(* A substitution is a mapping from free type variables to types. It
-can be applied to a type to fill in some or all of its free type
-variables. *)
-module IntMap = Map.Make(Int)
-type subst = typ IntMap.t
+module TypedExpr = struct
+  type t =
+    | Num of int * typ
+    | Bool of bool * typ
+    | List of t list * typ
+    | Tree of t Tree.t * typ
+    | Id of id * typ
+    | Let of (id * t * t) * typ
+    | Lambda of (id list * t) * typ
+    | Apply of (t * (t list)) * typ
+    | Op of (Op.t * (t list)) * typ
+  with compare, sexp, variants
 
-let rec apply (s: subst) (t: typ) : typ =
-  match t with
+  let rec map ~f (e: t) : t = match e with
+    | Num (x, t) -> Num (x, f t)
+    | Bool (x, t) -> Bool (x, f t)
+    | List (x, t) -> List (List.map x ~f:(map ~f), f t)
+    | Tree (x, t) -> Tree (Tree.map x ~f:(map ~f), f t)
+    | Id (x, t) -> Id (x, f t)
+    | Lambda ((x, y), t) -> Lambda ((x, map ~f y), f t)
+    | Apply ((x, y), t) -> Apply ((map ~f x, List.map y ~f:(map ~f)), f t)
+    | Op ((x, y), t) -> Op ((x, List.map y ~f:(map ~f)), f t)
+    | Let ((x, y, z), t) -> Let ((x, map ~f y, map ~f z), f t)
+
+  (** Strip the type annotations from a typed expression. *)
+  let rec to_expr (e: t) : expr = match e with
+    | Num (x, _) -> `Num x
+    | Bool (x, _) -> `Bool x
+    | Id (x, _) -> `Id x
+    | List (x, _) -> `List (List.map x ~f:(to_expr))
+    | Tree (x, _) -> `Tree (Tree.map x ~f:(to_expr))
+    | Lambda ((x, y), _) -> `Lambda (x, to_expr y)
+    | Apply ((x, y), _) -> `Apply (to_expr x, List.map y ~f:(to_expr))
+    | Op ((x, y), _) -> `Op (x, List.map y ~f:(to_expr))
+    | Let ((x, y, z), _) -> `Let (x, to_expr y, to_expr z)
+
+  (** Get the type annotation of the root of a typed expression. *)
+  let to_type = function
+    | Num (_, t)
+    | Bool (_, t)
+    | List (_, t)
+    | Tree (_, t)
+    | Id (_, t)
+    | Lambda (_, t)
+    | Apply (_, t)
+    | Op (_, t)
+    | Let (_, t) -> t
+
+  (** Convert a typed expression to a string. *)
+  let to_string (e: t) : string = Expr.to_string (to_expr e)
+end
+
+module TypedExprMap = Map.Make(TypedExpr)
+
+(** A unifier is a mapping from free type variables to types. It
+    can be applied to a type to fill in some or all of its free type
+    variables. *)
+module Unifier = struct
+  module IntMap = Map.Make(Int)
+  type t = typ IntMap.t
+
+  let rec apply (s: t) (t: typ) : typ = match t with
     | Const_t _ | Var_t {contents = Quant _} -> t
     | Var_t {contents = Free (id, _)} ->
       (match IntMap.find s id with
@@ -23,86 +78,61 @@ let rec apply (s: subst) (t: typ) : typ =
     | App_t (name, args) -> App_t (name, List.map ~f:(apply s) args)
     | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(apply s) args, apply s ret)
 
-let compose (s1: subst) (s2: subst) : subst =
-  let merge outer inner =
-    IntMap.fold ~f:(fun ~key:name ~data:typ m ->
-                    IntMap.add ~key:name ~data:typ m) ~init:outer inner
-  in merge s1 (IntMap.map ~f:(fun t -> apply s1 t) s2)
+  let compose (s1: t) (s2: t) : t =
+    let merge outer inner =
+      IntMap.fold ~f:(fun ~key:name ~data:typ m ->
+          IntMap.add ~key:name ~data:typ m) ~init:outer inner
+    in merge s1 (IntMap.map ~f:(fun t -> apply s1 t) s2)
 
-let rec unifier (t1: typ) (t2: typ) : subst =
-  let error msg =
-    let finalMsg =
-      if msg = ""
-      then sprintf "Failed to unify %s and %s." (typ_to_string t1) (typ_to_string t2)
-      else sprintf "Failed to unify %s and %s: %s" (typ_to_string t1) (typ_to_string t2) msg
-    in raise @@ TypeError finalMsg
-  in
+  let rec of_types (t1: typ) (t2: typ) : t =
+    let error msg =
+      let finalMsg =
+        if msg = "" then
+          sprintf "Failed to unify %s and %s."
+            (typ_to_string t1) (typ_to_string t2)
+        else
+          sprintf "Failed to unify %s and %s: %s"
+            (typ_to_string t1) (typ_to_string t2) msg
+      in raise @@ TypeError finalMsg
+    in
 
-  (* Check whether the free variable 'id' occurs in type 'typ'. If it
-  does, we cannot substitute 'typ' for 'id' due to infinite
-  recursion. *)
-  let rec occurs (id: int) (typ: typ) : bool =
-    match typ with
+    (* Check whether the free variable 'id' occurs in type 'typ'. If it
+       does, we cannot substitute 'typ' for 'id' due to infinite
+       recursion. *)
+    let rec occurs (id: int) (typ: typ) : bool =
+      match typ with
       | Const_t _ | Var_t {contents = Quant _} -> false
       | Var_t ({contents = Free (id', _)}) -> id = id'
       | Var_t {contents = Link t} -> occurs id t
       | App_t (_, args) -> List.exists args ~f:(occurs id)
       | Arrow_t (args, ret) -> List.exists args ~f:(occurs id) || occurs id ret
-  in
+    in
 
-  if t1 = t2 then IntMap.empty else
-    match t1, t2 with
+    if t1 = t2 then IntMap.empty else
+      match t1, t2 with
       | Var_t {contents = Link x}, y
-      | x, Var_t {contents = Link y} -> unifier x y
-      | Var_t {contents = Free (x, _)}, Var_t {contents = Free (y, _)} when x = y ->
+      | x, Var_t {contents = Link y} -> of_types x y
+      | Var_t {contents = Free (x, _)}, Var_t {contents = Free (y, _)}
+        when x = y ->
         error (sprintf "Free variable %d occurred in %s and %s."
-                       x (typ_to_string t1) (typ_to_string t2))
-      | t, Var_t ({contents = Free (id, _)}) | Var_t ({contents = Free (id, _)}), t ->
-        if occurs id t
-        then error (sprintf "Free variable %d occurs in %s." id (typ_to_string t))
+                 x (typ_to_string t1) (typ_to_string t2))
+      | t, Var_t ({contents = Free (id, _)})
+      | Var_t ({contents = Free (id, _)}), t ->
+        if occurs id t then
+          error (sprintf "Free variable %d occurs in %s." id (typ_to_string t))
         else IntMap.singleton id t
       | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
-        let s1 = List.fold2_exn ~f:(fun s a1 a2 -> compose s (unifier a1 a2)) ~init:IntMap.empty args1 args2 in
-        let s2 = unifier ret1 ret2 in
+        let s1 =
+          List.fold2_exn ~init:IntMap.empty args1 args2 ~f:(fun s a1 a2 ->
+              compose s (of_types a1 a2))
+        in
+        let s2 = of_types ret1 ret2 in
         compose s1 s2
       | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
-        List.fold2_exn ~f:(fun s a1 a2 -> compose s (unifier a1 a2)) ~init:IntMap.empty args1 args2
+        List.fold2_exn ~init:IntMap.empty args1 args2 ~f:(fun s a1 a2 ->
+            compose s (of_types a1 a2))
       | _ -> error ""
-
-type typed_id = id * typ
-type typed_expr =
-  | Num of int * typ
-  | Bool of bool * typ
-  | List of typed_expr list * typ
-  | Tree of typed_expr Tree.t * typ
-  | Id of id * typ
-  | Let of (id * typed_expr * typed_expr) * typ
-  | Lambda of (id list * typed_expr) * typ
-  | Apply of (typed_expr * (typed_expr list)) * typ
-  | Op of (Op.t * (typed_expr list)) * typ
-  with compare, sexp
-
-let rec map f texpr = match texpr with
-  | Num (x, t) -> Num (x, f t)
-  | Bool (x, t) -> Bool (x, f t)
-  | List (x, t) -> List (List.map x ~f:(map f), f t)
-  | Tree (x, t) -> Tree (Tree.map x ~f:(map f), f t)
-  | Id (x, t) -> Id (x, f t)
-  | Lambda ((x, y), t) -> Lambda ((x, map f y), f t)
-  | Apply ((x, y), t) -> Apply ((map f x, List.map y ~f:(map f)), f t)
-  | Op ((x, y), t) -> Op ((x, List.map y ~f:(map f)), f t)
-  | Let ((x, y, z), t) -> Let ((x, map f y, map f z), f t)
-
-let rec expr_of_texpr = function
-  | Num (x, _) -> `Num x
-  | Bool (x, _) -> `Bool x
-  | Id (x, _) -> `Id x
-  | List (x, _) -> `List (List.map x ~f:(expr_of_texpr))
-  | Tree (x, _) -> `Tree (Tree.map x ~f:(expr_of_texpr))
-  | Lambda ((x, y), _) -> `Lambda (x, expr_of_texpr y)
-  | Apply ((x, y), _) -> `Apply (expr_of_texpr x, List.map y ~f:(expr_of_texpr))
-  | Op ((x, y), _) -> `Op (x, List.map y ~f:(expr_of_texpr))
-  | Let ((x, y, z), _) -> `Let (x, expr_of_texpr y, expr_of_texpr z)
+end
 
 let fresh_free level = Var_t (ref (Free (Fresh.int (), level)))
 
@@ -203,18 +233,8 @@ let rec unify_exn t1 t2 =
 let unify t1 t2 = try Some (unify_exn t1 t2; t1) with TypeError _ -> None
 let is_unifiable t1 t2 = Option.is_some (unify (instantiate 0 t1) (instantiate 0 t2))
 
-let typ_of_expr = function
-  | Num (_, t)
-  | Bool (_, t)
-  | List (_, t)
-  | Tree (_, t)
-  | Id (_, t)
-  | Lambda (_, t)
-  | Apply (_, t)
-  | Op (_, t)
-  | Let (_, t) -> t
-
-let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : typed_expr =
+let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : TypedExpr.t =
+  let open TypedExpr in
   let error msg =
     raise @@ TypeError (sprintf "In %s: %s" (Expr.to_string expr) msg)
   in
@@ -225,21 +245,22 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : typed_expr =
       | Arrow_t (args, ret) -> args, ret
       | Var_t {contents = Link typ} -> typeof_func num_args typ
       | Var_t ({contents = Free (_, level)} as typ) ->
-        let args = List.range 0 num_args |> List.map ~f:(fun _ -> fresh_free level) in
+        let args =
+          List.range 0 num_args |> List.map ~f:(fun _ -> fresh_free level)
+        in
         let ret = fresh_free level in
         typ := Link (Arrow_t (args, ret));
         args, ret
       | _ -> error "Not a function."
     in
-    let rec typeof_tree t : typed_expr Tree.t * typ =
-      let open Tree in
+    let rec typeof_tree t : TypedExpr.t Tree.t * typ =
       match t with
-      | Empty -> Empty, App_t ("tree", [fresh_free level])
-      | Node (x, y) ->
+      | Tree.Empty -> Tree.Empty, App_t ("tree", [fresh_free level])
+      | Tree.Node (x, y) ->
         let x' = typeof' ctx level x in
-        let typ = App_t ("tree", [typ_of_expr x']) in
+        let typ = App_t ("tree", [TypedExpr.to_type x']) in
         let y', y_typs = List.map y ~f:typeof_tree |> List.unzip in
-        List.iter y_typs ~f:(unify_exn typ); Node (x', y'), typ
+        List.iter y_typs ~f:(unify_exn typ); Tree.Node (x', y'), typ
     in
     match expr with
     | `Num x -> Num (x, Const_t Num_t)
@@ -253,7 +274,7 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : typed_expr =
             match texpr with
             | List (elems, App_t ("list", [typ])) ->
               let elem' = typeof' ctx level elem in
-              unify_exn typ (typ_of_expr elem');
+              unify_exn typ (TypedExpr.to_type elem');
               List (List.append elems [elem'], App_t ("list", [typ]))
             | _ -> assert false)
     | `Id name ->
@@ -269,28 +290,28 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : typed_expr =
           ~f:(fun ctx' arg -> Ctx.bind ctx' arg (fresh_free level)) in
       let arg_typs = List.map args ~f:(fun arg -> Ctx.lookup_exn ctx' arg) in
       let body' = typeof' ctx' level body in
-      Lambda ((args, body'), Arrow_t (arg_typs, typ_of_expr body'))
+      Lambda ((args, body'), Arrow_t (arg_typs, TypedExpr.to_type body'))
     | `Apply (func, args) ->
       let func' = typeof' ctx level func in
       let args' = List.map args ~f:(typeof' ctx level) in
-      let arg_typs, ret_typ = typeof_func (List.length args) (typ_of_expr func') in
+      let arg_typs, ret_typ = typeof_func (List.length args) (TypedExpr.to_type func') in
       (match List.zip arg_typs args' with
-       | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (typ_of_expr arg'))
+       | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (TypedExpr.to_type arg'))
        | None -> error "Wrong number of arguments.");
       Apply ((func', args'), ret_typ)
     | `Op (op, args) ->
       let args' = List.map args ~f:(typeof' ctx level) in
       let arg_typs, ret_typ = typeof_func (List.length args) (instantiate level (Op.typ op)) in
       (match List.zip arg_typs args' with
-       | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (typ_of_expr arg'))
+       | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (TypedExpr.to_type arg'))
        | None -> error "Wrong number of arguments.");
       Op ((op, args'), ret_typ)
     | `Let (name, bound, body) ->
       let bound' = typeof' ctx (level + 1) bound in
       let body' =
-        let bound_typ = generalize level (typ_of_expr bound') in
+        let bound_typ = generalize level (TypedExpr.to_type bound') in
         typeof' (Ctx.bind ctx name bound_typ) level body in
-      Let ((name, bound', body'), typ_of_expr body')
+      Let ((name, bound', body'), TypedExpr.to_type body')
   in typeof' ctx level expr
 
 let stdlib_tctx = [
@@ -305,16 +326,16 @@ let stdlib_tctx = [
 
 (** Infer the type of an expression in context. Returns an expression
 tree annotated with types. *)
-let infer ctx (expr: expr) : typed_expr =
+let infer ctx (expr: expr) : TypedExpr.t =
   let ctx' = Ctx.merge stdlib_tctx ctx
       ~f:(fun ~key:_ value ->
           match value with
           | `Both (_, v) | `Left v | `Right v -> Some v) in
   let expr' = typeof ctx' 0 expr in
-  map (generalize (-1)) expr'
+  TypedExpr.map ~f:(generalize (-1)) expr'
 
 (** Parse a string and return a typed expression. *)
-let typed_expr_of_string (s: string) : typed_expr =
+let typed_expr_of_string (s: string) : TypedExpr.t =
   let expr = Util.parse_expr s in
   infer (Ctx.empty ()) expr
 
@@ -325,7 +346,8 @@ module IdTypeSet = Set.Make(struct
   end)
 
 let stdlib_names = Ctx.keys stdlib_tctx |> String.Set.of_list
-let free ?(bound=stdlib_names) (e: typed_expr) : (id * typ) list =
+let free ?(bound=stdlib_names) (e: TypedExpr.t) : (id * typ) list =
+  let open TypedExpr in
   let rec f bound e : IdTypeSet.t = match e with
     | Num _ | Bool _ -> IdTypeSet.empty
     | Id (x, t) -> if String.Set.mem bound x then IdTypeSet.empty

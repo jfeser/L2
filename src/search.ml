@@ -7,11 +7,10 @@ open Structure
 open Util
 
 module Typ = struct type t = Ast.typ with compare, sexp end
-module TypedExpr = struct type t = typed_expr end
 module TypMemoizer = Sstream.Memoizer (Typ) (TypedExpr)
 
 module SimpleMemoizer =
-  Sstream.Memoizer (struct type t = typed_expr list with compare, sexp end) (Expr)
+  Sstream.Memoizer (struct type t = TypedExpr.t list with compare, sexp end) (Expr)
 
 type config = {
   verbosity: int;
@@ -35,7 +34,7 @@ let default_init =
 
 let default_operators = List.filter ~f:((<>) Cons) Expr.Op.all
 
-let matrix_of_texpr_list ~size (texprs: typed_expr list) : typed_expr Sstream.matrix =
+let matrix_of_texpr_list ~size (texprs: TypedExpr.t list) : TypedExpr.t Sstream.matrix =
   let init_sizes = List.map texprs ~f:(fun e -> e, size e) in
   let max_size =
     List.fold_left init_sizes ~init:0 ~f:(fun x (_, y) -> if x > y then x else y)
@@ -54,8 +53,8 @@ let rec simple_enumerate
   : expr Sstream.matrix =
   let open Sstream in
   let init_matrix =
-    matrix_of_texpr_list ~size:(fun e -> Expr.cost (expr_of_texpr e)) init
-    |> map_matrix ~f:(expr_of_texpr)
+    matrix_of_texpr_list ~size:(fun e -> Expr.cost (TypedExpr.to_expr e)) init
+    |> map_matrix ~f:(TypedExpr.to_expr)
   in
 
   let args_matrix num_args =
@@ -92,10 +91,10 @@ let rec simple_enumerate
 
   let (apply_matrices : expr matrix list) =
     List.filter init ~f:(fun texpr ->
-        match typ_of_expr texpr with
+        match TypedExpr.to_type texpr with
         | Arrow_t _ -> true
         | _ -> false)
-    |> List.map ~f:(fun func -> apply_matrix (expr_of_texpr func) (typ_of_expr func))
+    |> List.map ~f:(fun func -> apply_matrix (TypedExpr.to_expr func) (TypedExpr.to_type func))
   in
   merge (init_matrix::(op_matrices @ apply_matrices))
 
@@ -105,24 +104,26 @@ let rec enumerate
     config
     init
     typ
-    (check: typed_expr -> bool)
-  : typed_expr Sstream.matrix =
+    (check: TypedExpr.t -> bool)
+  : TypedExpr.t Sstream.matrix =
   let open Sstream in
 
-  let base_terms = List.map ~f:expr_of_texpr init in
+  let base_terms = List.map ~f:TypedExpr.to_expr init in
 
   (* Init is finite, so we can construct an init stream by breaking
      init into a list of size classes and returning that list as a
      stream. *)
   let init_matrix =
-    List.filter init ~f:(fun e -> is_unifiable typ (typ_of_expr e))
-    |> matrix_of_texpr_list ~size:(fun e -> Expr.cost (expr_of_texpr e))
+    List.filter init ~f:(fun e -> is_unifiable typ (TypedExpr.to_type e))
+    |> matrix_of_texpr_list ~size:(fun e -> Expr.cost (TypedExpr.to_expr e))
   in
 
   (* Generate an argument list matrix that conforms to the provided list of types. *)
-  let args_matrix (check: typed_expr list -> bool) (arg_typs: typ list) =
-    let dummy_args = List.map ~f:(fun t -> Id (Fresh.name "d", (generalize 0 t))) arg_typs in
-    let choose (prev_args: typed_expr list) : (typed_expr list) matrix =
+  let args_matrix (check: TypedExpr.t list -> bool) (arg_typs: typ list) =
+    let dummy_args = List.map ~f:(fun t ->
+        TypedExpr.Id (Fresh.name "d", (generalize 0 t))) arg_typs
+    in
+    let choose (prev_args: TypedExpr.t list) : (TypedExpr.t list) matrix =
       let prev_args_len = List.length prev_args in
 
       (* Split the argument type list into the types of the
@@ -147,7 +148,7 @@ let rec enumerate
          bound. *)
       let prev_selected_typs =
         let ctx = Ctx.empty () in
-        List.map prev_args ~f:(fun arg -> instantiate ~ctx:ctx 0 (typ_of_expr arg))
+        List.map prev_args ~f:(fun arg -> instantiate ~ctx:ctx 0 (TypedExpr.to_type arg))
       in
       List.iter2_exn prev_arg_typs prev_selected_typs ~f:unify_exn;
 
@@ -188,18 +189,18 @@ let rec enumerate
     callable_matrix
       (fun args ->
          let Arrow_t (_, ret_t) = op_typ in
-         check (Op ((op, args), ret_t)))
+         check (TypedExpr.Op ((op, args), ret_t)))
       (Expr.Op.cost op)
-      (fun ret_typ args -> Op ((op, args), ret_typ))
+      (fun ret_typ args -> TypedExpr.Op ((op, args), ret_typ))
       op_typ
   in
   let apply_matrix func func_typ =
     callable_matrix
       (fun args ->
          let Arrow_t (_, ret_t) = func_typ in
-         check (Apply ((func, args), ret_t)))
+         check (TypedExpr.Apply ((func, args), ret_t)))
       1
-      (fun ret_typ args -> Apply ((func, args), ret_typ))
+      (fun ret_typ args -> TypedExpr.Apply ((func, args), ret_typ))
       func_typ
   in
 
@@ -242,11 +243,11 @@ let rec enumerate
   let apply_matrices =
     init
     |> List.filter ~f:(fun texpr ->
-        match typ_of_expr texpr with
+        match TypedExpr.to_type texpr with
         | Arrow_t (_, ret_typ) -> is_unifiable typ ret_typ
         | _ -> false)
     |> List.map ~f:(fun texpr ->
-        match instantiate 0 typ, instantiate 0 (typ_of_expr texpr) with
+        match instantiate 0 typ, instantiate 0 (TypedExpr.to_type texpr) with
         | typ', (Arrow_t (_, ret_typ) as func_typ) ->
           unify_exn typ' ret_typ;
           texpr, normalize (generalize (-1) func_typ)
@@ -255,11 +256,11 @@ let rec enumerate
   in
 
   merge (init_matrix::(op_matrices @ apply_matrices))
-  (* |> map ~f:(fun row -> List.iter ~f:(fun x -> printf "Examined: %s\n" (Expr.to_string (expr_of_texpr x))) row; row) *)
+  (* |> map ~f:(fun row -> List.iter ~f:(fun x -> printf "Examined: %s\n" (Expr.to_string (TypedExpr.to_expr x))) row; row) *)
   |> map ~f:(List.filter ~f:(fun x ->
-      let e = expr_of_texpr x in
+      let e = TypedExpr.to_expr x in
       if config.deduction then
-        match Rewrite.simplify (List.map init ~f:expr_of_texpr) e with
+        match Rewrite.simplify (List.map init ~f:TypedExpr.to_expr) e with
         | Some e' -> Expr.cost e' >= Expr.cost e
         | None -> false
       else true))
@@ -309,29 +310,33 @@ let solve_single
   in
 
   (** Given a hole, create a matrix of expressions that can fill the hole. *)
-  let matrix_of_hole (check: typed_expr -> bool) (hole: hole) : expr Sstream.matrix =
+  let matrix_of_hole (check: TypedExpr.t -> bool) (hole: hole) : expr Sstream.matrix =
     let init' =
-      (Ctx.to_alist hole.tctx |> List.map ~f:(fun (name, typ) -> Id (name, typ))) @ init
+      (Ctx.to_alist hole.tctx
+       |> List.map ~f:(fun (name, typ) -> TypedExpr.Id (name, typ)))
+      @ init
     in
     match hole.signature with
     | Arrow_t (arg_typs, ret_typ) ->
       let args = List.map arg_typs ~f:(fun typ -> Fresh.name "x", typ) in
       let arg_names, _ = List.unzip args in
-      let init'' = init' @ (List.map args ~f:(fun (name, typ) -> Id (name, typ))) in
+      let init'' = init' @ (List.map args ~f:(fun (name, typ) ->
+          TypedExpr.Id (name, typ)))
+      in
 
       if config.untyped then
         simple_enumerate init''
         |> Sstream.map_matrix ~f:(fun expr -> `Lambda (arg_names, expr))
       else
         enumerate config init'' ret_typ
-          (fun e -> check (Lambda ((arg_names, e), hole.signature)))
-        |> Sstream.map_matrix ~f:(fun e -> `Lambda (arg_names, expr_of_texpr e))
+          (fun e -> check (TypedExpr.Lambda ((arg_names, e), hole.signature)))
+        |> Sstream.map_matrix ~f:(fun e -> `Lambda (arg_names, TypedExpr.to_expr e))
     | typ ->
       if config.untyped then
         simple_enumerate init'
       else
         enumerate config init' typ check
-        |> Sstream.map_matrix ~f:expr_of_texpr
+        |> Sstream.map_matrix ~f:TypedExpr.to_expr
   in
 
   let total_cost (hypo_cost: int) (enum_cost: int) : int =
@@ -342,7 +347,7 @@ let solve_single
       expression that verifies correctly will be a Some variant. *)
   let solver_of_spec (spec: Spec.t) : (expr -> expr) option Sstream.matrix =
     let choose
-        (check: typed_expr -> bool)
+        (check: TypedExpr.t -> bool)
         (name: string)
         (hole: hole)
         (ctx: expr Ctx.t) : (expr Ctx.t) Sstream.matrix =
@@ -365,23 +370,23 @@ let solve_single
       let check name e =
         let nesting_depth_cap = 2 in
         let tctx = Ctx.merge_right init_tctx (free e |>  Ctx.of_alist_exn) in
-        let max_depth = max (Ctx.data tctx |> List.map ~f:type_nesting_depth) in
-        if max_depth > nesting_depth_cap then false else
-          let ctx = Ctx.bind init_ctx name (expr_of_texpr e) in
-          let target = (spec.Spec.target ctx) (`Id "_") in
-          let _ = printf "Checking %s with %s\n" (Expr.to_string target) (Ctx.to_string tctx Expr.typ_to_string) in
-          match target with
-          | `Let (name, body, _) ->
-            if Rewrite.is_redundant [] body then false else true
-              (try
-                 let typed_target =
-                   infer (Ctx.bind tctx name (Var_t (ref (Quant "a")))) body
-                 in
-                 let res = Deduction.check_constraints zctx examples typed_target in
-                 printf "Meets constraints? %b\n" res;
-                 res
-               with TypeError msg -> printf "Checking %s failed: %s\n" (Expr.to_string target) msg; false)
-          | _ -> failwith "Bad result from solve_single."
+        (* let max_depth = max (Ctx.data tctx |> List.map ~f:type_nesting_depth) in *)
+        (* if max_depth > nesting_depth_cap then false else *)
+        let ctx = Ctx.bind init_ctx name (TypedExpr.to_expr e) in
+        let target = (spec.Spec.target ctx) (`Id "_") in
+        let _ = printf "Checking %s with %s\n" (Expr.to_string target) (Ctx.to_string tctx Expr.typ_to_string) in
+        match target with
+        | `Let (name, body, _) ->
+          if Rewrite.is_redundant [] body then false else
+            (try
+               let typed_target =
+                 infer (Ctx.bind tctx name (Var_t (ref (Quant "a")))) body
+               in
+               let res = Deduction.check_constraints zctx examples typed_target in
+               printf "Meets constraints? %b\n" res;
+               res
+             with TypeError msg -> printf "Checking %s failed: %s\n" (Expr.to_string target) msg; false)
+        | _ -> failwith "Bad result from solve_single."
       in
 
       match named_holes with
@@ -406,7 +411,7 @@ let solve_single
   let search max_cost spec : (expr -> expr) option =
     let solver = solver_of_spec spec in
     let rec search' (exh_cost: int) : (expr -> expr) option =
-      if (total_cost spec.cost exh_cost) >= max_cost then begin
+      if (total_cost spec.Spec.cost exh_cost) >= max_cost then begin
         (if exh_cost > 0 then
            log config.verbosity 1
              (sprintf "Searched %s to exhaustive cost %d." (Spec.to_string spec) exh_cost));
@@ -421,7 +426,7 @@ let solve_single
 
   let rec search_unbounded (cost: int) (hypos: hypothesis list) =
     let can_search hypo =
-      total_cost hypo.skel.cost (hypo.max_exh_cost + 1) <= cost
+      total_cost hypo.skel.Spec.cost (hypo.max_exh_cost + 1) <= cost
     in
     log config.verbosity 1 (sprintf "Searching up to cost %d." cost);
     let m_result = List.find_map hypos ~f:(fun hypo ->
@@ -439,7 +444,7 @@ let solve_single
           else h)
       in
       let generalizable, rest = List.partition_tf hypos ~f:(fun h ->
-          (not h.generalized) && (total_cost h.skel.cost 0 < cost))
+          (not h.generalized) && (total_cost h.skel.Spec.cost 0 < cost))
       in
       let new_hypos =
         List.map generalizable ~f:(fun h -> h.skel)
@@ -459,7 +464,7 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
 
   let tctx =
     List.fold_left bk ~init:(Ctx.empty ()) ~f:(fun ctx (name, impl) ->
-        Ctx.bind ctx name (typ_of_expr (infer ctx impl)))
+        Ctx.bind ctx name (TypedExpr.to_type (infer ctx impl)))
   in
   let vctx =
     List.fold_left bk ~init:Eval.stdlib_vctx
@@ -468,7 +473,8 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
   in
 
   let init =
-    init @ (Ctx.to_alist tctx |> List.map ~f:(fun (name, typ) -> Id (name, typ)))
+    init @ (Ctx.to_alist tctx
+            |> List.map ~f:(fun (name, typ) -> TypedExpr.Id (name, typ)))
   in
 
   let verify ?(limit=100) target examples =

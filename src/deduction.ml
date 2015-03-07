@@ -4,6 +4,7 @@ open Ast
 open Infer
 open Util
 
+let (memoizer: bool TypedExprMap.t ref) = ref TypedExprMap.empty
 let default_timeout = 1000
 
 let int_sort ctx = Z3.Arithmetic.Integer.mk_sort ctx
@@ -28,13 +29,14 @@ let sort_of_type (ctx: Z3.context) (typ: typ) : Z3.Sort.sort =
   | _ -> Z3.Sort.mk_uninterpreted_s ctx (Expr.typ_to_string typ)
 
 (** Generate a Z3 assertion from a boolean expression. *)
-let rec assert_of_expr (zctx: Z3.context) (expr: typed_expr) : Z3.Expr.expr =
+let rec assert_of_expr (zctx: Z3.context) (expr: TypedExpr.t) : Z3.Expr.expr =
+  let open TypedExpr in
   let aoe = assert_of_expr zctx in
   match expr with
   | Id (name, t) -> Z3.Expr.mk_const_s zctx name (sort_of_type zctx t)
   | Num (x, _) -> Z3.Arithmetic.Integer.mk_numeral_i zctx x
   | Apply ((Id (name, _), args), ret_t) ->
-    let args_t = List.map ~f:typ_of_expr args in
+    let args_t = List.map ~f:to_type args in
     let func_decl =
       Z3.FuncDecl.mk_func_decl_s zctx name
         (List.map ~f:(sort_of_type zctx) args_t) (sort_of_type zctx ret_t)
@@ -50,8 +52,7 @@ let rec assert_of_expr (zctx: Z3.context) (expr: typed_expr) : Z3.Expr.expr =
   | Op ((Or, [a1; a2]), _) -> Z3.Boolean.mk_or zctx [aoe a1; aoe a2]
   | Op ((Not, [a]), _) -> Z3.Boolean.mk_not zctx (aoe a)
   | Op ((If, [a1; a2; a3]), _) -> Z3.Boolean.mk_ite zctx (aoe a1) (aoe a2) (aoe a3)
-  | _ -> failwith (sprintf "Unsupported expression: %s"
-                     (Expr.to_string (expr_of_texpr expr)))
+  | _ -> failwith (sprintf "Unsupported expression: %s" (to_string expr))
 
 let assert_of_string (zctx: Z3.context) (s: string) : Z3.Expr.expr =
   typed_expr_of_string s |> assert_of_expr zctx
@@ -86,22 +87,18 @@ let infer_length_constraint
   | Some l -> l
   | None -> failwith "Failed to find valid length constraint."
 
-module TypedExprMap = Map.Make(struct
-    type t = typed_expr with compare, sexp
-  end)
-
 (** Generate lemmas about the candidate program. We are using the
     theory of uninterpreted functions, so we assign the expression a name
     to use in its lemmas. Return a tuple, (name, lemmas). *)
 let rec generate_lemmas
     (ctx: Z3.Expr.expr TypedExprMap.t ref)
     (zctx: Z3.context)
-    (expr: typed_expr) : Z3.Expr.expr * (Z3.Expr.expr list) =
+    (expr: TypedExpr.t) : Z3.Expr.expr * (Z3.Expr.expr list) =
   let name_of_expr e =
     Z3.Expr.mk_fresh_const
       zctx
-      (Expr.to_string (expr_of_texpr e))
-      (sort_of_type zctx (typ_of_expr e))
+      (TypedExpr.to_string e)
+      (sort_of_type zctx (TypedExpr.to_type e))
   in
 
   let name =
@@ -112,6 +109,7 @@ let rec generate_lemmas
       ctx := TypedExprMap.add !ctx ~key:expr ~data:z3_name; z3_name
   in
 
+  let open TypedExpr in
   let lemmas =
     match expr with
     | List (l, _) -> [
@@ -233,6 +231,16 @@ let rec generate_lemmas
           (Z3.FuncDecl.apply (len_fun zctx) [f_name]);
       ] @ f_lemmas
 
+    | Apply ((Id ("foldl", _), [_; Lambda ((_, Op ((Cons, [_; List ([], _)]), _)), _); _]), _)
+    | Apply ((Id ("foldr", _), [_; Lambda ((_, Op ((Cons, [_; List ([], _)]), _)), _); _]), _)
+    | Apply ((Id ("foldl", _), [_; Lambda ((_, Op ((RCons, [List ([], _); _]), _)), _); _]), _)
+    | Apply ((Id ("foldr", _), [_; Lambda ((_, Op ((RCons, [List ([], _); _]), _)), _); _]), _) ->
+      [
+        Z3.Boolean.mk_eq zctx
+          (Z3.FuncDecl.apply (len_fun zctx) [name])
+          (Z3.Arithmetic.Integer.mk_numeral_i zctx 0);
+      ]
+
     | _ -> []
   in
   name, lemmas
@@ -247,16 +255,14 @@ let check_constraints
     (zctx: Z3.context)
     (examples: example list)
     (* (constraints: Z3.Expr.expr list) *)
-    (expr: typed_expr) : bool =
+    (expr: TypedExpr.t) : bool =
   let solver = Z3.Solver.mk_solver zctx None in
 
+  let open TypedExpr in
   match expr with
   | Lambda ((args, body), Arrow_t (args_t, _)) ->
     let assertions = List.concat_map examples ~f:(fun (ex: example) ->
-        let input_args, output =
-          match ex with
-          | `Apply (_, i), o -> i, o
-        in
+        let _, input_args, output = Example.to_triple ex in
 
         (* Collect any relevant assertions about the inputs in this example. *)
         let named_input_asserts =
@@ -302,8 +308,7 @@ let check_constraints
        | Z3.Solver.SATISFIABLE -> true
        | Z3.Solver.UNKNOWN -> printf "Solver returned UNKNOWN\n"; true)
 
-  | _ -> failwith (sprintf "Unsupported expression: %s"
-                     (Expr.to_string (expr_of_texpr expr)))
+  | _ -> failwith (sprintf "Unsupported expression: %s" (to_string expr))
 
 (* let () = *)
 (*   let zctx = Z3.mk_context [] in *)
