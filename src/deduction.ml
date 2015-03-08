@@ -5,7 +5,6 @@ open Infer
 open Util
 
 let (memoizer: bool TypedExprMap.t ref) = ref TypedExprMap.empty
-let default_timeout = 1000
 
 let int_sort ctx = Z3.Arithmetic.Integer.mk_sort ctx
 let list_sort ctx = Z3.Sort.mk_uninterpreted_s ctx "Lst"
@@ -251,10 +250,8 @@ let rec generate_lemmas
     target function using 'i1' ... 'in' and to the output using
     'o'. *)
 let check_constraints
-    ?(timeout=default_timeout)
     (zctx: Z3.context)
     (examples: example list)
-    (* (constraints: Z3.Expr.expr list) *)
     (expr: TypedExpr.t) : bool =
   let solver = Z3.Solver.mk_solver zctx None in
 
@@ -309,6 +306,21 @@ let check_constraints
        | Z3.Solver.UNKNOWN -> printf "Solver returned UNKNOWN\n"; true)
 
   | _ -> failwith (sprintf "Unsupported expression: %s" (to_string expr))
+
+let memoized_check_constraints
+    (memoizer: bool Expr.Map.t ref)
+    (zctx: Z3.context)
+    (examples: example list)
+    (expr: TypedExpr.t) : bool =
+  let normal_expr =
+    Expr.normalize ~bound:stdlib_names (TypedExpr.to_expr expr)
+  in
+  printf "Looking up %s in memoizer.\n" (Expr.to_string normal_expr);
+  match Expr.Map.find !memoizer normal_expr with
+  | Some ret -> ret
+  | None ->
+    let ret = check_constraints zctx examples expr in
+    memoizer := Expr.Map.add !memoizer ~key:normal_expr ~data:ret; ret
 
 (* let () = *)
 (*   let zctx = Z3.mk_context [] in *)

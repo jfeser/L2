@@ -20,6 +20,40 @@ module TypedExpr = struct
     | Op of (Op.t * (t list)) * typ
   with compare, sexp, variants
 
+  let normalize (expr: t) : t =
+    let count = ref (-1) in
+    let fresh_name () =
+      let n = incr count; !count in
+      let prefix = Char.of_int_exn ((n mod 26) + 97) in
+      let suffix = if n >= 26 then Int.to_string ((n - 26) mod 26) else "" in
+      Printf.sprintf "%c%s" prefix suffix
+    in
+    let rec norm ctx e =
+      let norm_all = List.map ~f:(norm ctx) in
+      match e with
+      | Num _ | Bool _ -> e
+      | Id (x, t) ->
+        (match Ctx.lookup ctx x with
+         | Some x' -> Id (x', t)
+         | None -> e)
+      | List (x, t) -> List (norm_all x, t)
+      | Tree (x, t) -> Tree (Tree.map x ~f:(norm ctx), t)
+      | Op ((op, args), t) -> Op ((op, norm_all args), t)
+      | Apply ((func, args), t) -> Apply ((norm ctx func, norm_all args), t)
+      | Let ((name, x, y), t) ->
+        let name' = fresh_name () in
+        let ctx' = Ctx.bind ctx name name' in
+        Let ((name', norm ctx' x, norm ctx' y), t)
+      | Lambda ((args, body), t) ->
+        let ctx', args' =
+          List.fold_right args
+            ~init:(ctx, [])
+            ~f:(fun arg (ctx', args') ->
+                let arg' = fresh_name () in
+                Ctx.bind ctx' arg arg', arg'::args')
+        in Lambda ((args', norm ctx' body), t)
+    in norm (Ctx.empty ()) expr
+
   let rec map ~f (e: t) : t = match e with
     | Num (x, t) -> Num (x, f t)
     | Bool (x, t) -> Bool (x, f t)
@@ -59,13 +93,13 @@ module TypedExpr = struct
   let to_string (e: t) : string = Expr.to_string (to_expr e)
 end
 
-module TypedExprMap = Map.Make(TypedExpr)
+module TypedExprMap = Core.Std.Map.Make(TypedExpr)
 
 (** A unifier is a mapping from free type variables to types. It
     can be applied to a type to fill in some or all of its free type
     variables. *)
 module Unifier = struct
-  module IntMap = Map.Make(Int)
+  module IntMap = Core.Std.Map.Make(Int)
   type t = typ IntMap.t
 
   let rec apply (s: t) (t: typ) : typ = match t with

@@ -297,6 +297,7 @@ let solve_single
   in
 
   let zctx = Z3.mk_context [] in
+  let z3_memoizer = ref Expr.Map.empty in
   (* let lemmas = Deduction.infer_length_constraint zctx examples in *)
 
   let generate_specs (specs: Spec.t list) : Spec.t list =
@@ -382,7 +383,9 @@ let solve_single
                let typed_target =
                  infer (Ctx.bind tctx name (Var_t (ref (Quant "a")))) body
                in
-               let res = Deduction.check_constraints zctx examples typed_target in
+               let res = Deduction.memoized_check_constraints
+                   z3_memoizer zctx examples typed_target
+               in
                printf "Meets constraints? %b\n" res;
                res
              with TypeError msg -> printf "Checking %s failed: %s\n" (Expr.to_string target) msg; false)

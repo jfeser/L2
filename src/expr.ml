@@ -4,11 +4,16 @@ open Printf
 open Ast
 open Util
 
+module Map = Core.Std.Map.Make(
+  struct
+    type t = expr with compare, sexp
+  end)
+
 type t = expr with compare, sexp
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
-  module OpMap = Map.Make(
+  module Map = Core.Std.Map.Make(
     struct
       type t = op
       let t_of_sexp = op_of_sexp
@@ -55,9 +60,9 @@ module Op = struct
       Children, { typ = t "(tree[a]) -> list[tree[a]]";
                   commut = false; assoc = false; str = "children"; cost = 1; };
       Value,    { typ = t "(tree[a]) -> a"; commut = false; assoc = false; str = "value"; cost = 1; };
-    ] |> OpMap.of_alist_exn
+    ] |> Map.of_alist_exn
 
-  let all = OpMap.keys metadata_by_op
+  let all = Map.keys metadata_by_op
   let control = [ If; ]
   let cmp = [ Eq; Neq; Lt; Leq; Gt; Geq; ]
   let logic = [ And; Or; Not; ]
@@ -68,12 +73,12 @@ module Op = struct
 
   let op_by_str =
     metadata_by_op
-    |> OpMap.to_alist
+    |> Map.to_alist
     |> List.map ~f:(fun (op, meta) -> meta.str, op)
     |> String.Map.of_alist_exn
 
   (** Get operator record from operator. *)
-  let meta = OpMap.find_exn metadata_by_op
+  let meta = Map.find_exn metadata_by_op
 
   let typ op = (meta op).typ
   let arity op = match (meta op).typ with
@@ -102,7 +107,7 @@ let rec cost ?(op_cost=Op.cost) (e: t) : int =
 
 let size = cost ~op_cost:(fun _ -> 1)
 
-let normalize (expr: t) : expr =
+let normalize ?(bound=String.Set.empty) (expr: t) : expr =
   let count = ref (-1) in
   let fresh_name () =
     let n = incr count; !count in
@@ -118,7 +123,7 @@ let normalize (expr: t) : expr =
     | `Id x ->
        (match Ctx.lookup ctx x with
         | Some x' -> `Id x'
-        | None -> `Id x)
+        | None -> if String.Set.mem bound x then `Id x else `Id (fresh_name ()))
     | `List x -> `List (norm_all x)
     | `Tree x -> `Tree (Tree.map x ~f:(norm ctx))
     | `Op (op, args) -> `Op (op, norm_all args)
