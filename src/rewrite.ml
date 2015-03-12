@@ -133,13 +133,23 @@ let rewrite (expr: expr) : expr option =
            | [`Bool false; x] | [x; `Bool false] -> x
            | [x; `Op (Cdr, [y])] | [`Op (Cdr, [y]); x] when x = y -> `Bool true
            | _ -> `Op (op, args))
-       | Lt
-       | Gt -> (match args with
+       | Lt -> (match args with
+           | [`Id "inf"; _] -> `Bool false
            | [x; y] when x = y -> `Bool false
            | _ -> `Op (op, args))
-       | Leq
-       | Geq -> (match args with
+       | Gt -> (match args with
+           | [_; `Id "inf"] -> `Bool false
+           | [x; y] when x = y -> `Bool false
+           | _ -> `Op (op, args))
+       | Leq -> (match args with
+           | [_; `Id "inf"] -> `Bool true
            | [x; y] when x = y -> `Bool true
+           | [`Id "inf"; x] when x <> (`Id "inf") -> `Bool true
+           | _ -> `Op (op, args))
+       | Geq -> (match args with
+           | [`Id "inf"; _] -> `Bool true
+           | [x; y] when x = y -> `Bool true
+           | [`Id "inf"; x] when x <> (`Id "inf") -> `Bool false
            | _ -> `Op (op, args))
        | And -> (match args with
            | [x; y] when x = y -> x
