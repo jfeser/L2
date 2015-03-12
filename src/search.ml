@@ -375,20 +375,24 @@ let solve_single
         (* if max_depth > nesting_depth_cap then false else *)
         let ctx = Ctx.bind init_ctx name (TypedExpr.to_expr e) in
         let target = (spec.Spec.target ctx) (`Id "_") in
-        let _ = printf "Checking %s with %s\n" (Expr.to_string target) (Ctx.to_string tctx Expr.typ_to_string) in
+        let _ = printf "Checking %s with %s\n"
+            (Expr.to_string target) (Ctx.to_string tctx Expr.typ_to_string) in
         match target with
         | `Let (name, body, _) ->
           if Rewrite.is_redundant [] body then false else
-            (try
-               let typed_target =
-                 infer (Ctx.bind tctx name (Var_t (ref (Quant "a")))) body
-               in
-               let res = Deduction.memoized_check_constraints
-                   z3_memoizer zctx examples typed_target
-               in
-               printf "Meets constraints? %b\n" res;
-               res
-             with TypeError msg -> printf "Checking %s failed: %s\n" (Expr.to_string target) msg; false)
+            if Expr.all_abstract body then true else
+              (try
+                 let typed_target =
+                   infer (Ctx.bind tctx name (Var_t (ref (Quant "a")))) body
+                 in
+                 let res = Deduction.memoized_check_constraints
+                     z3_memoizer zctx examples typed_target
+                 in
+                 printf "Meets constraints? %b\n" res;
+                 res
+               with TypeError msg ->
+                 printf "Checking %s failed: %s\n" (Expr.to_string target) msg;
+                 false)
         | _ -> failwith "Bad result from solve_single."
       in
 

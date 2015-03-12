@@ -3,7 +3,7 @@ open Core.Std
 open Ast
 open Util
 
-type status = 
+type status =
   | Invalid
   | Valid
   | Error
@@ -144,7 +144,7 @@ let verify_examples ?(ctx=Ctx.empty ())
 (*   let body, ids =  *)
 (*     let body', ids' = constr in *)
 (*     typed_constr ((expand (Ctx.empty ()) (target body')), ids') in *)
-  
+
 (*   (\* Generate a correctly typed Z3 constant for each unbound id in the constraint. *\) *)
 (*   let z3_consts = List.map ids ~f:(typed_id_to_z3 zctx) in *)
 

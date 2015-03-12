@@ -162,6 +162,19 @@ let rec to_string (expr: t) : string =
 
 let equal (e1: t) (e2: t) = (compare_expr e1 e2) = 0
 
+(** Return true if all the names in an expression are free. *)
+let all_abstract (e: t) : bool =
+  let rec f (b: String.Set.t) (e: t) : bool = match e with
+    | `Num _ | `Bool _ | `List [] -> false
+    | `Id x -> not (String.Set.mem b x)
+    | `List x -> List.for_all ~f:(f b) x
+    | `Tree x -> Tree.flatten x |> List.for_all ~f:(f b)
+    | `Op (_, x) -> List.for_all ~f:(f b) x
+    | `Let (x, y, z) -> let b' = String.Set.add b x in (f b' y) && (f b' z)
+    | `Apply (x, y) -> (f b x) && (List.for_all ~f:(f b) y)
+    | `Lambda (_, x) -> f b x
+  in f String.Set.empty e
+
 (** Convert a type to a string. *)
 let rec typ_to_string (typ: typ) : string =
   let tlist_str typs =
