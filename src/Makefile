@@ -18,7 +18,7 @@ FLAGS = \
 
 .PHONY: clean
 
-all: timing.native
+all: timing.native interactive.native
 
 %.native: *.ml
 	$(OCAMLBUILD) $(FLAGS) $@

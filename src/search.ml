@@ -17,6 +17,7 @@ type config = {
   untyped: bool;
   deduction: bool;
   infer_base: bool;
+  use_solver: bool;
   max_exhaustive_depth: int;
 }
 
@@ -25,12 +26,19 @@ let default_config = {
   untyped=false;
   deduction=true;
   infer_base=true;
+  use_solver=false;
   max_exhaustive_depth=7;
 }
 
 let default_init =
   ["0"; "1"; "inf"; "[]"; "#f"]
   |> List.map ~f:(fun str -> parse_expr str |> infer (Ctx.empty ()))
+
+let extended_init =
+  default_init @
+  (["sort"; "merge"; "dedup"; "take"; "drop"; "append"; "reverse";
+    "intersperse"; "concat"; "zip"]
+   |> List.map ~f:(fun str -> parse_expr str |> infer stdlib_tctx))
 
 let default_operators = List.filter ~f:((<>) Cons) Expr.Op.all
 
@@ -162,8 +170,10 @@ let rec enumerate
          created until the prefix classes are exhausted. *)
       slazy (fun () ->
           let should_prune_branch =
-            let dummy_arg_list = prev_args @ (List.drop dummy_args prev_args_len) in
-            not (check dummy_arg_list)
+            if config.use_solver then
+              let dummy_arg_list = prev_args @ (List.drop dummy_args prev_args_len) in
+              not (check dummy_arg_list)
+            else false
           in
 
           if should_prune_branch then Sstream.repeat [] else
@@ -365,23 +375,23 @@ let solve_single
       in
 
       let init_tctx =
-        Ctx.map ~f:(fun hole -> hole.signature) spec.Spec.holes
+        Ctx.merge_right
+          stdlib_tctx (Ctx.map ~f:(fun hole -> hole.signature) spec.Spec.holes)
       in
 
       let check name e =
         let nesting_depth_cap = 2 in
-        let tctx = Ctx.merge_right init_tctx (free e |>  Ctx.of_alist_exn) in
+        let tctx = Ctx.merge_right init_tctx (free e |> Ctx.of_alist_exn) in
         (* let max_depth = max (Ctx.data tctx |> List.map ~f:type_nesting_depth) in *)
         (* if max_depth > nesting_depth_cap then false else *)
         let ctx = Ctx.bind init_ctx name (TypedExpr.to_expr e) in
         let target = (spec.Spec.target ctx) (`Id "_") in
-        let _ = printf "Checking %s with %s\n"
-            (Expr.to_string target) (Ctx.to_string tctx Expr.typ_to_string) in
         match target with
         | `Let (name, body, _) ->
           if Rewrite.is_redundant [] body then false else
             if Expr.all_abstract body then true else
               (try
+                 let _ = printf "Checking %s\n" (Expr.to_string target) in
                  let typed_target =
                    infer (Ctx.bind tctx name (Var_t (ref (Quant "a")))) body
                  in
@@ -484,7 +494,10 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
             |> List.map ~f:(fun (name, typ) -> TypedExpr.Id (name, typ)))
   in
 
+  let verify_count = ref 0 in
+
   let verify ?(limit=100) target examples =
+    verify_count := !verify_count + 1;
     try
       match target (`Id "_") with
       | `Let (name, body, _) ->
@@ -496,5 +509,8 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
     | Ctx.UnboundError _ -> false
   in
 
-  Ctx.bind (Ctx.empty ()) (Example.name examples)
-    ((solve_single ~init ~verify ~config examples) (`Id "_"))
+  let ret =
+    Ctx.bind (Ctx.empty ()) (Example.name examples)
+      ((solve_single ~init ~verify ~config examples) (`Id "_"))
+  in
+  printf "Verified %d expressions.\n" !verify_count; ret

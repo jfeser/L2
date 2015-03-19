@@ -105,6 +105,7 @@ let testcases =
       "(member [0 1 0] 1) -> #t";
       "(member [1 6 2 5] 2) -> #t";
       "(member [5 6 2] 6) -> #t";
+      "(member [2 5 6] 6) -> #t";
       "(member [1 2 5] 3) -> #f";
     ], "Checks whether an item is a member of a list.";
 
@@ -283,7 +284,7 @@ let testcases =
     ], "";
 
     "dropmax", [
-        "max", "(lambda (a) (foldl a (lambda (c b) (if (< c b) b c)) 0))";
+        (* "max", "(lambda (a) (foldl a (lambda (c b) (if (< c b) b c)) 0))"; *)
       ], [
         "(dropmax [3 5 2]) -> [3 2]";
         "(dropmax [3 1 2]) -> [1 2]";
@@ -375,6 +376,22 @@ let testcases =
       "(count_nodes {2 {3} {4}}) -> 3";
       "(count_nodes {2 {3 {0}} {4 {9} {8}}}) -> 6";
     ], "";
+
+    "largest_n", [],
+    [
+      "(largest_n 3 [[1 2 3] [3 4] [3 2 7]]) -> [7 4 3]";
+      "(largest_n 2 [[1 2 3] [3 4] [3 2 7]]) -> [7 4]";
+      "(largest_n 1 [[1 2 3] [3 4] [3 2 7]]) -> [7]";
+    ], "";
+
+    "intersect", [],
+    [
+      "(intersect [2 3 1] [5 3 4]) -> [3]";
+      "(intersect [2 3 1] [3 5 4]) -> [3]";
+      "(intersect [2 3 8] [3 5 8]) -> [3 8]";
+      "(intersect [1 2 3 0] [3 1 0 9]) -> [0 1 3]";
+    ], "";
+
   ]
 
 let time_solve csv config (name, bk_strs, example_strs, desc) =
@@ -382,13 +399,13 @@ let time_solve csv config (name, bk_strs, example_strs, desc) =
     let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Util.parse_expr impl) in
     let examples = List.map example_strs ~f:Util.parse_example in
     let start_time = Time.now () in
-    let solutions = Search.solve ~config ~bk examples in
+    let solutions = Search.solve ~init:Search.extended_init ~config ~bk examples in
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
     let solutions_str =
       Util.Ctx.to_alist solutions
       |> List.map ~f:(fun (name, lambda) ->
-                      let lambda = Expr.normalize lambda in
+                      (* let lambda = Expr.normalize lambda in *)
                       Expr.to_string (`Let (name, lambda, `Id "_")))
       |> String.concat ~sep:"\n"
     in
@@ -413,43 +430,48 @@ let command =
     +> flag "-i" ~aliases:["--no-infer-base"] no_arg ~doc:" do not infer the base case of folds"
     +> flag "-s" ~aliases:["--stdin"] no_arg ~doc:" read specification from standard input"
     +> flag "-b" ~aliases:["--background"] (listed string) ~doc:" use background knowledge"
+    +> flag "-z" ~aliases:["--use-z3"] no_arg ~doc:" use Z3 for pruning"
     +> anon (sequence ("testcase" %: string))
   in
+
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
     (fun csv verbose very_verbose untyped no_deduce
-         no_infer use_stdin bk_strs testcase_names () ->
-     let open Search in
-     let config = {
-         default_config with
-         untyped; deduction=(not no_deduce); infer_base=(not no_infer);
-         verbosity =
-           if verbose || very_verbose then
-             if very_verbose then 2 else 1
-           else 0;
-       } in
-     if use_stdin then
-       let input_lines = In_channel.input_all stdin |> String.split_lines in
-       let bk_strs, example_strs =
-         match List.findi ~f:(fun i line -> line = "") input_lines with
-         | Some (sep_index, _) ->
+      no_infer use_stdin bk_strs use_solver testcase_names () ->
+      let open Search in
+      let config = {
+        default_config with
+        untyped; deduction=(not no_deduce); infer_base=(not no_infer);
+        verbosity =
+          if verbose || very_verbose then
+            if very_verbose then 2 else 1
+          else 0;
+        use_solver = use_solver;
+      } in
+
+      if use_stdin then
+        let input_lines = In_channel.input_all stdin |> String.split_lines in
+        let bk_strs, example_strs =
+          match List.findi ~f:(fun i line -> line = "") input_lines with
+          | Some (sep_index, _) ->
             List.take input_lines sep_index, List.drop input_lines (sep_index + 1)
-         | None -> [], input_lines
-       in
-       let bk =
-         List.concat_map
-           bk_strs
-           ~f:(fun bk_str ->
-               match Util.lsplit2_on_str bk_str ~on:" " with
-               | Some bk -> [bk]
-               | None -> printf "Invalid background knowledge string: %s\n" bk_str; []) in
-       let _ = time_solve csv config ("", bk, example_strs, "") in ()
-     else
-       let testcases' = match testcase_names with
-         | [] -> testcases
-         | _ -> List.filter testcases ~f:(fun (name, _, _, _) -> List.mem testcase_names name)
-       in
-       let _ = List.map testcases' ~f:(time_solve csv config) in ())
+          | None -> [], input_lines
+        in
+        let bk =
+          List.concat_map bk_strs ~f:(fun bk_str ->
+              match Util.lsplit2_on_str bk_str ~on:" " with
+              | Some bk -> [bk]
+              | None ->
+                printf "Invalid background knowledge string: %s\n" bk_str; [])
+        in
+        let _ = time_solve csv config ("", bk, example_strs, "") in ()
+      else
+        let testcases' = match testcase_names with
+          | [] -> testcases
+          | _ -> List.filter testcases ~f:(fun (name, _, _, _) ->
+              List.mem testcase_names name)
+        in
+        let _ = List.map testcases' ~f:(time_solve csv config) in ())
 
 let () = Command.run command

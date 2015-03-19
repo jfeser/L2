@@ -17,7 +17,7 @@ module IntListSet = Set.Make(struct
 
 module SMap = Map.Make(String)
 module Ctx = struct
-  type 'a t = 'a SMap.t ref
+  type 'a t = 'a SMap.t ref with compare
   exception UnboundError of string
 
   (** Return an empty context. *)

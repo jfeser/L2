@@ -17,7 +17,7 @@ let solve bk_strs example_strs =
     let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Util.parse_expr impl) in
     let examples = List.map example_strs ~f:Util.parse_example in
     let start_time = Time.now () in
-    let solutions = Search.solve ~bk examples in
+    let solutions = Search.solve ~init:Search.extended_init ~bk examples in
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
     let solutions_str =
@@ -26,7 +26,7 @@ let solve bk_strs example_strs =
            ~f:(fun (name, lambda) ->
                match lambda with
                | `Let (_, lambda', _) ->
-                  sprintf "%s = %s" name (lambda' |> Expr.normalize |> Expr.to_string)
+                  sprintf "%s = %s" name (lambda' |> Expr.to_string)
                | _ -> failwith "Unexpected expression.")
       |> String.concat ~sep:"\n"
     in

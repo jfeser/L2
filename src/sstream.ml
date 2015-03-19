@@ -91,7 +91,7 @@ module Memoizer (Key: Map.Key) (Value: sig type t end) = struct
         let s = { index = ref 0; head = Int.Table.create (); stream = stream (); } in
         memo := KMap.add !memo ~key:typ ~data:s; s
     in
-    from (fun i -> 
+    from (fun i ->
         let sc = i + 1 in
         if sc <= !(mstream.index) then Some (Int.Table.find_exn mstream.head sc)
         else begin

@@ -84,7 +84,32 @@ let rewrite (expr: expr) : expr option =
     | `Tree t -> `Tree (Tree.map t ~f:rewrite_r)
     | `Lambda (a, e)  -> `Lambda (a, rewrite_r e)
     | `Let (id, v, e) -> `Let (id, rewrite_r v, rewrite_r e)
-    | `Apply (f, a)   -> `Apply (rewrite_r f, rewrite_all a)
+    | `Apply (f, raw_args)   ->
+      let func = rewrite_r f in
+      let args = rewrite_all raw_args in
+      (match func with
+       | `Id "concat" -> (match args with
+           | [`List []] -> `List []
+           | [`List l] -> `List (List.filter l ~f:(fun l' -> match l' with
+               | `List [] -> false
+               | _ -> true))
+           | _ -> `Apply (func, args))
+
+       | `Id "append" -> (match args with
+           | [`List []; x] | [x; `List []] -> x
+           | _ -> `Apply (func, args))
+
+       | `Id "reverse" -> (match args with
+           | [`List []] -> `List []
+           | [`Apply (`Id "reverse", [x])] -> x
+           | _ -> `Apply (func, args))
+
+       | `Id "intersperse" -> (match args with
+           | [`List []; _] -> `List []
+           | _ -> `Apply (func, args))
+
+       | _ -> `Apply (func, args))
+
     | `Op (op, raw_args) ->
       let args = rewrite_all raw_args in
       (match op with

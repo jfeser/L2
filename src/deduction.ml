@@ -14,6 +14,15 @@ let len_fun ctx =
 let height_fun ctx =
   Z3.FuncDecl.mk_func_decl_s ctx "height" [tree_sort ctx] (int_sort ctx)
 
+let z3_int = Z3.Arithmetic.Integer.mk_numeral_i
+let z3_app = Z3.FuncDecl.apply
+let z3_eq = Z3.Boolean.mk_eq
+let z3_and = Z3.Boolean.mk_and
+let z3_ge = Z3.Arithmetic.mk_ge
+let z3_le = Z3.Arithmetic.mk_le
+let z3_sub = Z3.Arithmetic.mk_sub
+let z3_add = Z3.Arithmetic.mk_add
+
 (** Convert a type into a Z3 sort. For integers and booleans, this
     uses Z3's built in sorts. For lists, it returns Lst, which is an
     uninterpreted sort that does not depend on the type parameter. For
@@ -33,16 +42,16 @@ let rec assert_of_expr (zctx: Z3.context) (expr: TypedExpr.t) : Z3.Expr.expr =
   let aoe = assert_of_expr zctx in
   match expr with
   | Id (name, t) -> Z3.Expr.mk_const_s zctx name (sort_of_type zctx t)
-  | Num (x, _) -> Z3.Arithmetic.Integer.mk_numeral_i zctx x
+  | Num (x, _) -> z3_int zctx x
   | Apply ((Id (name, _), args), ret_t) ->
     let args_t = List.map ~f:to_type args in
     let func_decl =
       Z3.FuncDecl.mk_func_decl_s zctx name
         (List.map ~f:(sort_of_type zctx) args_t) (sort_of_type zctx ret_t)
-    in Z3.FuncDecl.apply func_decl (List.map ~f:aoe args)
-  | Op ((Eq, [a1; a2]), _) -> Z3.Boolean.mk_eq zctx (aoe a1) (aoe a2)
+    in z3_app func_decl (List.map ~f:aoe args)
+  | Op ((Eq, [a1; a2]), _) -> z3_eq zctx (aoe a1) (aoe a2)
   | Op ((Neq, [a1; a2]), _) ->
-    Z3.Boolean.mk_not zctx (Z3.Boolean.mk_eq zctx (aoe a1) (aoe a2))
+    Z3.Boolean.mk_not zctx (z3_eq zctx (aoe a1) (aoe a2))
   | Op ((Lt, [a1; a2]), _) -> Z3.Arithmetic.mk_lt zctx (aoe a1) (aoe a2)
   | Op ((Gt, [a1; a2]), _) -> Z3.Arithmetic.mk_gt zctx (aoe a1) (aoe a2)
   | Op ((Leq, [a1; a2]), _) -> Z3.Arithmetic.mk_le zctx (aoe a1) (aoe a2)
@@ -67,14 +76,14 @@ let infer_length_constraint
         | _ -> failwith (sprintf "Unsupported example: %s" (Example.to_string e)))
       examples
   in
-  let i_len = Z3.FuncDecl.apply (len_fun zctx)
+  let i_len = z3_app (len_fun zctx)
       [Z3.Expr.mk_const_s zctx "i0" (list_sort zctx)] in
-  let o_len = Z3.FuncDecl.apply (len_fun zctx)
+  let o_len = z3_app (len_fun zctx)
       [Z3.Expr.mk_const_s zctx "o" (list_sort zctx)] in
   let lemmas = [
     (>), Z3.Arithmetic.mk_gt zctx i_len o_len;
     (<), Z3.Arithmetic.mk_lt zctx i_len o_len;
-    (=), Z3.Boolean.mk_eq zctx i_len o_len;
+    (=), z3_eq zctx i_len o_len;
     (>=), Z3.Arithmetic.mk_ge zctx i_len o_len;
     (<=), Z3.Arithmetic.mk_le zctx i_len o_len;
   ] in
@@ -112,10 +121,113 @@ let rec generate_lemmas
   let lemmas =
     match expr with
     | List (l, _) -> [
-        Z3.Boolean.mk_eq zctx
-          (Z3.FuncDecl.apply (len_fun zctx) [name])
-          (Z3.Arithmetic.Integer.mk_numeral_i zctx (List.length l))
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
+          (z3_int zctx (List.length l))
       ]
+
+    (* len(map f x) = len(x) *)
+    (* len(reverse x) = len(x) *)
+    (* len(sort x) = len(x) *)
+    | Apply ((Id ("reverse", _), [l]), _)
+    | Apply ((Id ("sort", _), [l]), _)
+    | Apply ((Id ("map", _), [l; _]), _) ->
+      let l_name, l_lemmas = generate_lemmas ctx zctx l in
+      [
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
+          (z3_app (len_fun zctx) [l_name]);
+      ] @ l_lemmas
+
+    (* len(dedup x) <= len(x) *)
+    | Apply ((Id ("dedup", _), [l; _]), _) ->
+      let l_name, l_lemmas = generate_lemmas ctx zctx l in
+      [
+        z3_le zctx
+          (z3_app (len_fun zctx) [name])
+          (z3_app (len_fun zctx) [l_name]);
+      ] @ l_lemmas
+
+    (* len(take l x) = x & len(l) >= x *)
+    | Apply ((Id ("take", _), [l; x]), _) ->
+      let l_name, l_lemmas = generate_lemmas ctx zctx l in
+      let x_name, x_lemmas = generate_lemmas ctx zctx x in
+      [
+        z3_and zctx [
+          z3_eq zctx
+            (z3_app (len_fun zctx) [name])
+            x_name;
+
+          z3_ge zctx
+            (z3_app (len_fun zctx) [l_name])
+            x_name;
+        ];
+      ] @ l_lemmas @ x_lemmas
+
+    (* len(drop l x) = len(l) - x & len(l) >= x *)
+    | Apply ((Id ("drop", _), [l; x]), _) ->
+      let l_name, l_lemmas = generate_lemmas ctx zctx l in
+      let x_name, x_lemmas = generate_lemmas ctx zctx x in
+      [
+        z3_and zctx [
+          z3_eq zctx
+            (z3_app (len_fun zctx) [name])
+            (z3_sub zctx [
+                (z3_app (len_fun zctx) [l_name]);
+                x_name
+              ]);
+
+          z3_ge zctx
+            (z3_app (len_fun zctx) [l_name])
+            x_name;
+        ];
+      ] @ l_lemmas @ x_lemmas
+
+    (* len(merge l1 l2) = len(l1) + len(l2) *)
+    | Apply ((Id ("merge", _), [l1; l2]), _) ->
+      let l1_name, l1_lemmas = generate_lemmas ctx zctx l1 in
+      let l2_name, l2_lemmas = generate_lemmas ctx zctx l2 in
+      [
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
+          (z3_add zctx [
+              z3_app (len_fun zctx) [l1_name];
+              z3_app (len_fun zctx) [l2_name];
+            ]);
+      ] @ l1_lemmas @ l2_lemmas
+
+    (* len(intersperse(x, y)) = if len(y) = 0 then 0 else 2 * len(y) - 1 *)
+    | Apply ((Id ("intersperse", _), [_; l]), _) ->
+      let l_name, l_lemmas = generate_lemmas ctx zctx l in
+      [
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
+          (Z3.Boolean.mk_ite zctx
+             (z3_eq zctx
+                (z3_app (len_fun zctx) [l_name])
+                (z3_int zctx 0))
+             (z3_int zctx 0)
+             (z3_sub zctx [
+                 Z3.Arithmetic.mk_mul zctx [
+                   z3_int zctx 2;
+                   z3_app (len_fun zctx) [l_name];
+                 ];
+                 z3_int zctx 1;
+               ]))
+      ] @ l_lemmas
+
+    (* len(zip(l1, l2)) = len(l1) && len(zip(l1, l2)) = len(l2) *)
+    | Apply ((Id ("zip", _), [l1; l2]), _) ->
+      let l1_name, l1_lemmas = generate_lemmas ctx zctx l1 in
+      let l2_name, l2_lemmas = generate_lemmas ctx zctx l2 in
+      [
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
+          (z3_app (len_fun zctx) [l1_name]);
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
+          (z3_app (len_fun zctx) [l2_name]);
+      ] @ l1_lemmas @ l2_lemmas
 
     | Op ((Cons, [_; x]), _)
     | Op ((RCons, [x; _]), _) ->
@@ -125,11 +237,11 @@ let rec generate_lemmas
       (* Generate any lemmas for this expression. In this case, len(cons
          x y) = len(y) + 1 *)
       [
-        Z3.Boolean.mk_eq zctx
-          (Z3.FuncDecl.apply (len_fun zctx) [name])
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
           (Z3.Arithmetic.mk_add zctx [
-              Z3.FuncDecl.apply (len_fun zctx) [x_name];
-              Z3.Arithmetic.Integer.mk_numeral_i zctx 1;
+              z3_app (len_fun zctx) [x_name];
+              z3_int zctx 1;
             ]);
       ] @ x_lemmas
 
@@ -137,31 +249,33 @@ let rec generate_lemmas
       let x_name, x_lemmas = generate_lemmas ctx zctx x in
       [
         Z3.Arithmetic.mk_gt zctx
-          (Z3.FuncDecl.apply (len_fun zctx) [x_name])
-          (Z3.Arithmetic.Integer.mk_numeral_i zctx 0);
+          (z3_app (len_fun zctx) [x_name])
+          (z3_int zctx 0);
 
-        Z3.Boolean.mk_eq zctx
-          (Z3.FuncDecl.apply (len_fun zctx) [name])
-          (Z3.Arithmetic.mk_sub zctx [
-              Z3.FuncDecl.apply (len_fun zctx) [x_name];
-              Z3.Arithmetic.Integer.mk_numeral_i zctx 1;
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
+          (z3_sub zctx [
+              z3_app (len_fun zctx) [x_name];
+              z3_int zctx 1;
             ]);
       ] @ x_lemmas
 
+    (* len(x) > 0 *)
+    | Apply ((Id ("last", _), [x]), _)
     | Op ((Car, [x]), _) ->
       let x_name, x_lemmas = generate_lemmas ctx zctx x in
       [
         Z3.Arithmetic.mk_gt zctx
-          (Z3.FuncDecl.apply (len_fun zctx) [x_name])
-          (Z3.Arithmetic.Integer.mk_numeral_i zctx 0);
+          (z3_app (len_fun zctx) [x_name])
+          (z3_int zctx 0);
       ] @ x_lemmas
 
     | Op ((Value, [x]), _) ->
       let x_name, x_lemmas = generate_lemmas ctx zctx x in
       [
         Z3.Arithmetic.mk_gt zctx
-          (Z3.FuncDecl.apply (height_fun zctx) [x_name])
-          (Z3.Arithmetic.Integer.mk_numeral_i zctx 0);
+          (z3_app (height_fun zctx) [x_name])
+          (z3_int zctx 0);
       ] @ x_lemmas
 
     (* | Op ((If, [test; case1; case2]), _) -> *)
@@ -174,24 +288,16 @@ let rec generate_lemmas
     (*     Z3.Boolean.mk_ite zctx *)
 
     (*     Z3.Arithmetic.mk_gt zctx *)
-    (*       (Z3.FuncDecl.apply (len_fun zctx) [x_name]) *)
-    (*       (Z3.Arithmetic.Integer.mk_numeral_i zctx 0); *)
+    (*       (z3_app (len_fun zctx) [x_name]) *)
+    (*       (z3_int zctx 0); *)
     (*   ] in name, (lemmas @ x_lemmas) *)
-
-    | Apply ((Id ("map", _), [l; _]), _) ->
-      let l_name, l_lemmas = generate_lemmas ctx zctx l in
-      [
-        Z3.Boolean.mk_eq zctx
-          (Z3.FuncDecl.apply (len_fun zctx) [name])
-          (Z3.FuncDecl.apply (len_fun zctx) [l_name]);
-      ] @ l_lemmas
 
     | Apply ((Id ("filter", _), [l; _]), _) ->
       let l_name, l_lemmas = generate_lemmas ctx zctx l in
       [
         Z3.Arithmetic.mk_le zctx
-          (Z3.FuncDecl.apply (len_fun zctx) [name])
-          (Z3.FuncDecl.apply (len_fun zctx) [l_name]);
+          (z3_app (len_fun zctx) [name])
+          (z3_app (len_fun zctx) [l_name]);
       ] @ l_lemmas
 
     | Apply ((Id ("foldl", _),
@@ -206,11 +312,11 @@ let rec generate_lemmas
       let i_name, i_lemmas = generate_lemmas ctx zctx i in
       let l_name, l_lemmas = generate_lemmas ctx zctx l in
       [
-        Z3.Boolean.mk_eq zctx
-          (Z3.FuncDecl.apply (len_fun zctx) [name])
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
           (Z3.Arithmetic.mk_add zctx [
-              Z3.FuncDecl.apply (len_fun zctx) [l_name];
-              Z3.FuncDecl.apply (len_fun zctx) [i_name];
+              z3_app (len_fun zctx) [l_name];
+              z3_app (len_fun zctx) [i_name];
             ]);
       ] @ l_lemmas @ i_lemmas
 
@@ -225,9 +331,9 @@ let rec generate_lemmas
       when a1 <> a2 ->
       let f_name, f_lemmas = generate_lemmas ctx zctx f in
       [
-        Z3.Boolean.mk_eq zctx
-          (Z3.FuncDecl.apply (len_fun zctx) [name])
-          (Z3.FuncDecl.apply (len_fun zctx) [f_name]);
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
+          (z3_app (len_fun zctx) [f_name]);
       ] @ f_lemmas
 
     | Apply ((Id ("foldl", _), [_; Lambda ((_, Op ((Cons, [_; List ([], _)]), _)), _); _]), _)
@@ -235,9 +341,9 @@ let rec generate_lemmas
     | Apply ((Id ("foldl", _), [_; Lambda ((_, Op ((RCons, [List ([], _); _]), _)), _); _]), _)
     | Apply ((Id ("foldr", _), [_; Lambda ((_, Op ((RCons, [List ([], _); _]), _)), _); _]), _) ->
       [
-        Z3.Boolean.mk_eq zctx
-          (Z3.FuncDecl.apply (len_fun zctx) [name])
-          (Z3.Arithmetic.Integer.mk_numeral_i zctx 0);
+        z3_eq zctx
+          (z3_app (len_fun zctx) [name])
+          (z3_int zctx 0);
       ]
 
     | _ -> []
@@ -258,53 +364,54 @@ let check_constraints
   let open TypedExpr in
   match expr with
   | Lambda ((args, body), Arrow_t (args_t, _)) ->
-    let assertions = List.concat_map examples ~f:(fun (ex: example) ->
-        let _, input_args, output = Example.to_triple ex in
+    try
+      let assertions = List.concat_map examples ~f:(fun (ex: example) ->
+          let _, input_args, output = Example.to_triple ex in
 
-        (* Collect any relevant assertions about the inputs in this example. *)
-        let named_input_asserts =
-          List.map input_args ~f:(fun e ->
-              let te = infer (Ctx.empty ()) e in
-              generate_lemmas (ref TypedExprMap.empty) zctx te
-            )
-        in
+          (* Collect any relevant assertions about the inputs in this example. *)
+          let named_input_asserts =
+            List.map input_args ~f:(fun e ->
+                let te = infer (Ctx.empty ()) e in
+                generate_lemmas (ref TypedExprMap.empty) zctx te
+              )
+          in
 
-        (* Collect any relevant assertions about the example output. *)
-        let output_name, output_asserts =
-          generate_lemmas (ref TypedExprMap.empty) zctx (infer (Ctx.empty ()) output)
-        in
+          (* Collect any relevant assertions about the example output. *)
+          let output_name, output_asserts =
+            generate_lemmas (ref TypedExprMap.empty) zctx (infer (Ctx.empty ()) output)
+          in
 
-        (* Generate a context that binds the lambda argument names to
-           the Z3 names that we generated when getting constraints for
-           the inputs. *)
-        let ctx =
-          ref (List.fold_left
-                 ~f:(fun ctx (arg, t, (z3arg, _)) ->
-                     TypedExprMap.add ctx ~key:(Id (arg, t)) ~data:z3arg)
-                 ~init:(TypedExprMap.empty)
-                 (zip3_exn args args_t named_input_asserts))
-        in
+          (* Generate a context that binds the lambda argument names to
+             the Z3 names that we generated when getting constraints for
+             the inputs. *)
+          let ctx =
+            ref (List.fold_left
+                   ~f:(fun ctx (arg, t, (z3arg, _)) ->
+                       TypedExprMap.add ctx ~key:(Id (arg, t)) ~data:z3arg)
+                   ~init:(TypedExprMap.empty)
+                   (zip3_exn args args_t named_input_asserts))
+          in
 
-        let body_name, body_asserts = generate_lemmas ctx zctx body in
+          let body_name, body_asserts = generate_lemmas ctx zctx body in
 
-        (Z3.Boolean.mk_eq zctx output_name body_name)
-        :: output_asserts
-        @ body_asserts
-        @ (List.concat_map named_input_asserts ~f:(Tuple.T2.get2))
-      )
-    in
-
-    if List.length assertions = 0 then true else
-      let () = Z3.Solver.add solver assertions in
-      let () =
-        let z3asserts = Z3.Solver.get_assertions solver in
-        List.iter ~f:(fun a -> printf "%s\n" (Z3.Expr.to_string a)) z3asserts
+          (z3_eq zctx output_name body_name)
+          :: output_asserts
+          @ body_asserts
+          @ (List.concat_map named_input_asserts ~f:(Tuple.T2.get2))
+        )
       in
-      (match Z3.Solver.check solver [] with
-       | Z3.Solver.UNSATISFIABLE -> false
-       | Z3.Solver.SATISFIABLE -> true
-       | Z3.Solver.UNKNOWN -> printf "Solver returned UNKNOWN\n"; true)
 
+      if List.length assertions = 0 then true else
+        let () = Z3.Solver.add solver assertions in
+        let () =
+          let z3asserts = Z3.Solver.get_assertions solver in
+          List.iter ~f:(fun a -> printf "%s\n" (Z3.Expr.to_string a)) z3asserts
+        in
+        (match Z3.Solver.check solver [] with
+         | Z3.Solver.UNSATISFIABLE -> false
+         | Z3.Solver.SATISFIABLE -> true
+         | Z3.Solver.UNKNOWN -> printf "Solver returned UNKNOWN\n"; true)
+    with Z3native.Exception _ -> false
   | _ -> failwith (sprintf "Unsupported expression: %s" (to_string expr))
 
 let memoized_check_constraints
@@ -325,11 +432,11 @@ let memoized_check_constraints
 (* let () = *)
 (*   let zctx = Z3.mk_context [] in *)
 (*   let constraints = [ *)
-(*     Z3.Boolean.mk_eq zctx *)
-(*       (Z3.FuncDecl.apply *)
+(*     z3_eq zctx *)
+(*       (z3_app *)
 (*          (len_fun zctx) *)
 (*          [Z3.Expr.mk_const_s zctx "o" (list_sort zctx)]) *)
-(*       (Z3.FuncDecl.apply *)
+(*       (z3_app *)
 (*          (len_fun zctx) *)
 (*          [Z3.Expr.mk_const_s zctx "i0" (list_sort zctx)]) *)
 (*   ] in *)

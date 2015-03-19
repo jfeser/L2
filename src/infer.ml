@@ -388,6 +388,18 @@ let stdlib_tctx = [
   "map", "(list[a], (a -> b)) -> list[b]";
   "mapt", "(tree[a], (a -> b)) -> tree[b]";
   "filter", "(list[a], (a -> bool)) -> list[a]";
+
+  "sort", "(list[num]) -> list[num]";
+  "merge", "(list[num], list[num]) -> list[num]";
+  "dedup", "(list[a]) -> list[a]";
+  "take", "(list[a], num) -> list[a]";
+  "drop", "(list[a], num) -> list[a]";
+  "append", "(list[a], list[a]) -> list[a]";
+  "reverse", "(list[a]) -> list[a]";
+  "intersperse", "(a, list[a]) -> list[a]";
+  "concat", "(list[list[a]]) -> list[a]";
+  "zip", "(list[a], list[a]) -> list[list[a]]";
+
   "inf", "num";
 ] |> List.map ~f:(fun (name, str) -> name, Util.parse_typ str) |> Ctx.of_alist_exn
 
@@ -454,11 +466,4 @@ let free ?(bound=stdlib_names) (e: TypedExpr.t) : (id * typ) list =
 (*   | Op ((_, args), _) -> List.find ~f:(contains_name x) args *)
 (*   | Let ((_, e1, e2), _) -> contains_name x e1 || contains_name x e2 *)
 
-let rec type_nesting_depth (t: typ) : int =
-  match t with
-  | Const_t _ | Var_t _ -> 1
-  | App_t (_, args) -> 1 + (max (List.map ~f:type_nesting_depth args))
-  | Arrow_t (args, ret) ->
-    let args_max = (max (List.map ~f:type_nesting_depth args)) in
-    let ret_depth = type_nesting_depth ret in
-    if args_max > ret_depth then args_max else ret_depth
+let type_nesting_depth = Type.nesting_depth
