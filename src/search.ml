@@ -391,18 +391,26 @@ let solve_single
           if Rewrite.is_redundant [] body then false else
             if Expr.all_abstract body then true else
               (try
-                 let _ = printf "Checking %s\n" (Expr.to_string target) in
                  let typed_target =
                    infer (Ctx.bind tctx name (Var_t (ref (Quant "a")))) body
                  in
                  let res = Deduction.memoized_check_constraints
                      z3_memoizer zctx examples typed_target
                  in
-                 printf "Meets constraints? %b\n" res;
+                 let () =
+                   let msg =
+                     sprintf "Checked abstract hypo: %s.\nMeets constraints? %b."
+                       (Expr.to_string target) res
+                   in LOG msg NAME "l2.search" LEVEL INFO
+                 in
                  res
                with TypeError msg ->
-                 printf "Checking %s failed: %s\n" (Expr.to_string target) msg;
-                 false)
+                 let () =
+                   let msg' =
+                     sprintf "Checking %s failed: %s\n"
+                       (Expr.to_string target) msg
+                   in LOG msg' NAME "l2.search" LEVEL WARN
+                 in false)
         | _ -> failwith "Bad result from solve_single."
       in
 
@@ -418,7 +426,11 @@ let solve_single
 
     Sstream.map_matrix matrix ~f:(fun ctx ->
         let target = spec.Spec.target ctx in
-        log config.verbosity 2 (sprintf "Examined %s." (Expr.to_string (target (`Id "_"))));
+        let () =
+          let msg = sprintf "Checked concrete hypo %s."
+              (Expr.to_string (target (`Id "_")))
+          in LOG msg NAME "l2.search" LEVEL INFO
+        in
         if verify target examples then Some target else None)
   in
 
@@ -428,12 +440,16 @@ let solve_single
   let search max_cost spec : (expr -> expr) option =
     let solver = solver_of_spec spec in
     let rec search' (exh_cost: int) : (expr -> expr) option =
-      if (total_cost spec.Spec.cost exh_cost) >= max_cost then begin
-        (if exh_cost > 0 then
-           log config.verbosity 1
-             (sprintf "Searched %s to exhaustive cost %d." (Spec.to_string spec) exh_cost));
+      if (total_cost spec.Spec.cost exh_cost) >= max_cost then
+        let () =
+          if exh_cost > 0 then
+            let msg =
+              sprintf "Searched %s to exhaustive cost %d."
+                (Spec.to_string spec) exh_cost
+            in LOG msg NAME "l2.search" LEVEL INFO
+        in
         None
-      end else
+      else
         let row = Sstream.next solver in
         match List.find_map row ~f:ident with
         | Some result -> Some result
@@ -445,7 +461,6 @@ let solve_single
     let can_search hypo =
       total_cost hypo.skel.Spec.cost (hypo.max_exh_cost + 1) <= cost
     in
-    log config.verbosity 1 (sprintf "Searching up to cost %d." cost);
     let m_result = List.find_map hypos ~f:(fun hypo ->
         (* Check whether it is possible to search more than has been
            searched with the current cost. Since the total cost can be
@@ -513,4 +528,36 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
     Ctx.bind (Ctx.empty ()) (Example.name examples)
       ((solve_single ~init ~verify ~config examples) (`Id "_"))
   in
-  printf "Verified %d expressions.\n" !verify_count; ret
+
+  let () =
+    let msg = sprintf "Verified %d expressions." !verify_count in
+    LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    let msg = sprintf "Made %d solver calls." !Deduction.solver_call_count
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    let msg = sprintf "Solver returned %d/%d/%d SAT/UNSAT/UNKNOWN."
+        !Deduction.solver_sat_count
+        !Deduction.solver_unsat_count
+        !Deduction.solver_unknown_count
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    let msg = sprintf "Expr memoizer caught %d expressions."
+        !Deduction.expr_memoizer_count
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    let msg = sprintf
+        "Formula memoizer caught %d expressions. Of those expressions, %d were caught through fuzzy matching."
+        !Deduction.formula_memoizer_count !Deduction.fuzzy_match_count
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  ret

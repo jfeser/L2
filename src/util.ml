@@ -6,6 +6,16 @@ module Fresh = struct
   let int () = incr count; !count
   let name prefix = Printf.sprintf "%s%d" prefix (int ())
   let names prefix num = List.range 0 num |> List.map ~f:(fun _ -> name prefix)
+
+  (** Create a function for returning fresh names. These names will be
+      of the form [a-z][0-9]*. *)
+  let mk_fresh_name_fun () =
+    let count = ref (-1) in
+    fun () ->
+      let n = incr count; !count in
+      let prefix = Char.of_int_exn ((n mod 26) + 97) in
+      let suffix = if n >= 26 then Int.to_string ((n - 26) mod 26) else "" in
+      Printf.sprintf "%c%s" prefix suffix
 end
 
 module IntListSet = Set.Make(struct
