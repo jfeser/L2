@@ -28,4 +28,5 @@ profile:
 	$(OCAMLBUILD) $(FLAGS) -tag debug -tag profile timing.native
 
 clean:
+	rm -f timing.native interactive.native
 	$(OCAMLBUILD) -clean
