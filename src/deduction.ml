@@ -7,9 +7,16 @@ open Util
 let expr_memoizer_count = ref 0
 let formula_memoizer_count = ref 0
 let solver_call_count = ref 0
+
 let solver_unsat_count = ref 0
 let solver_sat_count = ref 0
 let solver_unknown_count = ref 0
+
+let check_true_count = ref 0
+let check_false_count = ref 0
+
+let total_solve_time = ref (Time.Span.of_float 0.0)
+let max_solve_time = ref (Time.Span.of_float Float.min_value)
 
 let fuzzy_match_count = ref 0
 
@@ -385,16 +392,25 @@ let memoized_check
         else None)
   in
   match m_result with
-  (* let asserts_str = *)
-  (*   List.map ~f:Z3.Expr.to_string asserts |> String.concat ~sep:"\n" *)
-  (* in *)
-  (* match String.Map.find !memoizer asserts_str with *)
   | Some x -> incr formula_memoizer_count; x
   | None ->
     incr solver_call_count;
+    let start_time = Time.now () in
     let () = Z3.Solver.add solver asserts in
     let x = Z3.Solver.check solver [] in
-    (* memoizer := String.Map.add !memoizer ~key:asserts_str ~data:x; *)
+    let end_time = Time.now () in
+    let run_time = Time.diff end_time start_time in
+    let () =
+      let msg =
+        Z3.Solver.get_statistics solver |> Z3.Solver.Statistics.to_string
+      in LOG msg NAME "l2.solver.stats" LEVEL INFO
+    in
+    (match x with
+     | Z3.Solver.UNSATISFIABLE -> incr solver_unsat_count
+     | Z3.Solver.SATISFIABLE -> incr solver_sat_count
+     | Z3.Solver.UNKNOWN -> incr solver_unknown_count);
+    total_solve_time := Time.Span.(+) !total_solve_time run_time;
+    max_solve_time := Time.Span.max !max_solve_time run_time;
     memoizer := (asserts', x)::!memoizer;
     x
 
@@ -469,12 +485,14 @@ let check_constraints
          in
 
          (match memoized_check solver assertions with
-          | Z3.Solver.UNSATISFIABLE -> incr solver_unsat_count; false
-          | Z3.Solver.SATISFIABLE -> incr solver_sat_count; true
-          | Z3.Solver.UNKNOWN -> incr solver_unknown_count;
+          | Z3.Solver.UNSATISFIABLE -> incr check_false_count; false
+          | Z3.Solver.SATISFIABLE -> incr check_true_count; true
+          | Z3.Solver.UNKNOWN ->
             let msg =
               sprintf "Solver returned UNKNOWN on %s." (TypedExpr.to_string expr)
-            in LOG msg NAME "l2.solver" LEVEL WARN;
+            in
+            incr check_true_count;
+            LOG msg NAME "l2.solver" LEVEL WARN;
             true)
      with Z3native.Exception _ -> false)
   | _ -> failwith (sprintf "Unsupported expression: %s" (to_string expr))

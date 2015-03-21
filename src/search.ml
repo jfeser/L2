@@ -535,6 +535,13 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
   in
 
   let () =
+    let msg = sprintf "Abstract hypothesis checker returned %d/%d true/false."
+        !Deduction.check_true_count
+        !Deduction.check_false_count
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
     let msg = sprintf "Made %d solver calls." !Deduction.solver_call_count
     in LOG msg NAME "l2.search" LEVEL INFO
   in
@@ -558,6 +565,33 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
         "Formula memoizer caught %d expressions. Of those expressions, %d were caught through fuzzy matching."
         !Deduction.formula_memoizer_count !Deduction.fuzzy_match_count
     in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    try
+      let msg =
+        sprintf "Maximum time in solver: %s"
+          (Time.Span.to_short_string !Deduction.max_solve_time)
+      in LOG msg NAME "l2.search" LEVEL INFO
+    with Invalid_argument _ -> ()
+  in
+
+  let () =
+    let msg =
+      sprintf "Total time in solver: %s"
+        (Time.Span.to_short_string !Deduction.total_solve_time)
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    try
+      let msg =
+        sprintf "Average time in solver: %s"
+          (Time.Span.to_short_string
+             (Time.Span.(/)
+                !Deduction.total_solve_time (float !Deduction.solver_call_count)))
+      in LOG msg NAME "l2.search" LEVEL INFO
+    with Invalid_argument _ -> ()
   in
 
   ret
