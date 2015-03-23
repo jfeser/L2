@@ -408,7 +408,7 @@ let solve_single
                  let () =
                    let msg' =
                      sprintf "Checking %s failed: %s\n"
-                       (Expr.to_string target) msg
+                       (Expr.to_string target) (Error.to_string_hum msg)
                    in LOG msg' NAME "l2.search" LEVEL WARN
                  in false)
         | _ -> failwith "Bad result from solve_single."

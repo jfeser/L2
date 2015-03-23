@@ -5,7 +5,16 @@ open Ast
 open Expr
 open Util
 
-exception TypeError of string
+exception TypeError of Error.t
+
+let unify_error ?msg (t1: typ) (t2: typ) =
+  raise @@ TypeError (Error.of_thunk (fun () -> match msg with
+      | Some msg ->
+        sprintf "Failed to unify %s and %s: %s"
+          (typ_to_string t1) (typ_to_string t2) (Info.to_string_hum msg)
+      | None ->
+        sprintf "Failed to unify %s and %s."
+          (typ_to_string t1) (typ_to_string t2)))
 
 module Type = struct
   type t = typ with compare, sexp
@@ -167,17 +176,6 @@ module Unifier = struct
     in merge s1 (IntMap.map ~f:(fun t -> apply s1 t) s2)
 
   let rec of_types (t1: typ) (t2: typ) : t =
-    let error msg =
-      let finalMsg =
-        if msg = "" then
-          sprintf "Failed to unify %s and %s."
-            (typ_to_string t1) (typ_to_string t2)
-        else
-          sprintf "Failed to unify %s and %s: %s"
-            (typ_to_string t1) (typ_to_string t2) msg
-      in raise @@ TypeError finalMsg
-    in
-
     (* Check whether the free variable 'id' occurs in type 'typ'. If it
        does, we cannot substitute 'typ' for 'id' due to infinite
        recursion. *)
@@ -196,12 +194,14 @@ module Unifier = struct
       | x, Var_t {contents = Link y} -> of_types x y
       | Var_t {contents = Free (x, _)}, Var_t {contents = Free (y, _)}
         when x = y ->
-        error (sprintf "Free variable %d occurred in %s and %s."
-                 x (typ_to_string t1) (typ_to_string t2))
+        unify_error t1 t2 ~msg:(Info.of_thunk (fun () ->
+            sprintf "Free variable %d occurred in %s and %s."
+              x (typ_to_string t1) (typ_to_string t2)))
       | t, Var_t ({contents = Free (id, _)})
       | Var_t ({contents = Free (id, _)}), t ->
         if occurs id t then
-          error (sprintf "Free variable %d occurs in %s." id (typ_to_string t))
+          unify_error t1 t2 ~msg:(Info.of_thunk (fun () ->
+              sprintf "Free variable %d occurs in %s." id (typ_to_string t)))
         else IntMap.singleton id t
       | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
         let s1 =
@@ -213,7 +213,7 @@ module Unifier = struct
       | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
         List.fold2_exn ~init:IntMap.empty args1 args2 ~f:(fun s a1 a2 ->
             compose s (of_types a1 a2))
-      | _ -> error ""
+      | _ -> unify_error t1 t2
 end
 
 let fresh_free level = Var_t (ref (Free (Fresh.int (), level)))
@@ -221,17 +221,19 @@ let fresh_free level = Var_t (ref (Free (Fresh.int (), level)))
 let normalize = Type.normalize
 
 let occurs id level typ =
-  let error msg =
-    raise @@ TypeError (sprintf "Failed occurs check in %s: %s"
-                          (typ_to_string typ) msg)
+  let error (msg: Info.t) =
+    raise @@ TypeError (Error.of_thunk (fun () ->
+        sprintf "Failed occurs check in %s: %s"
+          (typ_to_string typ) (Info.to_string_hum msg)))
   in
+
   let rec occurs' id level typ =
     match typ with
     | Const_t _
     | Var_t {contents = Quant _} -> ()
     | Var_t ({contents = Free (id', level')} as typ') ->
       if id' = id
-      then error (sprintf "ft%d occurred twice" id)
+      then error (Info.of_thunk (fun () -> sprintf "ft%d occurred twice" id))
       else
         (* The other type is being claimed by the let binding, if it is
            owned by a lower let. This prevents the free variable from
@@ -273,29 +275,25 @@ let instantiate ?ctx:(ctx = Ctx.empty ()) level typ =
   inst ctx typ
 
 let rec unify_exn t1 t2 =
-  let error () = raise @@ TypeError (sprintf "Failed to unify %s and %s."
-                                       (typ_to_string t1)
-                                       (typ_to_string t2))
-  in
   if t1 = t2 then () else
     match t1, t2 with
     | Const_t t1', Const_t t2' when t1' = t2' -> ()
     | Var_t {contents = Link t1'}, t2'
     | t1', Var_t {contents = Link t2'} -> unify_exn t1' t2'
     | Var_t {contents = Free (id1, _)}, Var_t {contents = Free (id2, _)} when id1 = id2 ->
-       raise (TypeError "Free variable occurred in both types.")
+      raise (TypeError (Error.of_string "Free variable occurred in both types."))
     | Var_t ({contents = Free (id, level)} as t'), t
     | t, Var_t ({contents = Free (id, level)} as t') -> occurs id level t; t' := Link t
     | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
        (match List.zip args1 args2 with
         | Some args -> List.iter args ~f:(fun (a1, a2) -> unify_exn a1 a2)
-        | None -> error ());
+        | None -> unify_error t1 t2);
        unify_exn ret1 ret2
     | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
        (match List.zip args1 args2 with
         | Some args -> List.iter args ~f:(fun (a1, a2) -> unify_exn a1 a2)
-        | None -> error ())
-    | _ -> error ()
+        | None -> unify_error t1 t2)
+    | _ -> unify_error t1 t2
 
 let unify t1 t2 = try Some (unify_exn t1 t2; t1) with TypeError _ -> None
 let is_unifiable t1 t2 = Option.is_some (unify (instantiate 0 t1) (instantiate 0 t2))
@@ -303,7 +301,8 @@ let is_unifiable t1 t2 = Option.is_some (unify (instantiate 0 t1) (instantiate 0
 let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : TypedExpr.t =
   let open TypedExpr in
   let error msg =
-    raise @@ TypeError (sprintf "In %s: %s" (Expr.to_string expr) msg)
+    raise @@ TypeError (Error.of_thunk (fun () ->
+        sprintf "In %s: %s" (Expr.to_string expr) (Info.to_string_hum msg)))
   in
 
   let rec typeof' ctx level expr =
@@ -318,7 +317,7 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : TypedExpr.t =
         let ret = fresh_free level in
         typ := Link (Arrow_t (args, ret));
         args, ret
-      | _ -> error "Not a function."
+      | _ -> error (Info.of_string "Not a function.")
     in
     let rec typeof_tree t : TypedExpr.t Tree.t * typ =
       match t with
@@ -347,8 +346,9 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : TypedExpr.t =
     | `Id name ->
       (match Ctx.lookup ctx name with
        | Some t -> Id (name, instantiate level t)
-       | None -> error (sprintf "%s is unbound in context %s."
-                          name (Ctx.to_string ctx typ_to_string)))
+       | None -> error (Info.of_thunk (fun () ->
+           sprintf "%s is unbound in context %s."
+             name (Ctx.to_string ctx typ_to_string))))
     | `Lambda (args, body) ->
       (* Generate fresh type variables for each argument and bind them
          into the existing context. *)
@@ -364,14 +364,14 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : TypedExpr.t =
       let arg_typs, ret_typ = typeof_func (List.length args) (TypedExpr.to_type func') in
       (match List.zip arg_typs args' with
        | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (TypedExpr.to_type arg'))
-       | None -> error "Wrong number of arguments.");
+       | None -> error (Info.of_string "Wrong number of arguments."));
       Apply ((func', args'), ret_typ)
     | `Op (op, args) ->
       let args' = List.map args ~f:(typeof' ctx level) in
       let arg_typs, ret_typ = typeof_func (List.length args) (instantiate level (Op.typ op)) in
       (match List.zip arg_typs args' with
        | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (TypedExpr.to_type arg'))
-       | None -> error "Wrong number of arguments.");
+       | None -> error (Info.of_string "Wrong number of arguments."));
       Op ((op, args'), ret_typ)
     | `Let (name, bound, body) ->
       let bound' = typeof' ctx (level + 1) bound in
