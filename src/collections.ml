@@ -133,139 +133,116 @@ struct
       KSet.compare x' y'
   end
 
-  type t =
-    ((int * int) list KMap.t ref) * (KVPair.t Int.Table.t) * (unit -> int)
+  module IntPairSet = Set.Make(struct
+      type t = int * int with sexp, compare
+    end)
+
+  type perf_counters = {
+    mutable total_lookups: int;
+    mutable total_full_lookups: int;
+    mutable total_set_ops: int;
+    mutable total_results_examined: int;
+  }
+
+  type t = {
+    mutable index: IntPairSet.t KMap.t;
+    store: KVPair.t Int.Table.t;
+    fresh_int: unit -> int;
+    perf: perf_counters;
+  }
 
   let create () : t =
-    (ref KMap.empty, Int.Table.create (), Util.Fresh.mk_fresh_int_fun ())
-
-  let compare_key_pair x1 x2 =
-    let (x, _), (y, _) = x1, x2 in Int.compare x y
+    {
+      index = KMap.empty;
+      store = Int.Table.create ();
+      fresh_int = Util.Fresh.mk_fresh_int_fun ();
+      perf =
+        {
+          total_lookups = 0;
+          total_full_lookups = 0;
+          total_set_ops = 0;
+          total_results_examined = 0;
+        };
+    }
 
   let add (i: t) (k: KSet.t) (v: Value.t) : unit =
-    let (index_ref, store, fresh_int) = i in
-    let kv_key = fresh_int () in
+    let kv_key = i.fresh_int () in
     let kv_key_pair = (kv_key, Set.length k) in
 
     (* Generate a new index where the list mapped to each element in k
        contains the reference to the (k, v) pair *)
     let index' =
-      List.fold_left (Set.to_list k) ~init:!index_ref ~f:(fun i e ->
+      List.fold_left (Set.to_list k) ~init:i.index ~f:(fun i e ->
           match KMap.find i e with
-          | Some l ->
-            KMap.add i ~key:e
-              ~data:(List.insert l kv_key_pair ~cmp:compare_key_pair)
-          | None -> KMap.add i ~key:e ~data:[kv_key_pair])
+          | Some s -> KMap.add i ~key:e ~data:(IntPairSet.add s kv_key_pair)
+          | None -> KMap.add i ~key:e ~data:(IntPairSet.singleton kv_key_pair))
     in
 
-    printf "Added %s to inverted index as id %d.\n"
-      (Sexp.to_string_hum (KSet.sexp_of_t k))
-      kv_key;
-
     (* Update the index. *)
-    index_ref := index';
+    i.index <- index';
 
     (* Update the key-value store. *)
-    Hashtbl.add_exn store ~key:kv_key ~data:(k, v)
+    Hashtbl.add_exn i.store ~key:kv_key ~data:(k, v)
 
   (* Merge a list of result lists. *)
-  let merge_results rs =
-    List.fold_left rs ~init:[] ~f:(List.merge ~cmp:compare_key_pair)
-    |> List.remove_consecutive_duplicates
-      ~equal:(fun (x, _) (y, _) -> x = y)
+  let merge_results = IntPairSet.union_list
 
-  (** Return the values that are mapped to the query set. *)
-  let find_equal (i: t) (s: KSet.t) : Value.t list =
-    let (index_ref, store, _) = i in
-    let index = !index_ref in
-    let len = Set.length s in
+  let store_lookup store id =
+    try Hashtbl.find_exn store id with
+    | Not_found -> failwith "Index contains reference to nonexistent item."
 
-    try
-      (* For each value in the query set select the list of set
-         references that contain that value. If any of the values has
-         no matching list, then there is no set which matches the
-         query set. *)
-      let result_ref_lists =
-        List.map (Set.to_list s) ~f:(KMap.find_exn index)
-      in
-
-      (* Merge the result lists. *)
-      let result_refs = merge_results result_ref_lists in
-
-      (* Filter the result refs by cardinality. *)
-      List.filter result_refs ~f:(fun (_, len') -> len = len')
-
-      (* Dereference the result refs. *)
-      |> List.map ~f:(fun (r, _) -> try Hashtbl.find_exn store r with
-          | Not_found ->
-            failwith "Index contains reference to nonexistent item.")
-
-      (* Filter out the sets that are not equal to the query set. *)
-      |> List.filter ~f:(fun (s', _) -> Set.equal s s')
-
-      (* Return the values associated with the selected sets. *)
-      |> List.map ~f:(fun (_, v) -> v)
-    with Not_found -> []
-
-  (** Return the values that are mapped to subsets of the query set. *)
-  let find_subsets (i: t) (s: KSet.t) : Value.t list =
-    let (index_ref, store, _) = i in
-    let index = !index_ref in
+  let exists_subset_or_superset
+      (i: t)
+      (s: KSet.t)
+      (subset_v: Value.t)
+      (superset_v: Value.t) : Value.t option =
     let len = Set.length s in
 
     (* For each value in the query set, use the index to get
        references to the sets that contain that value. *)
     let result_ref_lists =
-      List.filter_map (Set.to_list s) ~f:(KMap.find index)
+      List.filter_map (Set.to_list s) ~f:(fun elem ->
+          match KMap.find i.index elem with
+          | Some refs as r ->
+            if Set.length refs = Hashtbl.length i.store then None else r
+          | None -> None)
     in
 
     (* Merge the result lists. *)
     let result_refs = merge_results result_ref_lists in
 
-    (* Filter the result refs by cardinality. *)
-    List.filter result_refs ~f:(fun (_, len') -> len >= len')
+    (* Update performance counters *)
+    i.perf.total_lookups <- i.perf.total_lookups + 1;
+    if Set.length result_refs = Hashtbl.length i.store then
+      i.perf.total_full_lookups <- i.perf.total_full_lookups + 1;
+    i.perf.total_results_examined <-
+      i.perf.total_results_examined + Set.length result_refs;
 
-    (* Dereference the result refs. *)
-    |> List.map ~f:(fun (r, _) -> try Hashtbl.find_exn store r with
-        | Not_found ->
-          failwith "Index contains reference to nonexistent item.")
+    Set.find_map result_refs ~f:(fun (id, len') ->
+        let (s', v') = store_lookup i.store id in
+        if len' < len then
+          if v' = subset_v && Set.subset s' s then
+            (i.perf.total_set_ops <- i.perf.total_set_ops + 1; Some subset_v)
+          else None
+        else if len' = len then
+          if v' = subset_v && Set.subset s' s then
+            (i.perf.total_set_ops <- i.perf.total_set_ops + 1; Some subset_v)
+          else if v' = superset_v && Set.subset s s' then
+            (i.perf.total_set_ops <- i.perf.total_set_ops + 1; Some superset_v)
+          else None
+        else
+        if v' = superset_v && Set.subset s s' then
+          (i.perf.total_set_ops <- i.perf.total_set_ops + 1; Some superset_v)
+        else None)
 
-    (* Filter out the sets that are not subsets of the query set. *)
-    |> List.filter ~f:(fun (s', _) -> Set.subset s' s)
-
-    (* Return the values associated with the selected sets. *)
-    |> List.map ~f:(fun (_, v) -> v)
-
-  (** Return the values that are mapped supersets of the query set. *)
-  let find_supersets (i: t) (s: KSet.t) : Value.t list =
-    let (index_ref, store, _) = i in
-    let index = !index_ref in
-    let len = Set.length s in
-
-    try
-      (* For each value in the query set select the list of set
-         references that contain that value. If any of the values has
-         no matching list, then there is no set which matches the
-         query set. *)
-      let result_ref_lists =
-        List.map (Set.to_list s) ~f:(KMap.find_exn index)
-      in
-
-      (* Merge the result lists. *)
-      let result_refs = merge_results result_ref_lists in
-
-      (* Filter the result refs by cardinality. *)
-      List.filter result_refs ~f:(fun (_, len') -> len <= len')
-
-      (* Dereference the result refs. *)
-      |> List.map ~f:(fun (r, _) -> try Hashtbl.find_exn store r with
-          | Not_found ->
-            failwith "Index contains reference to nonexistent item.")
-
-      (* Filter out the sets that are not equal to the query set. *)
-      |> List.filter ~f:(fun (s', _) -> Set.subset s s')
-
-      (* Return the values associated with the selected sets. *)
-      |> List.map ~f:(fun (_, v) -> v)
-    with Not_found -> []
+  (* Return a summary of the performance counters suitable for writing to a log. *)
+  let log_summary (i: t) : string =
+    sprintf "Total set operations: %d\n" i.perf.total_set_ops ^
+    sprintf "Full lookups/Total lookups: %d/%d\n"
+      i.perf.total_full_lookups i.perf.total_lookups ^
+    sprintf "Average results per lookup: %f\n"
+      ((Float.of_int i.perf.total_results_examined) /.
+       (Float.of_int i.perf.total_lookups)) ^
+    sprintf "Distinct set elements: %d\n" (Map.length i.index) ^
+    sprintf "Total sets stored: %d\n" (Hashtbl.length i.store)
 end
