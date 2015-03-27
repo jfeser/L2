@@ -252,5 +252,7 @@ let is_redundant (base_terms: expr list) (expr: expr) : bool =
     | Some expr' -> Expr.cost expr' < Expr.cost expr
     | None -> true
   in
-  if result then printf "Redundant %s = %B\n" (Expr.to_string expr) result;
+  (if result then
+     let msg = sprintf "Redundant %s = %B\n" (Expr.to_string expr) result in
+     LOG msg NAME "l2.search" LEVEL INFO);
   result

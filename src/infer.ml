@@ -7,6 +7,8 @@ open Util
 
 exception TypeError of Error.t
 
+let total_infer_time = ref (Time.Span.of_float 0.0)
+
 let unify_error ?msg (t1: typ) (t2: typ) =
   raise @@ TypeError (Error.of_thunk (fun () -> match msg with
       | Some msg ->
@@ -406,12 +408,15 @@ let stdlib_tctx = [
 (** Infer the type of an expression in context. Returns an expression
 tree annotated with types. *)
 let infer ctx (expr: expr) : TypedExpr.t =
-  let ctx' = Ctx.merge stdlib_tctx ctx
-      ~f:(fun ~key:_ value ->
-          match value with
-          | `Both (_, v) | `Left v | `Right v -> Some v) in
-  let expr' = typeof ctx' 0 expr in
-  TypedExpr.map ~f:(generalize (-1)) expr'
+  let (x, runtime) = with_runtime (fun () ->
+      let ctx' = Ctx.merge stdlib_tctx ctx
+          ~f:(fun ~key:_ value ->
+              match value with
+              | `Both (_, v) | `Left v | `Right v -> Some v) in
+      let expr' = typeof ctx' 0 expr in
+      TypedExpr.map ~f:(generalize (-1)) expr')
+  in
+  add_time total_infer_time runtime; x
 
 (** Parse a string and return a typed expression. *)
 let typed_expr_of_string (s: string) : TypedExpr.t =

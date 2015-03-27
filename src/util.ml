@@ -176,6 +176,15 @@ let log verbosity level str =
     flush stdout;
   end else ()
 
+let with_runtime (thunk: unit -> 'a) : ('a * Time.Span.t) =
+  let start_t = Time.now () in
+  let x = thunk () in
+  let end_t = Time.now () in
+  (x, Time.diff end_t start_t)
+
+let add_time (t1: Time.Span.t ref) (t2: Time.Span.t) : unit =
+  t1 := Time.Span.(+) !t1 t2
+
 exception ParseError of string
 
 let parse parse_f str =

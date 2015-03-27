@@ -15,6 +15,9 @@ let solver_unknown_count = ref 0
 let check_true_count = ref 0
 let check_false_count = ref 0
 
+let total_z3_string_time = ref (Time.Span.of_float 0.0)
+let total_memoizer_time = ref (Time.Span.of_float 0.0)
+let total_lemma_gen_time = ref (Time.Span.of_float 0.0)
 let total_solve_time = ref (Time.Span.of_float 0.0)
 let max_solve_time = ref (Time.Span.of_float Float.min_value)
 
@@ -26,6 +29,8 @@ module FormulaII =
   Collections.InvertedIndex (String) (struct type t = Z3.Solver.status end)
 
 let (formula_memoizer: FormulaII.t) = FormulaII.create ()
+
+(* let (formula_memoizer: (String.Set.t * Z3.Solver.status) list ref) = ref [] *)
 
 let int_sort ctx = Z3.Arithmetic.Integer.mk_sort ctx
 let list_sort ctx = Z3.Sort.mk_uninterpreted_s ctx "Lst"
@@ -43,6 +48,10 @@ let z3_ge = Z3.Arithmetic.mk_ge
 let z3_le = Z3.Arithmetic.mk_le
 let z3_sub = Z3.Arithmetic.mk_sub
 let z3_add = Z3.Arithmetic.mk_add
+
+let z3_to_string e =
+  let (x, runtime) = with_runtime (fun () -> Z3.Expr.to_string e) in
+  add_time total_z3_string_time runtime; x
 
 (** Convert a type into a Z3 sort. For integers and booleans, this
     uses Z3's built in sorts. For lists, it returns Lst, which is an
@@ -380,36 +389,47 @@ let generate_lemmas
       | _ -> []
     in
     name, lemmas
-  in g ctx zctx expr
+  in
+  let (x, runtime) = Util.with_runtime (fun () -> g ctx zctx expr) in
+  total_lemma_gen_time := Time.Span.(+) !total_lemma_gen_time runtime; x
 
 let memoized_check
     ?(memoizer=formula_memoizer)
     (solver: Z3.Solver.solver)
     (asserts: Z3.Expr.expr list) : Z3.Solver.status =
+  (* let asserts' = List.map ~f:Z3.Expr.to_string asserts |> String.Set.of_list in *)
+
   let asserts' =
-    List.map ~f:Z3.Expr.to_string asserts |> FormulaII.KSet.of_list
+    List.map ~f:z3_to_string asserts |> FormulaII.KSet.of_list
   in
 
-  let m_result =
-    let subset_r = FormulaII.find_subsets memoizer asserts' in
-    if List.exists subset_r ~f:((=) Z3.Solver.UNSATISFIABLE) then
-      Some Z3.Solver.UNSATISFIABLE
-    else
-      let superset_r = FormulaII.find_supersets memoizer asserts' in
-      if List.exists superset_r ~f:((=) Z3.Solver.SATISFIABLE) then
-        Some Z3.Solver.SATISFIABLE
-      else None
+  (* let set_op_count = ref 0 in *)
+
+  let (m_result, runtime) =
+    with_runtime (fun () ->
+        FormulaII.exists_subset_or_superset
+          memoizer asserts' Z3.Solver.UNSATISFIABLE Z3.Solver.SATISFIABLE)
+
+    (* List.find_map !memoizer ~f:(fun (f, r) -> *)
+    (*     if String.Set.subset asserts' f && r = Z3.Solver.SATISFIABLE then Some r *)
+    (*     else if String.Set.subset f asserts' && r = Z3.Solver.UNSATISFIABLE then Some r *)
+    (*     else None) *)
   in
+
+  (* let () = printf "%d set operations. Memoizer size: %d\n" !set_op_count (List.length !memoizer) in *)
+
+  add_time total_memoizer_time runtime;
 
   match m_result with
   | Some x -> incr formula_memoizer_count; x
   | None ->
      incr solver_call_count;
-     let start_time = Time.now () in
-     let () = Z3.Solver.add solver asserts in
-     let x = Z3.Solver.check solver [] in
-     let end_time = Time.now () in
-     let run_time = Time.diff end_time start_time in
+     let (x, run_time) =
+       Util.with_runtime
+         (fun () ->
+            Z3.Solver.add solver asserts;
+            Z3.Solver.check solver [])
+     in
      let () =
        let msg =
          Z3.Solver.get_statistics solver |> Z3.Solver.Statistics.to_string
@@ -422,6 +442,7 @@ let memoized_check
      total_solve_time := Time.Span.(+) !total_solve_time run_time;
      max_solve_time := Time.Span.max !max_solve_time run_time;
      FormulaII.add memoizer asserts' x;
+     (* memoizer := (asserts', x)::!memoizer; *)
      x
 
 (** Given a candidate expression and some constraints on the
@@ -489,7 +510,7 @@ let check_constraints
          let () =
            let msg =
              ((sprintf "SMT generated from %s:\n" (TypedExpr.to_string expr)) ^
-              (List.map ~f:Z3.Expr.to_string assertions
+              (List.map ~f:z3_to_string assertions
                |> String.concat ~sep:"\n"))
            in LOG msg NAME "l2.solver" LEVEL INFO
          in

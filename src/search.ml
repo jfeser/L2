@@ -42,6 +42,9 @@ let extended_init =
 
 let default_operators = List.filter ~f:((<>) Cons) Expr.Op.all
 
+let total_check_time = ref (Time.Span.of_float 0.0)
+let total_deduction_time = ref (Time.Span.of_float 0.0)
+
 let matrix_of_texpr_list ~size (texprs: TypedExpr.t list) : TypedExpr.t Sstream.matrix =
   let init_sizes = List.map texprs ~f:(fun e -> e, size e) in
   let max_size =
@@ -172,7 +175,9 @@ let rec enumerate
           let should_prune_branch =
             if config.use_solver then
               let dummy_arg_list = prev_args @ (List.drop dummy_args prev_args_len) in
-              not (check dummy_arg_list)
+              let (x, runtime) = with_runtime (fun () -> check dummy_arg_list) in
+              total_check_time := Time.Span.(+) !total_check_time runtime;
+              not x
             else false
           in
 
@@ -394,8 +399,14 @@ let solve_single
                  let typed_target =
                    infer (Ctx.bind tctx name (Var_t (ref (Quant "a")))) body
                  in
-                 let res = Deduction.memoized_check_constraints
-                     z3_memoizer zctx examples typed_target
+                 let (res, runtime) =
+                   Util.with_runtime (fun () ->
+                       Deduction.memoized_check_constraints
+                         z3_memoizer zctx examples typed_target)
+                 in
+                 let () =
+                   total_deduction_time :=
+                     Time.Span.(+) !total_deduction_time runtime
                  in
                  let () =
                    let msg =
@@ -592,6 +603,54 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
                 !Deduction.total_solve_time (float !Deduction.solver_call_count)))
       in LOG msg NAME "l2.search" LEVEL INFO
     with Invalid_argument _ -> ()
+  in
+
+  let () =
+    let msg =
+      sprintf "Total time spent checking expressions: %s"
+        (Time.Span.to_short_string !total_check_time)
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    let msg =
+      sprintf "Total time spent in Deduction: %s"
+        (Time.Span.to_short_string !total_deduction_time)
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    let msg =
+      sprintf "Total time spent generating lemmas: %s"
+        (Time.Span.to_short_string !Deduction.total_lemma_gen_time)
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    let msg =
+      sprintf "Total time spent in formula memoizer: %s"
+        (Time.Span.to_short_string !Deduction.total_memoizer_time)
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    let msg =
+      sprintf "Total time spent in type inference: %s"
+        (Time.Span.to_short_string !Infer.total_infer_time)
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let () =
+    let msg =
+      sprintf "Total time spent turning z3 exprs into strings: %s"
+        (Time.Span.to_short_string !Deduction.total_z3_string_time)
+    in LOG msg NAME "l2.search" LEVEL INFO
+  in
+
+  let ()  =
+    let msg =
+      Deduction.FormulaII.log_summary Deduction.formula_memoizer
+    in LOG msg NAME "l2.search" LEVEL INFO
   in
 
   ret
