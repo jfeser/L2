@@ -26,7 +26,7 @@ let fuzzy_match_count = ref 0
 let (memoizer: bool TypedExprMap.t ref) = ref TypedExprMap.empty
 
 module FormulaII =
-  Collections.InvertedIndex (String) (struct type t = Z3.Solver.status end)
+  Collections.InvertedIndex (Int) (struct type t = Z3.Solver.status end)
 
 let (formula_memoizer: FormulaII.t) = FormulaII.create ()
 
@@ -397,26 +397,16 @@ let memoized_check
     ?(memoizer=formula_memoizer)
     (solver: Z3.Solver.solver)
     (asserts: Z3.Expr.expr list) : Z3.Solver.status =
-  (* let asserts' = List.map ~f:Z3.Expr.to_string asserts |> String.Set.of_list in *)
-
   let asserts' =
-    List.map ~f:z3_to_string asserts |> FormulaII.KSet.of_list
+    List.map ~f:(fun (Z3.Expr.Expr e) -> Z3.AST.hash e) asserts
+    |> FormulaII.KSet.of_list
   in
-
-  (* let set_op_count = ref 0 in *)
 
   let (m_result, runtime) =
     with_runtime (fun () ->
         FormulaII.exists_subset_or_superset
           memoizer asserts' Z3.Solver.UNSATISFIABLE Z3.Solver.SATISFIABLE)
-
-    (* List.find_map !memoizer ~f:(fun (f, r) -> *)
-    (*     if String.Set.subset asserts' f && r = Z3.Solver.SATISFIABLE then Some r *)
-    (*     else if String.Set.subset f asserts' && r = Z3.Solver.UNSATISFIABLE then Some r *)
-    (*     else None) *)
   in
-
-  (* let () = printf "%d set operations. Memoizer size: %d\n" !set_op_count (List.length !memoizer) in *)
 
   add_time total_memoizer_time runtime;
 
@@ -430,19 +420,18 @@ let memoized_check
             Z3.Solver.add solver asserts;
             Z3.Solver.check solver [])
      in
-     let () =
-       let msg =
-         Z3.Solver.get_statistics solver |> Z3.Solver.Statistics.to_string
-       in LOG msg NAME "l2.solver.stats" LEVEL INFO
-     in
+     (* let () = *)
+     (*   let msg = *)
+     (*     Z3.Solver.get_statistics solver |> Z3.Solver.Statistics.to_string *)
+     (*   in LOG msg NAME "l2.solver.stats" LEVEL INFO *)
+     (* in *)
      (match x with
       | Z3.Solver.UNSATISFIABLE -> incr solver_unsat_count
       | Z3.Solver.SATISFIABLE -> incr solver_sat_count
       | Z3.Solver.UNKNOWN -> incr solver_unknown_count);
-     total_solve_time := Time.Span.(+) !total_solve_time run_time;
+     add_time total_solve_time run_time;
      max_solve_time := Time.Span.max !max_solve_time run_time;
      FormulaII.add memoizer asserts' x;
-     (* memoizer := (asserts', x)::!memoizer; *)
      x
 
 (** Given a candidate expression and some constraints on the
@@ -507,13 +496,13 @@ let check_constraints
        in
 
        if List.length assertions = 0 then true else
-         let () =
-           let msg =
-             ((sprintf "SMT generated from %s:\n" (TypedExpr.to_string expr)) ^
-              (List.map ~f:z3_to_string assertions
-               |> String.concat ~sep:"\n"))
-           in LOG msg NAME "l2.solver" LEVEL INFO
-         in
+         (* let () = *)
+         (*   let msg = *)
+         (*     ((sprintf "SMT generated from %s:\n" (TypedExpr.to_string expr)) ^ *)
+         (*      (List.map ~f:z3_to_string assertions *)
+         (*       |> String.concat ~sep:"\n")) *)
+         (*   in LOG msg NAME "l2.solver" LEVEL INFO *)
+         (* in *)
 
          (match memoized_check solver assertions with
           | Z3.Solver.UNSATISFIABLE -> incr check_false_count; false
