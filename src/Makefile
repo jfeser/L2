@@ -1,4 +1,5 @@
 OCAMLBUILD = ocamlbuild
+OPAM = opam
 FLAGS = \
 	-use-ocamlfind \
 	-syntax camlp4o \
@@ -16,8 +17,9 @@ FLAGS = \
 	-cflags -strict-sequence \
 	-use-menhir \
 	-j 4
+DEPENDENCIES = core bolt menhir ocamlfind
 
-.PHONY: clean
+.PHONY: clean deps profile
 
 all: timing.native interactive.native
 
@@ -30,3 +32,6 @@ profile:
 clean:
 	rm -f timing.native interactive.native
 	$(OCAMLBUILD) -clean
+
+deps:
+	opam install $(DEPENDENCIES)
