@@ -2,6 +2,7 @@ type id = string
 
 exception Non_unifiable
 exception Translation_error
+exception Unknown
 
 type term =
   | Var of id
@@ -9,8 +10,9 @@ type term =
 
 type sterm =
   | Cons of sterm * sterm
-  | K of id
-  | V of id
+  | K of id (* Konstant *)
+  | V of id (* Variable *)
+  | U of id * bool (* Volatile? variable *)
 
 type substitution = (id * term) list
 
@@ -57,19 +59,6 @@ let fvar = ref 0
 let fresh () : string =
   fvar := !fvar + 1; "V" ^ string_of_int !fvar
 
-(* make one term symbolic *)
-let rec make_one_symbolic (s: sterm) : sterm =
-  match s with
-  | Cons(h, t) ->
-    (match h, t with
-    | _, Cons(_,_) -> Cons(h, make_one_symbolic t)
-    | Cons(_,_), _ -> Cons(make_one_symbolic h, t)
-    | _, K(_)      -> Cons(h, V(fresh ()))
-    | K(_), _      -> Cons(V(fresh ()), t)
-    | _            -> V(fresh ()))
-  | K(_) -> V(fresh ())
-  | V(_) -> failwith "reached top-level unifier"
-
 (* Support code *)
 let rec translate (s: sterm) : term =
   match s with
@@ -77,7 +66,7 @@ let rec translate (s: sterm) : term =
       let t1 = translate x and t2 = translate y in
       Term("Cons", [t1] @ [t2])
   | K(c) -> Term(c, [])
-  | V(c) -> Var(c)
+  | V(c) | U(c, _) -> Var(c)
 
 let rec retranslate (t: term) : sterm =
   match t with
@@ -92,30 +81,61 @@ let rec retranslate (t: term) : sterm =
 let rec to_string (s: sterm) : string =
   match s with
   | Cons(h, t) -> "Cons(" ^ (to_string h) ^ "," ^ (to_string t) ^ ")"
-  | V(v) -> v
-  | K(k) -> k
+  | K(t) | V(t) -> t
+  | U(t, vol) -> if vol then raise Unknown (* sanity check *) else t
 
 and print_sub (s: substitution) = 
   let ss = List.map (fun (i, t) -> i ^ " = " ^ (to_string (retranslate t))) s
   in List.iter (fun t -> Printf.printf "%s\n" t) ss
+(* End Support code *)
 
+(* "concretize" one volatile term with the one from hypothesis *)
+let rec make_one_concrete (s1: sterm) (s3: sterm) (made: bool) =
+  if made then made, s3 else
+  match s1, s3 with
+  | Cons(h1, t1), Cons(h2, t2) ->
+      let md1, sh = make_one_concrete h1 h2 made in
+      let md2, st = make_one_concrete t1 t2 md1 in
+      md2, Cons(sh, st)
+  | K(_), K(_) | V(_), V(_) | _, U(_, false) -> false, s3
+  | K(_), U(_, true) | V(_), U(_, true) -> true, s1
+  | Cons(_, _), U(_, true) -> true, Cons(U(fresh (), true), U(fresh (), true))
+  | _,_ -> raise Unknown
 
+(* the non-volatile term is now part of the core *)
+let rec make_one_non_volatile (s3: sterm) =
+  let rec aux (ss: sterm) (made: bool) =
+    if made then made, ss else
+    match ss with
+    | Cons(h, t) ->
+      let md1, sh = aux h made in
+      let md2, st = aux t md1 in
+      md2, Cons(sh, st)
+    | K(_) | V(_) | U(_, false) -> false, ss
+    | U(u, true) -> true, U("C" ^ u, false)
+  in let _, ss3 = aux s3 false in ss3
 
+(* concretize <-> unify loop until we cannot concretize anymore *)
+let rec unifiable_core_aux (s1: sterm) (s3: sterm) (s2: sterm) =
+  try
+    let made, s3' = make_one_concrete s1 s3 false in
+    let sub = unify [translate s3', translate s2] in
+    if not made then s3', sub else unifiable_core_aux s1 s3' s2
+  with Non_unifiable -> unifiable_core_aux s1 (make_one_non_volatile s3) s2
 
-
-(* Main function *)
-let rec unifiable_core (s1: sterm) (s2: sterm) =
+(* Main *)
+let unifiable_core (s1: sterm) (s2: sterm) =
   try 
     let sub = unify [translate s1, translate s2] in s1, sub
-  with Non_unifiable -> unifiable_core (make_one_symbolic s1) s2
+  with Non_unifiable -> unifiable_core_aux s1 (U(fresh (), true)) s2
 
 ;;
 
 begin
-  (*let term1 = Cons(K("1"), Cons(K("2"), K("[]")))
-  and term2 = Cons(K("7"), Cons(K("2"), Cons(K("3"), K("[]")))) in*)
   let term1 = Cons(K("1"), Cons(K("2"), K("[]")))
-  and term2 = Cons(K("3"), Cons(K("4"), K("[]"))) in
+  and term2 = Cons(K("7"), Cons(K("2"), Cons(K("3"), K("[]")))) in
+  (*let term1 = Cons(K("1"), Cons(K("2"), K("[]")))
+  and term2 = Cons(K("3"), Cons(K("4"), K("[]"))) in*)
   let core, sub = unifiable_core term1 term2 in
   Printf.printf "%s\n" (to_string core);
   print_sub sub;
