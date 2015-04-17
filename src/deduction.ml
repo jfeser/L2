@@ -1,6 +1,7 @@
 open Core.Std
 
 open Ast
+open Collections
 open Infer
 open Util
 

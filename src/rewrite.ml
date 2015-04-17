@@ -2,6 +2,7 @@ open Core.Std
 open Core.Option
 
 open Ast
+open Collections
 open Util
 
 exception BadExpression

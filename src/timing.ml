@@ -1,6 +1,8 @@
 open Core.Std
 open Printf
 
+open Collections
+
 let testcases =
   [
     "dupli", [],
@@ -403,7 +405,7 @@ let time_solve csv config (name, bk_strs, example_strs, desc) =
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
     let solutions_str =
-      Util.Ctx.to_alist solutions
+      Ctx.to_alist solutions
       |> List.map ~f:(fun (name, lambda) ->
                       (* let lambda = Expr.normalize lambda in *)
                       Expr.to_string (`Let (name, lambda, `Id "_")))

@@ -21,7 +21,7 @@ let solve bk_strs example_strs =
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
     let solutions_str =
-      Util.Ctx.to_alist solutions
+      Collections.Ctx.to_alist solutions
       |> List.map
            ~f:(fun (name, lambda) ->
                match lambda with

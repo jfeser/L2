@@ -2,6 +2,7 @@ open Core.Std
 open Printf
 
 open Ast
+open Collections
 open Util
 
 module Map = Core.Std.Map.Make(

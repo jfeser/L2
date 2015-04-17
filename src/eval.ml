@@ -1,5 +1,7 @@
 open Core.Std
+
 open Ast
+open Collections
 open Util
 
 (** Exceptions that can be thrown by the evaluation and type-checking functions. *)

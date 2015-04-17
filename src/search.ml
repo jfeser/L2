@@ -2,6 +2,7 @@ open Core.Std
 open Printf
 
 open Ast
+open Collections
 open Infer
 open Structure
 open Util
