@@ -16,11 +16,11 @@ let solver_unknown_count = ref 0
 let check_true_count = ref 0
 let check_false_count = ref 0
 
-let total_z3_string_time = ref (Time.Span.of_float 0.0)
-let total_memoizer_time = ref (Time.Span.of_float 0.0)
-let total_lemma_gen_time = ref (Time.Span.of_float 0.0)
-let total_solve_time = ref (Time.Span.of_float 0.0)
-let max_solve_time = ref (Time.Span.of_float Float.min_value)
+let total_z3_string_time = ref Time.Span.zero
+let total_memoizer_time = ref Time.Span.zero
+let total_lemma_gen_time = ref Time.Span.zero
+let total_solve_time = ref Time.Span.zero
+let max_solve_time = ref Time.Span.zero
 
 let fuzzy_match_count = ref 0
 

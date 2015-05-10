@@ -2,7 +2,6 @@ open Core.Std
 
 open Ast
 open Collections
-open Util
 
 type status =
   | Invalid
@@ -123,8 +122,8 @@ let verify_example ?(ctx=Ctx.empty ())
                    (target: expr -> expr)
                    (example: example) : bool =
   let input, result = example in
-  let eval expr = Eval.eval ~recursion_limit:limit ctx expr in
-  (try (eval (target input)) = (eval (target result)) with
+  let eval = Eval.eval ~recursion_limit:limit ctx in
+  (try (eval (target input)) = (eval result) with
    | Eval.RuntimeError msg ->
       (* printf "Runtime error \"%s\" in %s\n" msg (expr_to_string (target input)); *) false
    | Ctx.UnboundError name ->

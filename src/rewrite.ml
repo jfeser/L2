@@ -3,7 +3,6 @@ open Core.Option
 
 open Ast
 open Collections
-open Util
 
 exception BadExpression
 
@@ -168,14 +167,14 @@ let rewrite (expr: expr) : expr option =
            | [x; y] when x = y -> `Bool false
            | _ -> `Op (op, args))
        | Leq -> (match args with
+           | [`Id "inf"; x] when x <> (`Id "inf") -> `Bool true
            | [_; `Id "inf"] -> `Bool true
            | [x; y] when x = y -> `Bool true
-           | [`Id "inf"; x] when x <> (`Id "inf") -> `Bool true
            | _ -> `Op (op, args))
        | Geq -> (match args with
+           | [`Id "inf"; x] when x <> (`Id "inf") -> `Bool false
            | [`Id "inf"; _] -> `Bool true
            | [x; y] when x = y -> `Bool true
-           | [`Id "inf"; x] when x <> (`Id "inf") -> `Bool false
            | _ -> `Op (op, args))
        | And -> (match args with
            | [x; y] when x = y -> x

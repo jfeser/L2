@@ -302,3 +302,31 @@ module Ctx = struct
     |> String.concat ~sep:", "
     |> fun s -> "{ " ^ s ^ " }"
 end
+
+module Timings = struct
+  type timing_info = {
+    time : Time.Span.t;
+    desc : string
+  }
+
+  type t = timing_info Ctx.t
+
+  let empty () : t = Ctx.empty ()
+
+  let add_zero (t: t) (name: string) (desc: string) : unit =
+    Ctx.update t name { time = Time.Span.zero; desc; }
+
+  let add (t: t) (name: string) (time: Time.Span.t) : unit =
+    let time' = Ctx.lookup_exn t name in
+    Ctx.update t name { time' with time = Time.Span.(+) time time'.time }
+
+  let run_with_time (t: t) (name: string) (thunk: unit -> 'a) : 'a =
+    let start_t = Time.now () in
+    let x = thunk () in
+    let end_t = Time.now () in
+    add t name (Time.diff end_t start_t); x
+
+  let to_strings (t: t) : string list =
+    List.map (Ctx.data t) ~f:(fun { desc = d; time = t } ->
+        sprintf "%s: %s" d (Time.Span.to_short_string t))
+end
