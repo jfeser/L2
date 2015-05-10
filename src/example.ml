@@ -6,6 +6,14 @@ open Util
 
 type t = example
 
+(** Parse an example from a string. *)
+let of_string (s: string) : t =
+  let lexbuf = Lexing.from_string s in
+  try Parser.example_eof Lexer.token lexbuf with
+  | Parser.Error -> raise (ParseError s)
+  | Lexer.SyntaxError _ -> raise (ParseError s)
+  | Parsing.Parse_error -> raise (ParseError s)
+
 (** Convert an example to a string. *)
 let to_string (ex: t) : string =
   let e1, e2 = ex in

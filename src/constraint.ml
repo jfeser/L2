@@ -6,7 +6,14 @@ open Util
 
 type t = constr with compare, sexp
 
-let of_string (s: string) : t = parse_constr s
+(** Parse a constraint from a string. *)
+let of_string (s: string) : t =
+  let lexbuf = Lexing.from_string s in
+  try Parser.constr_eof Lexer.token lexbuf with
+  | Parser.Error -> raise (Parser.ParseError s)
+  | Lexer.SyntaxError _ -> raise (Parser.ParseError s)
+  | Parsing.Parse_error -> raise (Parser.ParseError s)
+
 let to_string (x: t) : string =
   let e, names = x in
   let names_str = String.concat ~sep:" " names in

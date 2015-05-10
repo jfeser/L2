@@ -58,7 +58,7 @@ let stdlib =
             (if (| (= x []) (= y []))
             []
             (cons (cons (car x) (cons (car y) [])) (zip (cdr x) (cdr y)))))";
-    ] |> List.map ~f:(fun (name, str) -> name, Util.parse_expr str))
+    ] |> List.map ~f:(fun (name, str) -> name, Expr.of_string str))
 
 let eval_ctx_of_alist =
   List.fold_left ~init:(Ctx.empty ())

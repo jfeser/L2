@@ -34,7 +34,7 @@ module Op = struct
   }
 
   let metadata_by_op =
-    let t = Util.parse_typ in
+    let t = Type.of_string in
     [
       Plus,     { typ = t "(num, num) -> num"; commut = true; assoc = true; str = "+"; cost = 1; };
       Minus,    { typ = t "(num, num) -> num"; commut = false; assoc = false; str = "-"; cost = 1; };
@@ -140,7 +140,15 @@ let normalize ?(bound=String.Set.empty) (expr: t) : expr =
        in `Lambda (args', norm ctx' body)
   in norm (Ctx.empty ()) expr
 
-(** Convert and expression to a string. *)
+(** Parse an expression from a string. *)
+let of_string (s: string) : t =
+  let lexbuf = Lexing.from_string s in
+  try Parser.expr_eof Lexer.token lexbuf with
+  | Parser.Error -> raise (ParseError s)
+  | Lexer.SyntaxError _ -> raise (ParseError s)
+  | Parsing.Parse_error -> raise (ParseError s)
+
+(** Convert an expression to a string. *)
 let rec to_string (expr: t) : string =
   let list_to_string l =
     String.concat ~sep:" " (List.map ~f:to_string l)

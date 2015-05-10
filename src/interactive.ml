@@ -14,8 +14,8 @@ let read_input () =
 
 let solve bk_strs example_strs =
   begin
-    let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Util.parse_expr impl) in
-    let examples = List.map example_strs ~f:Util.parse_example in
+    let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Expr.of_string impl) in
+    let examples = List.map example_strs ~f:Example.of_string in
     let start_time = Time.now () in
     let solutions = Search.solve ~init:Search.extended_init ~bk examples in
     let end_time = Time.now () in
