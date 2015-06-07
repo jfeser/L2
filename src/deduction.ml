@@ -5,29 +5,34 @@ open Collections
 open Infer
 open Util
 
-let expr_memoizer_count = ref 0
-let formula_memoizer_count = ref 0
-let solver_call_count = ref 0
-
-let solver_unsat_count = ref 0
-let solver_sat_count = ref 0
-let solver_unknown_count = ref 0
-
-let check_true_count = ref 0
-let check_false_count = ref 0
-
-let total_z3_string_time = ref Time.Span.zero
-let total_memoizer_time = ref Time.Span.zero
-let total_lemma_gen_time = ref Time.Span.zero
-let total_solve_time = ref Time.Span.zero
-let max_solve_time = ref Time.Span.zero
-
-let fuzzy_match_count = ref 0
-
-let (memoizer: bool TypedExprMap.t ref) = ref TypedExprMap.empty
-
 module FormulaII =
   Collections.InvertedIndex (Int) (struct type t = Z3.Solver.status end)
+
+let counter = Counter.empty ()
+let () =
+  let n = Counter.add_zero counter in
+  n "expr_memoizer" "Number of expressions caught by memoizer";
+  n "formula_memoizer" "Number of formulas caught by memoizer";
+  n "solver_call" "Number of solver calls";
+  n "solver_unsat" "Number of times solver returned UNSAT";
+  n "solver_sat" "Number of times solver returned SAT";
+  n "solver_unknown" "Number of times solver returned UNKNOWN";
+  n "check_true" "Number of times abstract hypothesis checker returned true";
+  n "check_false" "Number of times abstract hypothesis checker returned false";
+  n "fuzzy_match" "Number of formulas caught by fuzzy matching"
+let counter_incr = Counter.incr counter
+
+let timer = Timer.empty ()
+let () =
+  let n = Timer.add_zero timer in
+  n "z3_string" "Time spent converting Z3 exprs to strings";
+  n "memoizer" "Time spent in memoizer lookups";
+  n "lemma_gen" "Time spent generating lemmas";
+  n "solve" "Time spent in solver"
+let run_with_time (name: string) (thunk: unit -> 'a) : 'a =
+  Timer.run_with_time timer name thunk
+
+let max_solve_time = ref Time.Span.zero
 
 let (formula_memoizer: FormulaII.t) = FormulaII.create ()
 
@@ -50,9 +55,7 @@ let z3_le = Z3.Arithmetic.mk_le
 let z3_sub = Z3.Arithmetic.mk_sub
 let z3_add = Z3.Arithmetic.mk_add
 
-let z3_to_string e =
-  let (x, runtime) = with_runtime (fun () -> Z3.Expr.to_string e) in
-  add_time total_z3_string_time runtime; x
+let z3_to_string e = run_with_time "z3_string" (fun () -> Z3.Expr.to_string e)
 
 (** Convert a type into a Z3 sort. For integers and booleans, this
     uses Z3's built in sorts. For lists, it returns Lst, which is an
@@ -391,49 +394,45 @@ let generate_lemmas
     in
     name, lemmas
   in
-  let (x, runtime) = Util.with_runtime (fun () -> g ctx zctx expr) in
-  total_lemma_gen_time := Time.Span.(+) !total_lemma_gen_time runtime; x
+  run_with_time "lemma_gen" (fun () -> g ctx zctx expr)
 
 let memoized_check
-    ?(memoizer=formula_memoizer)
     (solver: Z3.Solver.solver)
     (asserts: Z3.Expr.expr list) : Z3.Solver.status =
+  let memoizer = formula_memoizer in
   let asserts' =
     List.map ~f:(fun (Z3.Expr.Expr e) -> Z3.AST.hash e) asserts
     |> FormulaII.KSet.of_list
   in
 
-  let (m_result, runtime) =
-    with_runtime (fun () ->
-        FormulaII.exists_subset_or_superset
-          memoizer asserts' Z3.Solver.UNSATISFIABLE Z3.Solver.SATISFIABLE)
+  let m_result = run_with_time "memoizer_time" (fun () ->
+      FormulaII.exists_subset_or_superset
+        memoizer asserts' Z3.Solver.UNSATISFIABLE Z3.Solver.SATISFIABLE)
   in
 
-  add_time total_memoizer_time runtime;
-
   match m_result with
-  | Some x -> incr formula_memoizer_count; x
+  | Some x -> counter_incr "formula_memoizer"; x
   | None ->
-     incr solver_call_count;
-     let (x, run_time) =
-       Util.with_runtime
-         (fun () ->
-            Z3.Solver.add solver asserts;
-            Z3.Solver.check solver [])
-     in
-     (* let () = *)
-     (*   let msg = *)
-     (*     Z3.Solver.get_statistics solver |> Z3.Solver.Statistics.to_string *)
-     (*   in LOG msg NAME "l2.solver.stats" LEVEL INFO *)
-     (* in *)
-     (match x with
-      | Z3.Solver.UNSATISFIABLE -> incr solver_unsat_count
-      | Z3.Solver.SATISFIABLE -> incr solver_sat_count
-      | Z3.Solver.UNKNOWN -> incr solver_unknown_count);
-     add_time total_solve_time run_time;
-     max_solve_time := Time.Span.max !max_solve_time run_time;
-     FormulaII.add memoizer asserts' x;
-     x
+    counter_incr "solver_call";
+    let (x, run_time) =
+      Util.with_runtime
+        (fun () ->
+           Z3.Solver.add solver asserts;
+           Z3.Solver.check solver [])
+    in
+    (* let () = *)
+    (*   let msg = *)
+    (*     Z3.Solver.get_statistics solver |> Z3.Solver.Statistics.to_string *)
+    (*   in LOG msg NAME "l2.solver.stats" LEVEL INFO *)
+    (* in *)
+    (match x with
+     | Z3.Solver.UNSATISFIABLE -> counter_incr "solver_unsat"
+     | Z3.Solver.SATISFIABLE -> counter_incr "solver_sat"
+     | Z3.Solver.UNKNOWN -> counter_incr "solver_unknown");
+    Timer.add timer "solve_time" run_time;
+    max_solve_time := Time.Span.max !max_solve_time run_time;
+    FormulaII.add memoizer asserts' x;
+    x
 
 (** Given a candidate expression and some constraints on the
     expression's input and output, check those constraints using an
@@ -506,13 +505,13 @@ let check_constraints
          (* in *)
 
          (match memoized_check solver assertions with
-          | Z3.Solver.UNSATISFIABLE -> incr check_false_count; false
-          | Z3.Solver.SATISFIABLE -> incr check_true_count; true
+          | Z3.Solver.UNSATISFIABLE -> counter_incr "check_false"; false
+          | Z3.Solver.SATISFIABLE -> counter_incr "check_true"; true
           | Z3.Solver.UNKNOWN ->
             let msg =
               sprintf "Solver returned UNKNOWN on %s." (TypedExpr.to_string expr)
             in
-            incr check_true_count;
+            counter_incr "check_true";
             LOG msg NAME "l2.solver" LEVEL WARN;
             true)
      with Z3native.Exception _ -> false)
@@ -527,14 +526,34 @@ let memoized_check_constraints
     Expr.normalize ~bound:stdlib_names (TypedExpr.to_expr expr)
   in
 
-  let () =
-    let msg =
-      sprintf "Looking up %s in memoizer." (Expr.to_string normal_expr)
-    in LOG msg NAME "l2.solver.memo" LEVEL INFO
-  in
+  LOG "Looking up %s in memoizer." (Expr.to_string normal_expr)
+    NAME "l2.solver.memo" LEVEL INFO;
 
   match Expr.Map.find !memoizer normal_expr with
-  | Some ret -> incr expr_memoizer_count; ret
+  | Some ret -> counter_incr "expr_memoizer"; ret
   | None ->
     let ret = check_constraints zctx examples expr in
     memoizer := Expr.Map.add !memoizer ~key:normal_expr ~data:ret; ret
+
+let log_summary () =
+  let open Time.Span in
+  let log_strs = List.iter ~f:(fun s -> LOG s LEVEL INFO) in
+
+  log_strs (Timer.to_strings timer);
+  log_strs (Counter.to_strings counter);
+
+  LOG "Maximum time in solver: %s" (to_short_string !max_solve_time)
+    LEVEL INFO;
+
+  (try
+     LOG "Average time in solver: %s"
+       (to_short_string
+          ((Timer.find_exn timer "solve_time") /
+           (float (Counter.find_exn counter "call_count"))))
+       LEVEL INFO
+   with Invalid_argument _ -> ());
+
+  (let msg = FormulaII.log_summary formula_memoizer in
+   LOG msg LEVEL INFO);
+
+

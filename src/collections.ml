@@ -305,10 +305,10 @@ module Ctx = struct
     |> fun s -> "{ " ^ s ^ " }"
 end
 
-module Timings = struct
+module Timer = struct
   type timing_info = {
     time : Time.Span.t;
-    desc : string
+    desc : string;
   }
 
   type t = timing_info Ctx.t
@@ -322,6 +322,9 @@ module Timings = struct
     let time' = Ctx.lookup_exn t name in
     Ctx.update t name { time' with time = Time.Span.(+) time time'.time }
 
+  let find_exn (t: t) (name: string) : Time.Span.t =
+    (Ctx.lookup_exn t name).time
+
   let run_with_time (t: t) (name: string) (thunk: unit -> 'a) : 'a =
     let start_t = Time.now () in
     let x = thunk () in
@@ -331,6 +334,31 @@ module Timings = struct
   let to_strings (t: t) : string list =
     List.map (Ctx.data t) ~f:(fun { desc = d; time = t } ->
         sprintf "%s: %s" d (Time.Span.to_short_string t))
+end
+
+module Counter = struct
+  type counter_info = {
+    count : int;
+    desc : string;
+  }
+
+  type t = counter_info Ctx.t
+
+  let empty () : t = Ctx.empty ()
+
+  let add_zero (t: t) (name: string) (desc: string) : unit =
+    Ctx.update t name { count = 0; desc; }
+
+  let find_exn (t: t) (name: string) : int =
+    (Ctx.lookup_exn t name).count
+
+  let incr  (t: t) (name: string) : unit =
+    let info = Ctx.lookup_exn t name in
+    Ctx.update t name { info with count = info.count + 1 }
+
+  let to_strings (t: t) : string list =
+    List.map (Ctx.data t) ~f:(fun { desc = d; count = c } ->
+        sprintf "%s: %s" d (Int.to_string c))
 end
 
 module Tree = struct

@@ -44,13 +44,15 @@ let extended_init =
 let default_operators = List.filter ~f:((<>) Cons) Expr.Op.all
 
 (* Create an empty timing object and register some timing fields. *)
-let timing = Timings.empty ()
+let timer = Timer.empty ()
 let () =
-  Timings.add_zero timing "check_time" "Total time spent checking expressions";
-  Timings.add_zero timing "deduction_time" "Total time spent in Deduction";
-  Timings.add_zero timing "partial_eval_time" "Total time spent in partial evaluation";
-  Timings.add_zero timing "unify_time" "Total time spent in unification";
-;;
+  let n = Timer.add_zero timer in
+  n "check" "Total time spent checking expressions";
+  n "deduction" "Total time spent in Deduction";
+  n "partial_eval" "Total time spent in partial evaluation";
+  n "unify" "Total time spent in unification"
+let run_with_time (name: string) (thunk: unit -> 'a) : 'a =
+  Timer.run_with_time timer name thunk
 
 let matrix_of_texpr_list ~size (texprs: TypedExpr.t list) : TypedExpr.t Sstream.matrix =
   let init_sizes = List.map texprs ~f:(fun e -> e, size e) in
@@ -181,12 +183,10 @@ let rec enumerate
       slazy (fun () ->
           let should_prune_branch =
             if config.use_solver then
-              let dummy_arg_list = prev_args @ (List.drop dummy_args prev_args_len) in
-              let x =
-                Timings.run_with_time
-                  timing "check_time"
-                  (fun () -> check dummy_arg_list)
-              in not x
+              let dummy_arg_list =
+                prev_args @ (List.drop dummy_args prev_args_len)
+              in
+              not (run_with_time "check" (fun () -> check dummy_arg_list))
             else false
           in
 
@@ -294,6 +294,48 @@ type hypothesis = {
   max_exh_cost : int;
   generalized : bool;
 }
+
+let get_predicate name =
+  match name with
+  | "sort" ->
+    (fun ret ->
+       let eval = Eval.eval (Ctx.empty ()) in
+       eval (`Apply (`Id "sort", [ret])) = eval ret)
+  | "dedup" ->
+    (fun ret ->
+       match ret with
+       | `List l ->
+         not (List.contains_dup ~compare:compare_expr l)
+       | _ -> false)
+  | "intersperse" ->
+    (fun ret ->
+       match ret with
+       | `List l ->
+         (* intersperse always returns a list with an odd length,
+            unless the input list is empty. *)
+         if l <> [] && List.length l % 2 = 0 then false else
+           (* Check that all the odd indexed values are the same. *)
+           List.zip_exn l (List.range 0 (List.length l))
+           |> List.filter_map ~f:(fun (e, i) -> if i % 2 <> 0 then Some e else None)
+           |> Util.all_equal ~eq:(=)
+       | _ -> false)
+  | "zip" ->
+    (fun ret ->
+       match ret with
+       | `List l -> List.length l % 2 = 0
+       | _ -> false)
+  | _ -> (fun _ -> true)
+
+(** Given a function name `f` and a set of examples, determine whether
+    there exists an expression (f ?) that conforms to the examples. *)
+let check_predicate name examples =
+  let pred = get_predicate name in
+  List.for_all ~f:(fun (_, ret) -> pred ret) examples
+
+let check_outermost_application expr examples =
+  match expr with
+  | `Lambda (_, `Apply (`Id f, _)) -> check_predicate f examples
+  | _ -> true
 
 let solve_single
     ?(init=[])
@@ -405,49 +447,59 @@ let solve_single
         let target = (spec.Spec.target ctx) (`Id "_") in
 
         let res =
-          match target with
-          | `Let (name, body, _) ->
-            if Expr.all_abstract body then true else
-              List.for_all
-                (List.zip_exn examples result_sterms)
-                ~f:(fun ((input, _), result_sterm) ->
-                    try
-                      let lhs =
-                        Timings.run_with_time timing "partial_eval_time" (fun () ->
-                            Eval.partial_eval
-                              ~recursion_limit:100
-                              ~ctx:Eval.stdlib_evctx
-                              (Eval.ExprValue.of_expr ((spec.Spec.target ctx) input)))
-                      in
-                      match Unify.sterm_of_expr_value lhs, result_sterm with
-                      | (Some lhs_term, Some result_term) ->
-                        let r =
-                          (try
-                             let _ =
-                               Timings.run_with_time timing "unify_time" (fun () ->
-                                   Unify.unify_one
-                                     (Unify.translate lhs_term)
-                                     (Unify.translate result_term))
-                             in true
-                           with Unify.Non_unifiable -> false)
-                        in
-                        LOG "%s ?= %s : %b\n"
-                            (Unify.sterm_to_string lhs_term)
-                            (Unify.sterm_to_string result_term)
-                            r
-                        LEVEL TRACE;
-                        r
-                      | _ -> true
-                    with
-                    | Eval.RuntimeError _ -> false)
-          | _ -> failwith "Bad result from solve_single."
+          (match target with
+           | `Let (name, body, _) ->
+             (* if Expr.all_abstract body then true else *)
+             (* If the example output does not pass the
+                postcondition of the outermost function, discard this
+                candidate. *)
+             if not (check_outermost_application body examples) then false else
+               (* Attempt partial evaluation and unification. *)
+               List.for_all (List.zip_exn examples result_sterms)
+                 ~f:(fun ((input, result), result_sterm) ->
+                     let expr =
+                       Eval.ExprValue.of_expr ((spec.Spec.target ctx) input)
+                     in
+                     try
+                       let lhs : Eval.ExprValue.t =
+                         run_with_time "partial_eval" (fun () ->
+                           Eval.partial_eval
+                             ~recursion_limit:100
+                             ~ctx:Eval.stdlib_evctx
+                             expr)
+                       in
+                       match Unify.sterm_of_expr_value lhs, result_sterm with
+                       | (Some lhs_term, Some result_term) ->
+                         let r =
+                           (try
+                              let _ =
+                                run_with_time "unify" (fun () ->
+                                    Unify.unify_one
+                                      (Unify.translate lhs_term)
+                                      (Unify.translate result_term))
+                              in true
+                            with Unify.Non_unifiable -> false)
+                         in
+                         LOG "%s ?= %s : %b\n"
+                           (Unify.sterm_to_string lhs_term)
+                           (Unify.sterm_to_string result_term)
+                           r
+                           LEVEL TRACE;
+                         r
+                       | _ -> true
+                     with
+                     | Eval.RuntimeError _ ->
+                       LOG "Partial evalution of %s failed.\n"
+                         (Eval.ExprValue.to_string expr)
+                         LEVEL TRACE;
+                       false)
+           | _ -> failwith "Bad result from solve_single.")
         in
 
-        ((LOG "Checked abstract hypo %s. Meets constraints? %b."
+        (LOG "Checked abstract hypo %s. Meets constraints? %b."
            (Expr.to_string target) res
            LEVEL TRACE);
-
-         res)
+        res
 
       (* match target with *)
       (* | `Let (name, body, _) -> *)
@@ -509,8 +561,8 @@ let solve_single
       if (total_cost spec.Spec.cost exh_cost) >= max_cost then
         ((if exh_cost > 0 then
             LOG "Searched %s to exhaustive cost %d."
-             (Spec.to_string spec) exh_cost
-             LEVEL TRACE);
+              (Spec.to_string spec) exh_cost
+              LEVEL TRACE);
          None)
       else
         let row = Sstream.next solver in
@@ -594,67 +646,13 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
 
   (* Performance logging. *)
   begin
+    let log_strs = List.iter ~f:(fun s -> LOG s LEVEL INFO) in
+
     LOG "Verified %d expressions." !verify_count LEVEL INFO;
 
-    LOG "Abstract hypothesis checker returned %d/%d true/false."
-      !Deduction.check_true_count
-      !Deduction.check_false_count
-      LEVEL INFO;
+    log_strs (Timer.to_strings timer);
 
-    LOG "Made %d solver calls." !Deduction.solver_call_count LEVEL INFO;
-
-    LOG "Solver returned %d/%d/%d SAT/UNSAT/UNKNOWN."
-      !Deduction.solver_sat_count
-      !Deduction.solver_unsat_count
-      !Deduction.solver_unknown_count
-      LEVEL INFO;
-
-    LOG "Expr memoizer caught %d expressions."
-      !Deduction.expr_memoizer_count
-      LEVEL INFO;
-
-    LOG "Formula memoizer caught %d expressions. Of those expressions, \
-         %d were caught through fuzzy matching."
-      !Deduction.formula_memoizer_count
-      !Deduction.fuzzy_match_count
-      LEVEL INFO;
-
-    LOG "Maximum time in solver: %s"
-      (Time.Span.to_short_string !Deduction.max_solve_time)
-      LEVEL INFO;
-
-    LOG "Total time in solver: %s"
-      (Time.Span.to_short_string !Deduction.total_solve_time)
-      LEVEL INFO;
-
-    (try
-       LOG "Average time in solver: %s"
-         (Time.Span.to_short_string
-            (Time.Span.(/)
-               !Deduction.total_solve_time (float !Deduction.solver_call_count)))
-         LEVEL INFO
-     with Invalid_argument _ -> ());
-
-    List.iter (Timings.to_strings timing) ~f:(fun s -> LOG s LEVEL INFO);
-
-    LOG "Total time spent generating lemmas: %s"
-      (Time.Span.to_short_string !Deduction.total_lemma_gen_time)
-      LEVEL INFO;
-
-    LOG "Total time spent in formula memoizer: %s"
-      (Time.Span.to_short_string !Deduction.total_memoizer_time)
-      LEVEL INFO;
-
-    LOG "Total time spent in type inference: %s"
-      (Time.Span.to_short_string !Infer.total_infer_time)
-      LEVEL INFO;
-
-    LOG "Total time spent turning z3 exprs into strings: %s"
-      (Time.Span.to_short_string !Deduction.total_z3_string_time)
-      LEVEL INFO;
-
-    (let msg = Deduction.FormulaII.log_summary Deduction.formula_memoizer in
-     LOG msg LEVEL INFO);
-
+    Deduction.log_summary ();
+    
     ret
   end ;;
