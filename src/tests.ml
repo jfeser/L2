@@ -2,7 +2,7 @@ open Core.Std
 open OUnit2
 
 open Ast
-open Util
+open Collections
 
 let identity (x: 'a) : 'a = x
 
@@ -40,8 +40,8 @@ let make_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name case
 (*               cases) *)
 
 let test_parse_expr =
-  let open Tree in
-  make_tests ~in_f:Util.parse_expr ~out_f:identity
+  let open Collections.Tree in
+  make_tests ~in_f:Expr.of_string ~out_f:identity
     ~in_str:identity ~out_str:Expr.to_string ~res_str:Expr.to_string
     "parse_expr"
     [ "1", `Num 1;
@@ -78,14 +78,14 @@ let test_parse_expr =
     ]
 
 let test_parse_typ =
-  make_tests ~in_f:Util.parse_typ ~out_f:identity
+  make_tests ~in_f:Type.of_string ~out_f:identity
     ~in_str:identity ~out_str:Expr.typ_to_string ~res_str:Expr.typ_to_string
     "parse_typ"
     [ "num", Const_t Num_t;
     ]
 
 let test_parse_example =
-  make_tests ~in_f:Util.parse_example ~out_f:identity
+  make_tests ~in_f:Example.of_string ~out_f:identity
     ~in_str:identity ~out_str:Example.to_string ~res_str:Example.to_string
     "parse_example"
     [ "(f 1) -> 1", ((`Apply (`Id "f", [`Num 1])), `Num 1);
@@ -95,8 +95,8 @@ let test_parse_example =
 
 let test_eval =
   let open Eval in
-  let open Tree in
-  make_tests ~in_f:(fun str -> str |> Util.parse_expr |> (eval (Ctx.empty ())))
+  let open Collections.Tree in
+  make_tests ~in_f:(fun str -> str |> Expr.of_string |> (eval (Ctx.empty ())))
     ~out_f:identity
     ~in_str:identity ~out_str:value_to_string ~res_str:value_to_string
     "eval"
@@ -170,11 +170,11 @@ let test_eval =
 let test_typeof =
   make_tests
     ~in_f:(fun str ->
-        Util.parse_expr str
+        Expr.of_string str
         |> (Infer.infer (Ctx.empty ()))
         |> Infer.TypedExpr.to_type
         |> Infer.normalize)
-    ~out_f:(fun str -> Util.parse_typ str |> Infer.normalize)
+    ~out_f:(fun str -> Type.of_string str |> Infer.normalize)
     ~in_str:identity ~out_str:identity
     ~res_str:Expr.typ_to_string
     "typeof"
@@ -223,8 +223,8 @@ let test_typeof =
     ]
 
 let test_fold_constants =
-  make_tests ~in_f:(fun str -> str |> Util.parse_expr |> Rewrite.fold_constants)
-    ~out_f:(fun str -> Some (Util.parse_expr str))
+  make_tests ~in_f:(fun str -> str |> Expr.of_string |> Rewrite.fold_constants)
+    ~out_f:(fun str -> Some (Expr.of_string str))
     ~in_str:identity ~out_str:identity
     ~res_str:m_expr_to_string
     "fold_constants"
@@ -240,8 +240,8 @@ let test_fold_constants =
     ]
 
 let test_rewrite =
-  make_tests ~in_f:(fun str -> str |> Util.parse_expr |> Rewrite.rewrite)
-    ~out_f:(fun str -> Some (Util.parse_expr str))
+  make_tests ~in_f:(fun str -> str |> Expr.of_string |> Rewrite.rewrite)
+    ~out_f:(fun str -> Some (Expr.of_string str))
     ~in_str:identity ~out_str:identity
     ~res_str:m_expr_to_string
     "rewrite"
@@ -272,7 +272,7 @@ let test_rewrite =
     ]
 
 (* let test_normalize = *)
-(*   make_tests ~in_f:(fun str -> str |> Util.parse_expr |> Rewrite.normalize) ~out_f:Util.parse_expr *)
+(*   make_tests ~in_f:(fun str -> str |> Expr.of_string |> Rewrite.normalize) ~out_f:Expr.of_string *)
 (*               ~in_str:identity ~out_str:identity ~res_str:Expr.to_string *)
 (*     "normalize" *)
 (*     [ "(+ 1 (+ 2 3))", "(+ 1 2 3)"; *)
@@ -283,7 +283,7 @@ let test_rewrite =
 (*     ] *)
 
 (* let test_denormalize = *)
-(*   make_tests ~in_f:(fun str -> str |> Util.parse_expr |> Rewrite.denormalize) ~out_f:Util.parse_expr *)
+(*   make_tests ~in_f:(fun str -> str |> Expr.of_string |> Rewrite.denormalize) ~out_f:Expr.of_string *)
 (*               ~in_str:identity ~out_str:identity ~res_str:Expr.to_string *)
 (*     "normalize" *)
 (*     [ "(+ 1 2 3)", "(+ 1 (+ 2 3))"; *)
@@ -316,8 +316,8 @@ let test_m_partition =
       ])
 
 (* let test_signature = *)
-(*   make_tests ~in_f:(fun exs -> exs |> List.map ~f:Util.parse_example |> Search.signature |> Infer.normalize) *)
-(*              ~out_f:Util.parse_typ *)
+(*   make_tests ~in_f:(fun exs -> exs |> List.map ~f:Example.of_string |> Search.signature |> Infer.normalize) *)
+(*              ~out_f:Type.of_string *)
 (*              ~in_str:(fun exs -> "[" ^ (String.concat ~sep:"; " exs) ^ "]") *)
 (*              ~out_str:identity ~res_str:Expr.typ_to_string *)
 (*              "signature" *)
@@ -342,8 +342,8 @@ let test_m_partition =
 (*              ] *)
 
 (* let test_expand = *)
-(*   make_tests ~in_f:(fun e -> e |> Util.parse_expr |> Verify.expand (Ctx.empty ())) *)
-(*              ~out_f:Util.parse_expr *)
+(*   make_tests ~in_f:(fun e -> e |> Expr.of_string |> Verify.expand (Ctx.empty ())) *)
+(*              ~out_f:Expr.of_string *)
 (*              ~in_str:identity ~out_str:identity ~res_str:Expr.to_string *)
 (*              "expand" *)
 (*              [ *)
@@ -362,7 +362,7 @@ let test_m_partition =
 (*     | Verify.Error -> "Error" in *)
 (*   make_tests *)
 (*     ~in_f:(fun (lambda_str, cs_strs) -> *)
-(*            let lambda = Util.parse_expr lambda_str in *)
+(*            let lambda = Expr.of_string lambda_str in *)
 (*            let target expr = `Let ("f", lambda, expr) in *)
 (*            let constraints = List.map cs_strs ~f:Util.parse_constr in *)
 (*            Verify.verify [] constraints target) *)
@@ -387,8 +387,8 @@ let test_m_partition =
 
 (* let test_sat_solver = *)
 (*   make_tests *)
-(*     ~in_f:(fun (f_str, exs) -> SymbSolver.sat_solve (Util.parse_expr f_str) exs) *)
-(*     ~out_f:Util.parse_expr *)
+(*     ~in_f:(fun (f_str, exs) -> SymbSolver.sat_solve (Expr.of_string f_str) exs) *)
+(*     ~out_f:Expr.of_string *)
 (*     ~in_str:(fun (f_str, exs) -> f_str ^ " " ^ (vals_to_string exs)) *)
 (*     ~out_str:identity *)
 (*     ~res_str:Expr.to_string *)
@@ -402,10 +402,10 @@ let test_m_partition =
 (* let test_symb_solver = *)
 (*   make_tests *)
 (*     ~in_f:(fun (f_str, constr_strs, exs) -> *)
-(*            let f = Util.parse_expr f_str in *)
-(*            let constrs = List.map constr_strs ~f:Util.parse_expr in *)
+(*            let f = Expr.of_string f_str in *)
+(*            let constrs = List.map constr_strs ~f:Expr.of_string in *)
 (*            SymbSolver.symb_solve f constrs exs) *)
-(*     ~out_f:Util.parse_expr *)
+(*     ~out_f:Expr.of_string *)
 (*     ~in_str:(fun (f_str, constr_strs, exs) -> *)
 (*              Printf.sprintf "%s, %s, %s" f_str (String.concat ~sep:" " constr_strs) (vals_to_string exs)) *)
 (*     ~out_str:identity *)
@@ -431,8 +431,10 @@ let test_m_partition =
 (*     ] *)
 
 let () = run_test_tt_main
-    ("test-suite" >:::
+    ("all-tests" >:::
      [
+       Eval_tests.tests;
+       
        test_parse_expr;
        test_parse_typ;
        test_parse_example;

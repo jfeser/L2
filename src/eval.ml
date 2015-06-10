@@ -6,6 +6,8 @@ open Collections
 (** Exceptions that can be thrown by the evaluation and type-checking functions. *)
 exception RuntimeError of string
 
+exception HitRecursionLimit
+
 type value = [
   | `Num of int
   | `Bool of bool
@@ -58,6 +60,44 @@ let stdlib =
             (if (| (= x []) (= y []))
             []
             (cons (cons (car x) (cons (car y) [])) (zip (cdr x) (cdr y)))))";
+      "intersperse",
+      "(lambda (l e)
+  (if (= l []) []
+    (let xs (cdr l)
+      (if (= xs []) l
+        (cons (car l) (cons e (intersperse xs e)))))))";
+      "append",
+      "(lambda (l1 l2)
+  (if (= l1 []) l2
+    (if (= l2 []) l1
+      (cons (car l1) (append (cdr l1) l2)))))";
+      "reverse",
+      "(lambda (l)
+  (if (= l []) []
+    (append (reverse (cdr l)) [(car l)])))";
+      "concat",
+      "(lambda (l)
+  (if (= l []) []
+    (append (car l) (concat (cdr l)))))";
+      "drop",
+      "(lambda (l x)
+  (if (= x 0) l
+    (drop (cdr l) (- x 1))))";
+      "sort",
+      "(lambda (l)
+  (if (= l []) []
+    (let p (car l)
+         (let lesser (filter (cdr l) (lambda (e) (< e p)))
+              (let greater (filter (cdr l) (lambda (e) (>= e p)))
+                   (append (sort lesser) (cons p (sort greater))))))))";
+        "dedup",
+      "(lambda (l)
+    (if (= l []) []
+      (if (= (cdr l) []) l
+        (let sl (sort l)
+             (let x1 (car sl)
+                  (let x2 (car (cdr sl))
+                       (if (= x1 x2) (dedup (cdr sl)) (cons x1 (dedup (cdr sl))))))))))"
     ] |> List.map ~f:(fun (name, str) -> name, Expr.of_string str))
 
 let eval_ctx_of_alist =
@@ -79,7 +119,7 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
   let rec ev ctx lim expr : value =
     if lim = 0
     then (
-      printf "Exceeded recursion limit.\n";
+      LOG "Exceeded recursion limit." LEVEL TRACE;
       raise (RuntimeError (sprintf "Exceeded recursion limit: %s" (Expr.to_string expr)))
     )
     else
@@ -89,105 +129,28 @@ let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
       | `Bool x -> `Bool x
       | `List x -> `List (ev_all x)
       | `Tree x -> `Tree (Tree.map x ~f:(ev ctx lim))
-      | `Id id  -> Ctx.lookup_exn ctx id
+      | `Id id  ->
+        (match Ctx.lookup ctx id with
+         | Some x -> x
+         | None -> raise @@ RuntimeError (sprintf "Unbound lookup %s." id))
       | `Let (name, bound, body) ->
         let ctx' = Ctx.bind ctx name `Unit in
         Ctx.update ctx' name (ev ctx' lim bound);
         ev ctx' lim body
       | `Lambda _ as lambda -> `Closure (lambda, ctx)
       | `Apply (func, args) ->
-        let func_error name args =
-          raise @@ RuntimeError
-            (sprintf "Bad arguments to %s: %s."
-               name (String.concat ~sep:" " (List.map ~f:Expr.to_string args)))
-        in
-        (match func with
-         | `Id ("sort" as name) -> (match ev_all args with
-             | [`List l] ->
-               let l' =
-                 List.map l ~f:(fun e -> match e with
-                     | `Num e' -> e'
-                     | _ -> func_error name args)
-                 |> List.sort ~cmp:compare_int
-                 |> List.map ~f:(fun e -> `Num e)
-               in `List l'
-             | _ -> func_error name args)
-
-         | `Id ("merge" as name) -> (match ev_all args with
-             | [`List l1; `List l2] ->
-               (try
-                  let l1', l2' =
-                    List.map2_exn l1 l2 ~f:(fun e1 e2 -> match e1, e2 with
-                        | `Num e1', `Num e2' -> (e1', e2')
-                        | _ -> func_error name args)
-                    |> List.unzip
-                  in
-                  `List (List.merge l1' l2' ~cmp:compare_int
-                         |> List.map ~f:(fun e -> `Num e))
-                with Invalid_argument _ -> func_error name args)
-             | _ -> func_error name args)
-
-         | `Id ("dedup" as name) -> (match ev_all args with
-             | [`List l] -> `List (List.dedup ~compare:compare_value l)
-             | _ -> func_error name args)
-
-         | `Id ("take" as name) -> (match ev_all args with
-             | [`List l; `Num x] -> `List (List.take l x)
-             | _ -> func_error name args)
-
-         | `Id ("drop" as name) -> (match ev_all args with
-             | [`List l; `Num x] -> `List (List.drop l x)
-             | _ -> func_error name args)
-
-         | `Id ("append" as name) -> (match ev_all args with
-             | [`List l1; `List l2] -> `List (List.append l1 l2)
-             | _ -> func_error name args)
-
-         | `Id ("reverse" as name) -> (match ev_all args with
-             | [`List l] -> `List (List.rev l)
-             | _ -> func_error name args)
-
-         | `Id ("intersperse" as name) -> (match ev_all args with
-             | [x; `List l] -> `List (List.intersperse ~sep:x l)
-             | _ -> func_error name args)
-
-         | `Id ("concat" as name) -> (match ev_all args with
-             | [`List ls] ->
-               let ls' = List.map ls ~f:(fun l -> match l with
-                   | `List l' -> l'
-                   | _ -> func_error name args)
-               in
-               `List (List.concat ls')
-             | _ -> func_error name args)
-
-         | `Id ("zip" as name) -> (match ev_all args with
-             | [`List l1; `List l2] ->
-               (try `List (List.map2_exn l1 l2 ~f:(fun x1 x2 -> `List [x1; x2]))
-                with Invalid_argument _ -> func_error name args)
-             | _ -> func_error name args)
-
-         (* | `Id ("unzip" as name) -> (match ev_all args with *)
-         (*     | [`List l] -> *)
-         (*       let l1, l2 = List.fold_right l ~init:([], []) *)
-         (*           ~f:(fun (l1, l2) x -> match x with *)
-         (*               | `List [x1; x2] -> x1::l1, x2::l2 *)
-         (*               | _ -> func_error name args) *)
-         (*       in *)
-         (*       `List [`List l1; `List l2] *)
-         (*     | _ -> func_error name args) *)
-
-         | _ -> (match ev ctx lim func with
-             | `Closure (`Lambda (arg_names, body), enclosed_ctx) ->
-               (match List.zip arg_names (ev_all args) with
-                | Some bindings ->
-                  let ctx' =
-                    List.fold bindings ~init:(enclosed_ctx)
-                      ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value)
-                  in
-                  ev ctx' (lim - 1) body
-                | None -> argn_error @@ Expr.to_string body)
-             | _ -> raise @@ RuntimeError (sprintf "Tried to apply a non-function: %s"
-                                             (Expr.to_string expr))))
+        (match ev ctx lim func with
+         | `Closure (`Lambda (arg_names, body), enclosed_ctx) ->
+           (match List.zip arg_names (ev_all args) with
+            | Some bindings ->
+              let ctx' =
+                List.fold bindings ~init:(enclosed_ctx)
+                  ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value)
+              in
+              ev ctx' (lim - 1) body
+            | None -> argn_error @@ Expr.to_string body)
+         | _ -> raise @@ RuntimeError (sprintf "Tried to apply a non-function: %s"
+                                         (Expr.to_string expr)))
 
       | `Op (op, args) ->
         (match op with
@@ -334,7 +297,7 @@ let partial_eval
     : ExprValue.t =
   let rec ev ctx lim (expr: ExprValue.t) : ExprValue.t =
     let ev_all = List.map ~f:(ev ctx lim) in
-    if lim = 0 then raise (RuntimeError "Exceeded recursion limit.")
+    if lim = 0 then raise HitRecursionLimit
     else match expr with
       | `Unit | `Closure _ | `Num _ | `Bool _ -> expr
       | `List x -> `List (List.map x ~f:(ev ctx lim))
