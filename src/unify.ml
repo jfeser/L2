@@ -39,7 +39,7 @@ let sterm_of_expr_value (e: Eval.ExprValue.t) : sterm option =
     | `Id x -> V x
     | `Op (RCons, [xs; x])
     | `Op (Ast.Cons, [x; xs]) -> Cons (f x, f xs)
-    | `Apply _ -> K (Eval.ExprValue.to_string e)
+    | `Apply _ -> V (Eval.ExprValue.to_string e)
     | `Closure _
     | `Let _
     | `Tree _
@@ -130,6 +130,10 @@ let rec to_string (s: sterm) : string =
   | Cons(h, t) -> "Cons(" ^ (to_string h) ^ "," ^ (to_string t) ^ ")"
   | K(t) | V(t) -> t
   | U(t, vol) -> if vol then raise Unknown (* sanity check *) else t
+
+let sub_to_string (s: substitution) : string =
+  List.map ~f:(fun (i, t) -> i ^ " = " ^ (to_string (retranslate t))) s
+  |> String.concat ~sep:","
 
 and print_sub (s: substitution) =
   let ss = List.map ~f:(fun (i, t) -> i ^ " = " ^ (to_string (retranslate t))) s
