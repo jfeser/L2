@@ -401,7 +401,9 @@ let time_solve csv config (name, bk_strs, example_strs, desc) =
     let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Expr.of_string impl) in
     let examples = List.map example_strs ~f:Example.of_string in
     let start_time = Time.now () in
-    let solutions = Search.solve ~init:Search.extended_init ~config ~bk examples in
+    let (solutions, verify_count) =
+      Search.solve ~init:Search.extended_init ~config ~bk examples
+    in
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
     let solutions_str =
@@ -412,7 +414,8 @@ let time_solve csv config (name, bk_strs, example_strs, desc) =
       |> String.concat ~sep:"\n"
     in
     if csv then begin
-        printf "%s,%f,%s\n" name (Time.Span.to_sec solve_time) solutions_str;
+      printf "%s,%f,%d,%s\n"
+        name (Time.Span.to_sec solve_time) verify_count solutions_str;
       end else begin
         printf "Solved %s in %s. Solutions:\n%s\n\n"
                name (Time.Span.to_short_string solve_time) solutions_str;

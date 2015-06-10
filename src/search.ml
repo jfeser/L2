@@ -654,5 +654,5 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
 
     Deduction.log_summary ();
     
-    ret
+    (ret, !verify_count)
   end ;;
