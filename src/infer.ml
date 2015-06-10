@@ -351,7 +351,7 @@ let stdlib_tctx = [
   "drop", "(list[a], num) -> list[a]";
   "append", "(list[a], list[a]) -> list[a]";
   "reverse", "(list[a]) -> list[a]";
-  "intersperse", "(a, list[a]) -> list[a]";
+  "intersperse", "(list[a], a) -> list[a]";
   "concat", "(list[list[a]]) -> list[a]";
   "zip", "(list[a], list[a]) -> list[list[a]]";
 
