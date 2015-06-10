@@ -1,7 +1,6 @@
 open Core.Std
 
 open Ast
-open Util
 
 type id = string
 
@@ -31,8 +30,6 @@ let rec sterm_to_string (s: sterm) : string =
 
 (* Convert an expression to a unifiable term. *)
 let sterm_of_expr_value (e: Eval.ExprValue.t) : sterm option =
-  let fresh_name = Fresh.mk_fresh_name_fun () in
-  let fresh_var () = V (fresh_name ()) in
   let rec f e = match e with
     | `Unit -> K "unit"
     | `Num x -> K (Int.to_string x)
@@ -51,8 +48,6 @@ let sterm_of_expr_value (e: Eval.ExprValue.t) : sterm option =
   in try Some (f e) with Unknown -> None
 
 let sterm_of_expr (e: Expr.t) : sterm option =
-  let fresh_name = Fresh.mk_fresh_name_fun () in
-  let fresh_var () = V (fresh_name ()) in
   let rec f e = match e with
     | `Num x -> K (Int.to_string x)
     | `Bool x -> K (if x then "true" else "false")
@@ -180,15 +175,3 @@ let unifiable_core (s1: sterm) (s2: sterm) =
   try
     let sub = unify [translate s1, translate s2] in s1, sub
   with Non_unifiable -> unifiable_core_aux s1 (U(fresh (), true)) s2
-
-;;
-
-begin
-  let term1 = Cons(K("1"), Cons(K("2"), K("[]")))
-  and term2 = Cons(K("7"), Cons(K("2"), Cons(K("3"), K("[]")))) in
-  (*let term1 = Cons(K("1"), Cons(K("2"), K("[]")))
-  and term2 = Cons(K("3"), Cons(K("4"), K("[]"))) in*)
-  let core, sub = unifiable_core term1 term2 in
-  Printf.printf "%s\n" (to_string core);
-  print_sub sub;
-end;

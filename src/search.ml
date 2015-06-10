@@ -1,5 +1,4 @@
 open Core.Std
-open Printf
 
 open Ast
 open Collections
@@ -453,7 +452,7 @@ let solve_single
              (* If the example output does not pass the
                 postcondition of the outermost function, discard this
                 candidate. *)
-             if not (check_outermost_application body examples) then false else
+             (* if not (check_outermost_application body examples) then false else *)
                (* Attempt partial evaluation and unification. *)
                List.for_all (List.zip_exn examples result_sterms)
                  ~f:(fun ((input, result), result_sterm) ->
@@ -488,9 +487,14 @@ let solve_single
                          r
                        | _ -> true
                      with
-                     | Eval.RuntimeError _ ->
-                       LOG "Partial evalution of %s failed.\n"
+                     | Eval.HitRecursionLimit ->
+                       LOG "Partial evalution of %s hit recursion limit."
                          (Eval.ExprValue.to_string expr)
+                         LEVEL TRACE;
+                       true
+                     | Eval.RuntimeError err ->
+                       LOG "Partial evalution of %s failed with error %s."
+                         (Eval.ExprValue.to_string expr) err
                          LEVEL TRACE;
                        false)
            | _ -> failwith "Bad result from solve_single.")

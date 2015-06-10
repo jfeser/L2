@@ -21,15 +21,6 @@ let testcases =
       "(add [1 2 3 4] 5) -> [6 7 8 9]";
     ], "Adds a number to each element of a list.";
 
-    "evens", [],
-    [
-      "(evens []) -> []";
-      "(evens [1]) -> []";
-      "(evens [1 2]) -> [2]";
-      "(evens [1 2 3 4]) -> [2 4]";
-      "(evens [5 6 3 9 8 4]) -> [6 8 4]";
-    ], "Filters out the odd numbers in a list, leaving the even numbers.";
-
     "reverse", [],
     [
       "(reverse []) -> []";
@@ -43,7 +34,7 @@ let testcases =
       "(droplast [1]) -> []";
       "(droplast [1 2 3]) -> [1 2]";
       "(droplast [1 2]) -> [1]";
-      "(droplast [1 2 5 7 8]) -> [1 2 5 7]";
+      "(droplast [1 5 2 7 8]) -> [1 5 2 7]";
       "(droplast [1 1 1 1 1 1 1]) -> [1 1 1 1 1 1]";
       "(droplast [1 1 1 1 1 1]) -> [1 1 1 1 1]";
     ], "";
@@ -167,27 +158,27 @@ let testcases =
     ], "Sums the nodes of a tree.";
 
     "leaves", [
-        "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
-      ], [
-        "(leaves {}) -> []";
-        "(leaves {1}) -> [1]";
-        "(leaves {1 {2} {3}}) -> [2 3]";
-        "(leaves {1 {2} {3 {4}}}) -> [2 4]";
-        "(leaves {1 {2 {1} {5}} {3 {4}}}) -> [1 5 4]";
-      ], "Returns a list of the leaves of a tree.";
+      "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
+    ], [
+      "(leaves {}) -> []";
+      "(leaves {1}) -> [1]";
+      "(leaves {1 {2} {3}}) -> [2 3]";
+      "(leaves {1 {2} {3 {4}}}) -> [2 4]";
+      "(leaves {1 {2 {1} {5}} {3 {4}}}) -> [1 5 4]";
+    ], "Returns a list of the leaves of a tree.";
 
     "count_leaves", [
-        "sum", "(lambda (a) (foldl a (lambda (c b) (+ c b)) 0))";
-      ], [
-        "(count_leaves {}) -> 0";
-        "(count_leaves {5}) -> 1";
-        "(count_leaves {3 {2}}) -> 1";
-        "(count_leaves {3 {2} {5}}) -> 2";
-        "(count_leaves {3 {2 {3}} {5}}) -> 2";
-        "(count_leaves {3 {2 {3} {5}} {5 {5}}}) -> 3";
-        "(count_leaves {3 {2 {3} {5}} {5 {5} {4}}}) -> 4";
-        "(count_leaves {5 {5 {5 {5 {5 {5 {5 {5}}}}}}}}) -> 1";
-      ], "Counts the number of leaves in a tree.";
+      "sum", "(lambda (a) (foldl a (lambda (c b) (+ c b)) 0))";
+    ], [
+      "(count_leaves {}) -> 0";
+      "(count_leaves {5}) -> 1";
+      "(count_leaves {3 {2}}) -> 1";
+      "(count_leaves {3 {2} {5}}) -> 2";
+      "(count_leaves {3 {2 {3}} {5}}) -> 2";
+      "(count_leaves {3 {2 {3} {5}} {5 {5}}}) -> 3";
+      "(count_leaves {3 {2 {3} {5}} {5 {5} {4}}}) -> 4";
+      "(count_leaves {5 {5 {5 {5 {5 {5 {5 {5}}}}}}}}) -> 1";
+    ], "Counts the number of leaves in a tree.";
 
     "membert", [],
     [
@@ -216,23 +207,23 @@ let testcases =
     ], "Returns the maximum element in a tree.";
 
     "flatten", [
-        "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
-      ], [
-        "(flatten {}) -> []";
-        "(flatten {1}) -> [1]";
-        "(flatten {1 {2} {3}}) -> [1 2 3]";
-      ], "Flattens a tree into a list. Requires the specification of $join$.";
+      "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
+    ], [
+      "(flatten {}) -> []";
+      "(flatten {1}) -> [1]";
+      "(flatten {1 {2} {3}}) -> [1 2 3]";
+    ], "Flattens a tree into a list. Requires the specification of $join$.";
 
     "height", [
-        "max", "(lambda (a) (foldl a (lambda (c b) (if (< c b) b c)) 0))";
-      ], [
-        "(height {}) -> 0";
-        "(height {1}) -> 1";
-        "(height {100 {100} {100}}) -> 2";
-        "(height {100 {100} {100 {100 {100}}}}) -> 4";
-        "(height {100 {100 {100 {100 {100}}}} {100}}) -> 5";
-        "(height {90 {6 {5} {6} {8}} {7} {9} {5}}) -> 3";
-      ], "Returns the height of a tree. Requires the specification of $max$.";
+      "max", "(lambda (a) (foldl a (lambda (c b) (if (< c b) b c)) 0))";
+    ], [
+      "(height {}) -> 0";
+      "(height {1}) -> 1";
+      "(height {100 {100} {100}}) -> 2";
+      "(height {100 {100} {100 {100 {100}}}}) -> 4";
+      "(height {100 {100 {100 {100 {100}}}} {100}}) -> 5";
+      "(height {90 {6 {5} {6} {8}} {7} {9} {5}}) -> 3";
+    ], "Returns the height of a tree. Requires the specification of $max$.";
 
     "prependt", [],
     [
@@ -269,14 +260,14 @@ let testcases =
     ], "";
 
     "flattenl", [
-        "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
-      ], [
-        "(flattenl {}) -> []";
-        "(flattenl {[1]}) -> [1]";
-        "(flattenl {[1] {[2]} {[3]}}) -> [1 2 3]";
-        "(flattenl {[1 1 1] {[2]} {[3]}}) -> [1 1 1 2 3]";
-        "(flattenl {[1 1 1] {[2 5 7]} {[3]}}) -> [1 1 1 2 5 7 3]";
-      ], "Flattens a tree of lists into a list. Requires the specification of $join$.";
+      "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
+    ], [
+      "(flattenl {}) -> []";
+      "(flattenl {[1]}) -> [1]";
+      "(flattenl {[1] {[2]} {[3]}}) -> [1 2 3]";
+      "(flattenl {[1 1 1] {[2]} {[3]}}) -> [1 1 1 2 3]";
+      "(flattenl {[1 1 1] {[2 5 7]} {[3]}}) -> [1 1 1 2 5 7 3]";
+    ], "Flattens a tree of lists into a list. Requires the specification of $join$.";
 
     "sumtrees", [],
     [
@@ -286,75 +277,75 @@ let testcases =
     ], "";
 
     "dropmax", [
-        (* "max", "(lambda (a) (foldl a (lambda (c b) (if (< c b) b c)) 0))"; *)
-      ], [
-        "(dropmax [3 5 2]) -> [3 2]";
-        "(dropmax [3 1 2]) -> [1 2]";
-        "(dropmax [1 5 2]) -> [1 2]";
-      ], "Removes the largest number in a list. Requires the specification of $max$.";
+      (* "max", "(lambda (a) (foldl a (lambda (c b) (if (< c b) b c)) 0))"; *)
+    ], [
+      "(dropmax [3 5 2]) -> [3 2]";
+      "(dropmax [3 1 2]) -> [1 2]";
+      "(dropmax [1 5 2]) -> [1 2]";
+    ], "Removes the largest number in a list. Requires the specification of $max$.";
 
     "shiftl", [
-        "reverse", "(lambda (a) (foldl a (lambda (c b) (cons b c)) []))";
-      ], [
-        "(shiftl []) -> []";
-        "(shiftl [1]) -> [1]";
-        "(shiftl [1 2]) -> [2 1]";
-        "(shiftl [5 2 3]) -> [2 3 5]";
-        "(shiftl [1 2 3 4]) -> [2 3 4 1]";
-      ], "Shift all items in a list to the left. Requires the specification of $append$.";
+      "reverse", "(lambda (a) (foldl a (lambda (c b) (cons b c)) []))";
+    ], [
+      "(shiftl []) -> []";
+      "(shiftl [1]) -> [1]";
+      "(shiftl [1 2]) -> [2 1]";
+      "(shiftl [5 2 3]) -> [2 3 5]";
+      "(shiftl [1 2 3 4]) -> [2 3 4 1]";
+    ], "Shift all items in a list to the left. Requires the specification of $append$.";
 
     "shiftr", [
-        "reverse", "(lambda (a) (foldl a (lambda (c b) (cons b c)) []))";
-      ], [
-        "(shiftr []) -> []";
-        "(shiftr [1]) -> [1]";
-        "(shiftr [1 2]) -> [2 1]";
-        "(shiftr [0 2 3]) -> [3 0 2]";
-        "(shiftr [1 2 3 4]) -> [4 1 2 3]";
-        "(shiftr [2 9 7 4]) -> [4 2 9 7]";
-      ], "Shift all items in a list to the right. Requires the specification of $last$.";
+      "reverse", "(lambda (a) (foldl a (lambda (c b) (cons b c)) []))";
+    ], [
+      "(shiftr []) -> []";
+      "(shiftr [1]) -> [1]";
+      "(shiftr [1 2]) -> [2 1]";
+      "(shiftr [0 2 3]) -> [3 0 2]";
+      "(shiftr [1 2 3 4]) -> [4 1 2 3]";
+      "(shiftr [2 9 7 4]) -> [4 2 9 7]";
+    ], "Shift all items in a list to the right. Requires the specification of $last$.";
 
     "dedup", [
-        "member", "(lambda (b a) (foldl b (lambda (d c) (| d (= a c))) #f))";
-      ], [
-        "(dedup []) -> []";
-        "(dedup [1]) -> [1]";
-        "(dedup [1 2 5]) -> [1 2 5]";
-        "(dedup [1 2 5 2]) -> [1 5 2]";
-        "(dedup [1 1 1 2 5 2]) -> [1 5 2]";
-        "(dedup [3 3 3 5 5 5]) -> [3 5]";
-        "(dedup [1 2 3 2 1]) -> [3 2 1]";
-      ], "Removes duplicate elements from a list. Requires the specification of $member$.";
+      "member", "(lambda (b a) (foldl b (lambda (d c) (| d (= a c))) #f))";
+    ], [
+      "(dedup []) -> []";
+      "(dedup [1]) -> [1]";
+      "(dedup [1 2 5]) -> [1 2 5]";
+      "(dedup [1 2 5 2]) -> [1 5 2]";
+      "(dedup [1 1 1 2 5 2]) -> [1 5 2]";
+      "(dedup [3 3 3 5 5 5]) -> [3 5]";
+      "(dedup [1 2 3 2 1]) -> [3 2 1]";
+    ], "Removes duplicate elements from a list. Requires the specification of $member$.";
 
     "searchnodes", [
-        "member", "(lambda (b a) (foldl b (lambda (d c) (| d (= a c))) #f))";
-      ], [
-        "(searchnodes {} 1) -> #f";
-        "(searchnodes {[3 2] {[4 1]}} 2) -> #t";
-        "(searchnodes {[3 2] {[4 1]}} 8) -> #f";
-        "(searchnodes {[3 4] {[5]} {[6 4]}} 6) -> #t";
-        "(searchnodes {[1 3] {[5]} {[2 3]}} 3) -> #t";
-        "(searchnodes {[1 3] {[5]} {[2 3]}} 4) -> #f";
-      ], "";
+      "member", "(lambda (b a) (foldl b (lambda (d c) (| d (= a c))) #f))";
+    ], [
+      "(searchnodes {} 1) -> #f";
+      "(searchnodes {[3 2] {[4 1]}} 2) -> #t";
+      "(searchnodes {[3 2] {[4 1]}} 8) -> #f";
+      "(searchnodes {[3 4] {[5]} {[6 4]}} 6) -> #t";
+      "(searchnodes {[1 3] {[5]} {[2 3]}} 3) -> #t";
+      "(searchnodes {[1 3] {[5]} {[2 3]}} 4) -> #f";
+    ], "";
 
     "selectnodes", [
-        "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
-        "pred", "(lambda (a) (= 0 (% a 2)))";
-      ], [
-        "(selectnodes {}) -> []";
-        "(selectnodes {1 {10} {25}}) -> [10]";
-        "(selectnodes {1 {10} {20}}) -> [10 20]";
-        "(selectnodes {30 {15} {25}}) -> [30]";
-      ], "";
+      "join", "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))";
+      "pred", "(lambda (a) (= 0 (% a 2)))";
+    ], [
+      "(selectnodes {}) -> []";
+      "(selectnodes {1 {10} {25}}) -> [10]";
+      "(selectnodes {1 {10} {20}}) -> [10 20]";
+      "(selectnodes {30 {15} {25}}) -> [30]";
+    ], "";
 
     "dropmins", [
-        "min", "(lambda (a) (foldl a (lambda (c b) (if (< c b) c b)) inf))";
-      ], [
-        "(dropmins []) -> []";
-        "(dropmins [[1]]) -> [[]]";
-        "(dropmins [[1 3 5] [5 3 2]]) -> [[3 5] [5 3]]";
-        "(dropmins [[8 4 7 2] [4 6 2 9] [3 4 1 0]]) -> [[8 4 7] [4 6 9] [3 4 1]]";
-      ], "";
+      "min", "(lambda (a) (foldl a (lambda (c b) (if (< c b) c b)) inf))";
+    ], [
+      "(dropmins []) -> []";
+      "(dropmins [[1]]) -> [[]]";
+      "(dropmins [[1 3 5] [5 3 2]]) -> [[3 5] [5 3]]";
+      "(dropmins [[8 4 7 2] [4 6 2 9] [3 4 1 0]]) -> [[8 4 7] [4 6 9] [3 4 1]]";
+    ], "";
 
     "cprod", [],
     [
@@ -382,9 +373,18 @@ let testcases =
     "largest_n", [],
     [
       "(largest_n 3 [[1 2 3] [3 4] [3 2 7]]) -> [7 4 3]";
-      "(largest_n 2 [[1 2 3] [3 4] [3 2 7]]) -> [7 4]";
+      "(largest_n 2 [[1 2 3] [3 7] [3 2 7]]) -> [7 7]";
       "(largest_n 1 [[1 2 3] [3 4] [3 2 7]]) -> [7]";
     ], "";
+
+    "evens", [],
+    [
+      "(evens []) -> []";
+      "(evens [1]) -> []";
+      "(evens [1 2]) -> [2]";
+      "(evens [1 2 3 4]) -> [2 4]";
+      "(evens [5 6 3 9 8 4]) -> [6 8 4]";
+    ], "Filters out the odd numbers in a list, leaving the even numbers.";
 
     "intersect", [],
     [
@@ -409,17 +409,17 @@ let time_solve csv config (name, bk_strs, example_strs, desc) =
     let solutions_str =
       Ctx.to_alist solutions
       |> List.map ~f:(fun (name, lambda) ->
-                      (* let lambda = Expr.normalize lambda in *)
-                      Expr.to_string (`Let (name, lambda, `Id "_")))
+          (* let lambda = Expr.normalize lambda in *)
+          Expr.to_string (`Let (name, lambda, `Id "_")))
       |> String.concat ~sep:"\n"
     in
     if csv then begin
       printf "%s,%f,%d,%s\n"
         name (Time.Span.to_sec solve_time) verify_count solutions_str;
-      end else begin
-        printf "Solved %s in %s. Solutions:\n%s\n\n"
-               name (Time.Span.to_short_string solve_time) solutions_str;
-      end; flush stdout;
+    end else begin
+      printf "Solved %s in %s. Solutions:\n%s\n\n"
+        name (Time.Span.to_short_string solve_time) solutions_str;
+    end; flush stdout;
     name, solve_time, solutions_str, desc
   end
 
