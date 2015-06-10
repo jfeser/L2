@@ -477,6 +477,6 @@ let command =
           | _ -> List.filter testcases ~f:(fun (name, _, _, _) ->
               List.mem testcase_names name)
         in
-        let _ = List.map testcases' ~f:(time_solve csv config) in ())
+        let _ = Parmap.parmap ~chunksize:1 (time_solve csv config) (Parmap.L testcases') in ())
 
 let () = Command.run command

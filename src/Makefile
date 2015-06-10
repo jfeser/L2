@@ -6,6 +6,7 @@ FLAGS = \
 	-pkg core \
 	-pkg Z3 \
     -pkg bolt \
+	-pkg parmap \
 	-pkg camlp4.lib \
 	-pkg sexplib.syntax,comparelib.syntax,fieldslib.syntax,variantslib.syntax,bin_prot.syntax \
 	-tag thread \
