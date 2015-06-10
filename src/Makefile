@@ -19,13 +19,17 @@ FLAGS = \
 	-use-menhir \
 	-j 4
 DEPENDENCIES = core bolt menhir ocamlfind
+BUILD_DIR = _build
 
 .PHONY: clean deps profile
 
-all: timing.native interactive.native
+all: timing.native interactive.native tests.native
 
 %.native: *.ml
 	$(OCAMLBUILD) $(FLAGS) $@
+
+%.mli: *.ml
+	$(OCAMLBUILD) $(FLAGS) $(@:.mli=.inferred.mli); mv $(BUILD_DIR)/$(@:.mli=.inferred.mli) $@
 
 profile:
 	$(OCAMLBUILD) $(FLAGS) -tag debug -tag profile timing.native
