@@ -70,19 +70,38 @@ let sort_of_type (ctx: Z3.context) (typ: typ) : Z3.Sort.sort =
   | App_t ("tree", _) -> tree_sort ctx
   | _ -> Z3.Sort.mk_uninterpreted_s ctx (Expr.typ_to_string typ)
 
+(** Same as sort_of_type, but uses the built in Z3 list type. *)
+let rec sort_of_type' (ctx: Z3.context) (typ: typ) : Z3.Sort.sort =
+  match typ with
+  | Const_t Num_t -> Z3.Arithmetic.Integer.mk_sort ctx
+  | Const_t Bool_t -> Z3.Boolean.mk_sort ctx
+  | App_t ("list", [t]) ->
+    Z3.Z3List.mk_list_s ctx (Type.to_string typ) (sort_of_type' ctx t)
+  | App_t ("tree", _) -> tree_sort ctx
+  | Var_t ({contents = Free _}) -> failwith "Cannot convert free type variable to Z3 sort."
+  | _ -> Z3.Sort.mk_uninterpreted_s ctx (Expr.typ_to_string typ)
+
 (** Generate a Z3 assertion from a boolean expression. *)
 let rec assert_of_expr (zctx: Z3.context) (expr: TypedExpr.t) : Z3.Expr.expr =
   let open TypedExpr in
   let aoe = assert_of_expr zctx in
   match expr with
-  | Id (name, t) -> Z3.Expr.mk_const_s zctx name (sort_of_type zctx t)
+  | Id (name, t) -> Z3.Expr.mk_const_s zctx name (sort_of_type' zctx t)
   | Num (x, _) -> z3_int zctx x
-  | Apply ((Id (name, _), args), ret_t) ->
-    let args_t = List.map ~f:to_type args in
+  | List ([], t) -> Z3.Z3List.nil (sort_of_type' zctx t)
+  | List (xs, t) ->
+    (* Convert to cons expression, instead of duplicating logic. *)
+    let cons_expr = List.fold_right xs ~init:(List ([], t)) ~f:(fun elem rest ->
+        Op ((Cons, [elem; rest]), t))
+    in
+    aoe cons_expr
+  | Apply ((Id (name, Arrow_t (args_t, _)), args), ret_t) ->
+    let args_z3 = List.map ~f:aoe args in
+    let args_sorts = List.map ~f:(Z3.Expr.get_sort) args_z3 in
     let func_decl =
-      Z3.FuncDecl.mk_func_decl_s zctx name
-        (List.map ~f:(sort_of_type zctx) args_t) (sort_of_type zctx ret_t)
-    in z3_app func_decl (List.map ~f:aoe args)
+      Z3.FuncDecl.mk_func_decl_s zctx name args_sorts (sort_of_type' zctx ret_t)
+    in
+    z3_app func_decl (List.map ~f:aoe args)
   | Op ((Eq, [a1; a2]), _) -> z3_eq zctx (aoe a1) (aoe a2)
   | Op ((Neq, [a1; a2]), _) ->
     Z3.Boolean.mk_not zctx (z3_eq zctx (aoe a1) (aoe a2))
@@ -93,7 +112,29 @@ let rec assert_of_expr (zctx: Z3.context) (expr: TypedExpr.t) : Z3.Expr.expr =
   | Op ((And, [a1; a2]), _) -> Z3.Boolean.mk_and zctx [aoe a1; aoe a2]
   | Op ((Or, [a1; a2]), _) -> Z3.Boolean.mk_or zctx [aoe a1; aoe a2]
   | Op ((Not, [a]), _) -> Z3.Boolean.mk_not zctx (aoe a)
-  | Op ((If, [a1; a2; a3]), _) -> Z3.Boolean.mk_ite zctx (aoe a1) (aoe a2) (aoe a3)
+  | Op ((If, [a1; a2; a3]), _) ->
+    Z3.Boolean.mk_ite zctx (aoe a1) (aoe a2) (aoe a3)
+  | Op ((Car, [a]), t) ->
+    let z3_a = aoe a in
+    let sort = Z3.Expr.get_sort z3_a in
+    z3_app (Z3.Z3List.get_head_decl sort) [z3_a]
+  | Op ((Cdr, [a]), t) ->
+    let z3_a = aoe a in
+    let sort = Z3.Expr.get_sort z3_a in
+    z3_app (Z3.Z3List.get_tail_decl sort) [z3_a]
+  | Op ((Cons, [a1; a2]), t) ->
+    let a1_z3 = aoe a1 in
+    let sort =
+      let a1_sort = Z3.Expr.get_sort a1_z3 in
+      let name = Z3.Symbol.get_string (Z3.Sort.get_name a1_sort) in
+      Z3.Z3List.mk_list_s zctx name a1_sort
+    in
+    (* Make sure that nil gets assigned a concrete sort if possible. *)
+    let a2_z3 = (match a2 with
+        | List ([], _) -> Z3.Z3List.nil sort
+        | _ -> aoe a2)
+    in
+    z3_app (Z3.Z3List.get_cons_decl sort) [a1_z3; a2_z3]
   | _ -> failwith (sprintf "Unsupported expression: %s" (to_string expr))
 
 let assert_of_string (zctx: Z3.context) (s: string) : Z3.Expr.expr =
@@ -429,7 +470,7 @@ let memoized_check
      | Z3.Solver.UNSATISFIABLE -> counter_incr "solver_unsat"
      | Z3.Solver.SATISFIABLE -> counter_incr "solver_sat"
      | Z3.Solver.UNKNOWN -> counter_incr "solver_unknown");
-    Timer.add timer "solve_time" run_time;
+    Timer.add timer "solve" run_time;
     max_solve_time := Time.Span.max !max_solve_time run_time;
     FormulaII.add memoizer asserts' x;
     x
@@ -548,8 +589,8 @@ let log_summary () =
   (try
      LOG "Average time in solver: %s"
        (to_short_string
-          ((Timer.find_exn timer "solve_time") /
-           (float (Counter.find_exn counter "call_count"))))
+          ((Timer.find_exn timer "solve") /
+           (float (Counter.find_exn counter "solver_call"))))
        LEVEL INFO
    with Invalid_argument _ -> ());
 
