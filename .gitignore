@@ -328,3 +328,6 @@ sympy-plots-for-*.tex/
 *.sav
 
 pldi2015 student research/auto
+_tags
+
+*.pptx
