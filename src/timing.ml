@@ -21,12 +21,12 @@ let testcases =
       "(add [1 2 3 4] 5) -> [6 7 8 9]";
     ], "Adds a number to each element of a list.";
 
-    "reverse", [],
+    "Reverse", [],
     [
-      "(reverse []) -> []";
-      "(reverse [0]) -> [0]";
-      "(reverse [0 1]) -> [1 0]";
-      "(reverse [0 1 2]) -> [2 1 0]"
+      "(Reverse []) -> []";
+      "(Reverse [0]) -> [0]";
+      "(Reverse [0 1]) -> [1 0]";
+      "(Reverse [0 1 2]) -> [2 1 0]"
     ], "Reverses a list.";
 
     "droplast", [],
@@ -305,16 +305,16 @@ let testcases =
       "(shiftr [2 9 7 4]) -> [4 2 9 7]";
     ], "Shift all items in a list to the right. Requires the specification of $last$.";
 
-    "dedup", [
+    "Dedup", [
       "member", "(lambda (b a) (foldl b (lambda (d c) (| d (= a c))) #f))";
     ], [
-      "(dedup []) -> []";
-      "(dedup [1]) -> [1]";
-      "(dedup [1 2 5]) -> [1 2 5]";
-      "(dedup [1 2 5 2]) -> [1 5 2]";
-      "(dedup [1 1 1 2 5 2]) -> [1 5 2]";
-      "(dedup [3 3 3 5 5 5]) -> [3 5]";
-      "(dedup [1 2 3 2 1]) -> [3 2 1]";
+      "(Dedup []) -> []";
+      "(Dedup [1]) -> [1]";
+      "(Dedup [1 2 5]) -> [1 2 5]";
+      "(Dedup [1 2 5 2]) -> [1 5 2]";
+      "(Dedup [1 1 1 2 5 2]) -> [1 5 2]";
+      "(Dedup [3 3 3 5 5 5]) -> [3 5]";
+      "(Dedup [1 2 3 2 1]) -> [3 2 1]";
     ], "Removes duplicate elements from a list. Requires the specification of $member$.";
 
     "searchnodes", [
@@ -428,13 +428,13 @@ let command =
     let open Command.Spec in
     empty
     +> flag "-c" ~aliases:["--csv"] no_arg ~doc:" print out results in csv format"
+    +> flag "-i" ~aliases:["--no-infer-base"] no_arg ~doc:" do not infer the base case of folds"
+    +> flag "-p" ~aliases:["--parallel"] no_arg ~doc:" run tests in parallel"
+    +> flag "-s" ~aliases:["--stdin"] no_arg ~doc:" read specification from standard input"
+    +> flag "-u" ~aliases:["--no-typed-search"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
     +> flag "-V" ~aliases:["--very-verbose"] no_arg ~doc:" print many progress messages while searching"
-    +> flag "-u" ~aliases:["--no-typed-search"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> flag "-x" ~aliases:["--no-examples"] no_arg ~doc:" do not deduce examples when generalizing"
-    +> flag "-i" ~aliases:["--no-infer-base"] no_arg ~doc:" do not infer the base case of folds"
-    +> flag "-s" ~aliases:["--stdin"] no_arg ~doc:" read specification from standard input"
-    +> flag "-b" ~aliases:["--background"] (listed string) ~doc:" use background knowledge"
     +> flag "-z" ~aliases:["--use-z3"] no_arg ~doc:" use Z3 for pruning"
     +> anon (sequence ("testcase" %: string))
   in
@@ -442,8 +442,8 @@ let command =
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun csv verbose very_verbose untyped no_deduce
-      no_infer use_stdin bk_strs use_solver testcase_names () ->
+    (fun csv no_infer parallel use_stdin untyped verbose very_verbose no_deduce
+      use_solver testcase_names () ->
       let open Search in
       let config = {
         default_config with
@@ -458,7 +458,7 @@ let command =
       if use_stdin then
         let input_lines = In_channel.input_all stdin |> String.split_lines in
         let bk_strs, example_strs =
-          match List.findi ~f:(fun i line -> line = "") input_lines with
+          match List.findi ~f:(fun _ line -> line = "") input_lines with
           | Some (sep_index, _) ->
             List.take input_lines sep_index, List.drop input_lines (sep_index + 1)
           | None -> [], input_lines
@@ -477,6 +477,11 @@ let command =
           | _ -> List.filter testcases ~f:(fun (name, _, _, _) ->
               List.mem testcase_names name)
         in
-        let _ = Parmap.parmap ~chunksize:1 (time_solve csv config) (Parmap.L testcases') in ())
+        let _ = 
+          if parallel then 
+            Parmap.parmap ~chunksize:1 (time_solve csv config) (Parmap.L testcases')
+          else
+            List.map ~f:(time_solve csv config) testcases'
+        in ())
 
 let () = Command.run command
