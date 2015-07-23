@@ -1,5 +1,7 @@
 open Core.Std
 
+module Json = Yojson.Safe
+
 module ListExt = struct
   include List
 
@@ -334,6 +336,16 @@ module Timer = struct
   let to_strings (t: t) : string list =
     List.map (Ctx.data t) ~f:(fun { desc = d; time = t } ->
         sprintf "%s: %s" d (Time.Span.to_short_string t))
+
+  (** Serialize a timer to JSON. This creates an object of the form {
+      name: time, ...}. Times are stored in seconds. *)
+  let to_json (t: t) : Json.json =
+    `Assoc
+      (Ctx.to_alist t
+       |> List.map ~f:(fun (k, v) -> (k, `Assoc [
+           "time", `Float (Time.Span.to_sec v.time);
+           "description", `String v.desc;
+         ])))
 end
 
 module Counter = struct
@@ -352,13 +364,21 @@ module Counter = struct
   let find_exn (t: t) (name: string) : int =
     (Ctx.lookup_exn t name).count
 
-  let incr  (t: t) (name: string) : unit =
+  let incr (t: t) (name: string) : unit =
     let info = Ctx.lookup_exn t name in
     Ctx.update t name { info with count = info.count + 1 }
 
   let to_strings (t: t) : string list =
     List.map (Ctx.data t) ~f:(fun { desc = d; count = c } ->
         sprintf "%s: %s" d (Int.to_string c))
+
+  (** Serialize a counter to JSON. This creates an object of the form
+      { name: count, ... }. *)
+  let to_json (t: t) : Json.json =
+    `Assoc (Ctx.to_alist t |> List.map ~f:(fun (k, v) -> (k, `Assoc [
+        "count", `Int v.count;
+        "description", `String v.desc;
+      ])))
 end
 
 module Tree = struct

@@ -53,6 +53,13 @@ let () =
 let run_with_time (name: string) (thunk: unit -> 'a) : 'a =
   Timer.run_with_time timer name thunk
 
+(* Create a counter and register counter fields. *)
+let counter = Counter.empty ()
+let () =
+  let n = Counter.add_zero counter in
+  n "verify" "Number of expressions verified against the specification"
+ 
+
 let matrix_of_texpr_list ~size (texprs: TypedExpr.t list) : TypedExpr.t Sstream.matrix =
   let init_sizes = List.map texprs ~f:(fun e -> e, size e) in
   let max_size =
@@ -66,10 +73,7 @@ let matrix_of_texpr_list ~size (texprs: TypedExpr.t list) : TypedExpr.t Sstream.
 
 let arrow_error () = failwith "Operator is not of type Arrow_t."
 
-let rec simple_enumerate
-    ?(memo=SimpleMemoizer.empty ())
-    init
-  : expr Sstream.matrix =
+let rec simple_enumerate ?(memo=SimpleMemoizer.empty ()) init : expr Sstream.matrix =
   let open Sstream in
   let init_matrix =
     matrix_of_texpr_list ~size:(fun e -> Expr.cost (TypedExpr.to_expr e)) init
@@ -628,10 +632,8 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
             |> List.map ~f:(fun (name, typ) -> TypedExpr.Id (name, typ)))
   in
 
-  let verify_count = ref 0 in
-
   let verify ?(limit=100) target examples =
-    verify_count := !verify_count + 1;
+    Counter.incr counter "verify";
     try
       match target (`Id "_") with
       | `Let (name, body, _) ->
@@ -652,11 +654,9 @@ let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
   begin
     let log_strs = List.iter ~f:(fun s -> LOG s LEVEL INFO) in
 
-    LOG "Verified %d expressions." !verify_count LEVEL INFO;
-
     log_strs (Timer.to_strings timer);
 
     Deduction.log_summary ();
     
-    (ret, !verify_count)
+    ret
   end ;;

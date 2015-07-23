@@ -396,14 +396,36 @@ let testcases =
 
   ]
 
-let time_solve csv config (name, bk_strs, example_strs, desc) =
+(** Get a JSON object containing all captured information from a single run. *)
+let get_json (testcase_name, testcase_bk, testcase_examples, testcase_desc) runtime solution : Json.json =
+  let timers = [
+    "search", Search.timer;
+    "deduction", Deduction.timer;
+  ] in
+  let counters = [
+    "search", Search.counter;
+    "deduction", Deduction.counter;
+  ] in
+  `Assoc [
+    "timers", `List (List.map timers ~f:(fun (name, timer) -> `Assoc [name, Timer.to_json timer]));
+    "counters", `List (List.map counters ~f:(fun (name, counter) -> `Assoc [name, Counter.to_json counter]));
+    "testcase", `Assoc [
+      "name", `String testcase_name;
+      "background", `List (List.map ~f:(fun n -> `String n) testcase_bk);
+      "examples", `List (List.map ~f:(fun n -> `String n) testcase_examples);
+      "description", `String testcase_desc;
+    ];
+    "solution", `String solution;
+    "runtime", `Float runtime;
+  ]  
+
+let time_solve json config (name, bk_strs, example_strs, desc) =
   begin
+    (* Attempt to synthesize from specification. *)
     let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Expr.of_string impl) in
     let examples = List.map example_strs ~f:Example.of_string in
     let start_time = Time.now () in
-    let (solutions, verify_count) =
-      Search.solve ~init:Search.extended_init ~config ~bk examples
-    in
+    let solutions = Search.solve ~init:Search.extended_init ~config ~bk examples in
     let end_time = Time.now () in
     let solve_time = Time.diff end_time start_time in
     let solutions_str =
@@ -413,22 +435,24 @@ let time_solve csv config (name, bk_strs, example_strs, desc) =
           Expr.to_string (`Let (name, lambda, `Id "_")))
       |> String.concat ~sep:"\n"
     in
-    if csv then begin
-      printf "%s,%f,%d,%s\n"
-        name (Time.Span.to_sec solve_time) verify_count solutions_str;
-    end else begin
-      printf "Solved %s in %s. Solutions:\n%s\n\n"
-        name (Time.Span.to_short_string solve_time) solutions_str;
-    end; flush stdout;
-    name, solve_time, solutions_str, desc
+    printf "Solved %s in %s. Solutions:\n%s\n\n" name (Time.Span.to_short_string solve_time) solutions_str;
+
+    (* Write json to a file, if requested. *)
+    (match json with
+     | Some filename ->
+       let bk_printable = List.map bk_strs ~f:(fun (name, lambda) -> name ^ " = " ^ lambda) in
+       Json.to_file ~std:true filename
+         (get_json (name, bk_printable, example_strs, desc) (Time.Span.to_sec solve_time) solutions_str)
+     | None -> ());
   end
 
 let command =
   let spec =
     let open Command.Spec in
     empty
-    +> flag "-c" ~aliases:["--csv"] no_arg ~doc:" print out results in csv format"
     +> flag "-i" ~aliases:["--no-infer-base"] no_arg ~doc:" do not infer the base case of folds"
+    +> flag "-f" ~aliases:["--input"] (optional string) ~doc:" read specification from file"
+    +> flag "-j" ~aliases:["--json"] (optional string) ~doc:" write debugging information to JSON"
     +> flag "-p" ~aliases:["--parallel"] no_arg ~doc:" run tests in parallel"
     +> flag "-s" ~aliases:["--stdin"] no_arg ~doc:" read specification from standard input"
     +> flag "-u" ~aliases:["--no-typed-search"] no_arg ~doc:" use a type-unsafe exhaustive search"
@@ -442,7 +466,7 @@ let command =
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun csv no_infer parallel use_stdin untyped verbose very_verbose no_deduce
+    (fun no_infer spec_file json parallel use_stdin untyped verbose very_verbose no_deduce
       use_solver testcase_names () ->
       let open Search in
       let config = {
@@ -454,7 +478,7 @@ let command =
           else 0;
         use_solver = use_solver;
       } in
-
+      
       if use_stdin then
         let input_lines = In_channel.input_all stdin |> String.split_lines in
         let bk_strs, example_strs =
@@ -470,7 +494,7 @@ let command =
               | None ->
                 printf "Invalid background knowledge string: %s\n" bk_str; [])
         in
-        let _ = time_solve csv config ("", bk, example_strs, "") in ()
+        let _ = time_solve json config ("", bk, example_strs, "") in ()
       else
         let testcases' = match testcase_names with
           | [] -> testcases
@@ -479,9 +503,9 @@ let command =
         in
         let _ = 
           if parallel then 
-            Parmap.parmap ~chunksize:1 (time_solve csv config) (Parmap.L testcases')
+            Parmap.parmap ~chunksize:1 (time_solve json config) (Parmap.L testcases')
           else
-            List.map ~f:(time_solve csv config) testcases'
+            List.map ~f:(time_solve json config) testcases'
         in ())
 
 let () = Command.run command
