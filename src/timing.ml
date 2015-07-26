@@ -393,11 +393,10 @@ let testcases =
       "(intersect [2 3 8] [3 5 8]) -> [3 8]";
       "(intersect [1 2 3 0] [3 1 0 9]) -> [0 1 3]";
     ], "";
-
   ]
 
 (** Get a JSON object containing all captured information from a single run. *)
-let get_json (testcase_name, testcase_bk, testcase_examples, testcase_desc) runtime solution : Json.json =
+let get_json (testcase_name, testcase_bk, testcase_examples, testcase_desc) runtime solution config : Json.json =
   let timers = [
     "search", Search.timer;
     "deduction", Deduction.timer;
@@ -417,95 +416,105 @@ let get_json (testcase_name, testcase_bk, testcase_examples, testcase_desc) runt
     ];
     "solution", `String solution;
     "runtime", `Float runtime;
+    "config", `String (Config.to_string config);
   ]  
 
-let time_solve json config (name, bk_strs, example_strs, desc) =
-  begin
-    (* Attempt to synthesize from specification. *)
-    let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Expr.of_string impl) in
-    let examples = List.map example_strs ~f:Example.of_string in
-    let start_time = Time.now () in
-    let solutions = Search.solve ~init:Search.extended_init ~config ~bk examples in
-    let end_time = Time.now () in
-    let solve_time = Time.diff end_time start_time in
-    let solutions_str =
+let time_solve config (_, bk_strs, example_strs, _) : (Expr.t list * Time.Span.t) =
+  let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Expr.of_string impl) in
+  let examples = List.map example_strs ~f:Example.of_string in
+
+  (* Attempt to synthesize from specification. *)
+  Util.with_runtime (fun () ->
+      let solutions = Search.solve ~init:Search.extended_init ~config ~bk examples in
       Ctx.to_alist solutions
       |> List.map ~f:(fun (name, lambda) ->
-          (* let lambda = Expr.normalize lambda in *)
-          Expr.to_string (`Let (name, lambda, `Id "_")))
-      |> String.concat ~sep:"\n"
-    in
-    printf "Solved %s in %s. Solutions:\n%s\n\n" name (Time.Span.to_short_string solve_time) solutions_str;
-
-    (* Write json to a file, if requested. *)
-    (match json with
-     | Some filename ->
-       let bk_printable = List.map bk_strs ~f:(fun (name, lambda) -> name ^ " = " ^ lambda) in
-       Json.to_file ~std:true filename
-         (get_json (name, bk_printable, example_strs, desc) (Time.Span.to_sec solve_time) solutions_str)
-     | None -> ());
-  end
+          `Let (name, Expr.normalize lambda, `Id "_")))
 
 let command =
   let spec =
     let open Command.Spec in
     empty
-    +> flag "-i" ~aliases:["--no-infer-base"] no_arg ~doc:" do not infer the base case of folds"
+    +> flag "-c" ~aliases:["--config"] (optional string) ~doc:" read configuration from file"
     +> flag "-f" ~aliases:["--input"] (optional string) ~doc:" read specification from file"
-    +> flag "-j" ~aliases:["--json"] (optional string) ~doc:" write debugging information to JSON"
-    +> flag "-p" ~aliases:["--parallel"] no_arg ~doc:" run tests in parallel"
+    +> flag "-d" ~aliases:["--debug"] (optional string)
+      ~doc:" write debugging information to file in JSON format"
     +> flag "-s" ~aliases:["--stdin"] no_arg ~doc:" read specification from standard input"
-    +> flag "-u" ~aliases:["--no-typed-search"] no_arg ~doc:" use a type-unsafe exhaustive search"
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
     +> flag "-V" ~aliases:["--very-verbose"] no_arg ~doc:" print many progress messages while searching"
-    +> flag "-x" ~aliases:["--no-examples"] no_arg ~doc:" do not deduce examples when generalizing"
     +> flag "-z" ~aliases:["--use-z3"] no_arg ~doc:" use Z3 for pruning"
-    +> anon (sequence ("testcase" %: string))
+    +> anon ("testcase" %: string)
   in
 
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun no_infer spec_file json parallel use_stdin untyped verbose very_verbose no_deduce
-      use_solver testcase_names () ->
-      let open Search in
-      let config = {
-        default_config with
-        untyped; deduction=(not no_deduce); infer_base=(not no_infer);
-        verbosity =
-          if verbose || very_verbose then
-            if very_verbose then 2 else 1
-          else 0;
-        use_solver = use_solver;
-      } in
-      
-      if use_stdin then
-        let input_lines = In_channel.input_all stdin |> String.split_lines in
-        let bk_strs, example_strs =
-          match List.findi ~f:(fun _ line -> line = "") input_lines with
-          | Some (sep_index, _) ->
-            List.take input_lines sep_index, List.drop input_lines (sep_index + 1)
-          | None -> [], input_lines
-        in
-        let bk =
-          List.concat_map bk_strs ~f:(fun bk_str ->
-              match Util.lsplit2_on_str bk_str ~on:" " with
-              | Some bk -> [bk]
-              | None ->
-                printf "Invalid background knowledge string: %s\n" bk_str; [])
-        in
-        let _ = time_solve json config ("", bk, example_strs, "") in ()
-      else
-        let testcases' = match testcase_names with
-          | [] -> testcases
-          | _ -> List.filter testcases ~f:(fun (name, _, _, _) ->
-              List.mem testcase_names name)
-        in
-        let _ = 
-          if parallel then 
-            Parmap.parmap ~chunksize:1 (time_solve json config) (Parmap.L testcases')
-          else
-            List.map ~f:(time_solve json config) testcases'
-        in ())
+    (fun config_file spec_file json_file use_stdin verbose very_verbose use_solver testcase_name () ->
+       let config =
+         let open Config in
+         (* Either load the initial config from a file or use the default config. *)
+         let initial_config = 
+           match config_file with
+           | Some file -> In_channel.read_all file |> of_string
+           | None -> default
+         in
+         (* Apply any changes from command line flags. *)
+         {
+           initial_config with
+           verbosity =
+             if verbose || very_verbose then
+               if very_verbose then 2 else 1
+             else 0;
+           use_solver;
+         }
+       in
+
+       let spec =
+         if use_stdin then
+           let input_lines = In_channel.input_all stdin |> String.split_lines in
+           let bk_strs, example_strs =
+             match List.findi ~f:(fun _ line -> line = "") input_lines with
+             | Some (sep_index, _) ->
+               List.take input_lines sep_index, List.drop input_lines (sep_index + 1)
+             | None -> [], input_lines
+           in
+           let bk =
+             List.concat_map bk_strs ~f:(fun bk_str ->
+                 match Util.lsplit2_on_str bk_str ~on:" " with
+                 | Some bk -> [bk]
+                 | None -> begin
+                     printf "Invalid background knowledge string: %s\n" bk_str;
+                     exit (-1)
+                   end)
+           in
+           ("", bk, example_strs, "")
+         else
+           match List.find ~f:(fun (name, _, _, _) -> name = testcase_name) testcases with
+           | Some spec -> spec
+           | None -> begin
+               printf "No testcases with the name '%s' found." testcase_name;
+               exit (-1)
+             end
+       in
+
+       let (solutions, solve_time) = time_solve config spec in
+       let solutions_str = List.map solutions ~f:Expr.to_string |> String.concat ~sep:"\n" in
+       let solve_time_str = Time.Span.to_short_string solve_time in
+
+       (* Print out results summary. *)
+       printf "Solved %s in %s. Solutions:\n%s\n" testcase_name solve_time_str solutions_str;
+
+       (* Write debug information to a file, if requested. *)
+       match json_file with
+       | Some file ->
+         let (name, bk_strs, example_strs, desc) = spec in
+         let bk_printable = List.map bk_strs ~f:(fun (name, lambda) -> name ^ " = " ^ lambda) in
+
+         Json.to_file ~std:true file
+           (get_json
+              (name, bk_printable, example_strs, desc)
+              (Time.Span.to_sec solve_time)
+              solutions_str
+              config)
+       | None -> ())
 
 let () = Command.run command

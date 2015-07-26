@@ -12,24 +12,6 @@ module TypMemoizer = Sstream.Memoizer (Typ) (TypedExpr)
 module SimpleMemoizer =
   Sstream.Memoizer (struct type t = TypedExpr.t list with compare, sexp end) (Expr)
 
-type config = {
-  verbosity: int;
-  untyped: bool;
-  deduction: bool;
-  infer_base: bool;
-  use_solver: bool;
-  max_exhaustive_depth: int;
-}
-
-let default_config = {
-  verbosity=0;
-  untyped=false;
-  deduction=true;
-  infer_base=true;
-  use_solver=false;
-  max_exhaustive_depth=7;
-}
-
 let default_init =
   ["0"; "1"; "inf"; "[]"; "#f"]
   |> List.map ~f:(fun str -> Expr.of_string str |> infer (Ctx.empty ()))
@@ -185,7 +167,7 @@ let rec enumerate
          created until the prefix classes are exhausted. *)
       slazy (fun () ->
           let should_prune_branch =
-            if config.use_solver then
+            if config.Config.use_solver then
               let dummy_arg_list =
                 prev_args @ (List.drop dummy_args prev_args_len)
               in
@@ -286,7 +268,7 @@ let rec enumerate
   (* |> map ~f:(fun row -> List.iter ~f:(fun x -> printf "Examined: %s\n" (Expr.to_string (TypedExpr.to_expr x))) row; row) *)
   |> map ~f:(List.filter ~f:(fun x ->
       let e = TypedExpr.to_expr x in
-      if config.deduction then
+      if config.Config.deduction then
         match Rewrite.simplify (List.map init ~f:TypedExpr.to_expr) e with
         | Some e' -> Expr.cost e' >= Expr.cost e
         | None -> false
@@ -373,11 +355,11 @@ let solve_single
 
   let generate_specs (specs: Spec.t list) : Spec.t list =
     List.concat_map specs ~f:(fun parent ->
-        (Spec.map_bodies ~deduce_examples:config.deduction parent)
-        @ (Spec.filter_bodies ~deduce_examples:config.deduction parent)
-        @ (Spec.fold_bodies ~deduce_examples:config.deduction ~infer_base:config.infer_base parent)
-        @ (Spec.foldt_bodies ~deduce_examples:config.deduction ~infer_base:config.infer_base parent)
-        @ (Spec.recurs_bodies ~deduce_examples:config.deduction parent)
+        (Spec.map_bodies ~deduce_examples:config.Config.deduction parent)
+        @ (Spec.filter_bodies ~deduce_examples:config.Config.deduction parent)
+        @ (Spec.fold_bodies ~deduce_examples:config.Config.deduction ~infer_base:config.Config.infer_base parent)
+        @ (Spec.foldt_bodies ~deduce_examples:config.Config.deduction ~infer_base:config.Config.infer_base parent)
+        @ (Spec.recurs_bodies ~deduce_examples:config.Config.deduction parent)
       )
   in
 
@@ -396,7 +378,7 @@ let solve_single
           TypedExpr.Id (name, typ)))
       in
 
-      if config.untyped then
+      if config.Config.untyped then
         simple_enumerate init''
         |> Sstream.map_matrix ~f:(fun expr -> `Lambda (arg_names, expr))
       else
@@ -404,7 +386,7 @@ let solve_single
           (fun e -> check (TypedExpr.Lambda ((arg_names, e), hole.signature)))
         |> Sstream.map_matrix ~f:(fun e -> `Lambda (arg_names, TypedExpr.to_expr e))
     | typ ->
-      if config.untyped then
+      if config.Config.untyped then
         simple_enumerate init'
       else
         enumerate config init' typ check
@@ -612,7 +594,7 @@ let solve_single
   in
   search_unbounded 1 [{ skel = initial_spec; max_exh_cost = 0; generalized = false; }]
 
-let solve ?(config=default_config) ?(bk=[]) ?(init=default_init) examples =
+let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
   (* Check examples. *)
   (if not (List.map examples ~f:(fun ex -> ex, Ctx.empty ()) |> Example.check)
    then failwith "Examples do not represent a function.");
