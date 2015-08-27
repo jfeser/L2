@@ -28,7 +28,7 @@ end
 
 module IntListSet = Set.Make(struct
                               type t = int list
-                              let compare = List.compare ~cmp:Int.compare
+                              let compare = List.compare Int.compare
                               let sexp_of_t = List.sexp_of_t Int.sexp_of_t
                               let t_of_sexp = List.t_of_sexp Int.t_of_sexp
                             end)

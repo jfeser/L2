@@ -9,7 +9,7 @@ let identity (x: 'a) : 'a = x
 let cmp_partition a b =
   let sort_partition p = List.sort ~cmp:Int.compare p in
   let sort_partition_list l = List.map ~f:sort_partition l
-                              |> List.sort ~cmp:(List.compare ~cmp:Int.compare) in
+                              |> List.sort ~cmp:(List.compare Int.compare) in
   (sort_partition_list a) = (sort_partition_list b)
 
 let m_expr_to_string = function Some e -> Expr.to_string e | None -> "None"

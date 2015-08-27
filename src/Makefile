@@ -8,6 +8,7 @@ FLAGS = \
     -pkg bolt \
 	-pkg parmap \
 	-pkg yojson \
+	-pkg ounit \
 	-pkg camlp4.lib \
 	-pkg sexplib.syntax,comparelib.syntax,fieldslib.syntax,variantslib.syntax,bin_prot.syntax \
 	-tag thread \
@@ -24,7 +25,7 @@ BUILD_DIR = _build
 
 .PHONY: clean deps profile
 
-all: timing.native interactive.native tests.native
+all: timing.native tests.native
 
 %.native: *.ml
 	$(OCAMLBUILD) $(FLAGS) $@
