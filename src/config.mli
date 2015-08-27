@@ -17,6 +17,8 @@ type t = {
 
   (** The largest expression that can be used to fill a hole in a hypothesis. *)
   max_exhaustive_depth : int;
+
+  check_prob : float;
 }
 
 (** The default configuration. *)

@@ -39,8 +39,9 @@ let run_with_time (name: string) (thunk: unit -> 'a) : 'a =
 let counter = Counter.empty ()
 let () =
   let n = Counter.add_zero counter in
-  n "verify" "Number of expressions verified against the specification"
- 
+  n "verify" "Number of expressions verified against the specification";
+  n "num_checks" "Number of times the expression checker was called";
+  n "num_checks_run" "Number of times the expression checker actually ran"
 
 let matrix_of_texpr_list ~size (texprs: TypedExpr.t list) : TypedExpr.t Sstream.matrix =
   let init_sizes = List.map texprs ~f:(fun e -> e, size e) in
@@ -322,6 +323,17 @@ let check_outermost_application expr examples =
   | `Lambda (_, `Apply (`Id f, _)) -> check_predicate f examples
   | _ -> true
 
+(** TODO: Remove me! Needed so that the check method can run randomly,
+    with a probability that depends on the current search depth. *)
+let current_cost = ref 0
+
+let () = Random.self_init ()
+
+(** Run a thunk with a probability p. If the thunk is not run, return
+    the default value. *)
+let run_with_probability ~default ~f p =
+  if (Random.float 1.0) <= p then f () else default
+
 let solve_single
     ?(init=[])
     ?(ops=Expr.Op.all)
@@ -421,8 +433,8 @@ let solve_single
         Ctx.merge_right
           stdlib_tctx (Ctx.map ~f:(fun hole -> hole.signature) spec.Spec.holes)
       in
-
-      let check (name: string) (e: TypedExpr.t) : bool =
+          
+      let check' (name: string) (e: TypedExpr.t) : bool =
         (* let nesting_depth_cap = 2 in *)
         (* let tctx = Ctx.merge_right init_tctx (free e |> Ctx.of_alist_exn) in *)
         (* let max_depth = max (Ctx.data tctx |> List.map ~f:type_nesting_depth) in *)
@@ -525,6 +537,14 @@ let solve_single
       (* | _ -> failwith "Bad result from solve_single." *)
       in
 
+      let check (name: string) (e: TypedExpr.t) : bool =
+        let open Float in
+        Counter.incr counter "num_checks";
+        run_with_probability ~default:true ~f:(fun () ->
+            Counter.incr counter "num_checks_run"; check' name e)
+          (1.0 / (config.Config.check_prob ** (of_int !current_cost)))
+      in
+
       match named_holes with
       | [] -> failwith "Specification has no holes."
       | (name, hole)::hs ->
@@ -548,21 +568,26 @@ let solve_single
   let search max_cost spec : (expr -> expr) option =
     let solver = solver_of_spec spec in
     let rec search' (exh_cost: int) : (expr -> expr) option =
-      if (total_cost spec.Spec.cost exh_cost) >= max_cost then
-        ((if exh_cost > 0 then
-            LOG "Searched %s to exhaustive cost %d."
-              (Spec.to_string spec) exh_cost
-              LEVEL TRACE);
-         None)
-      else
+      let cost = total_cost spec.Spec.cost exh_cost in
+      (* If the cost of searching this level exceeds the max cost, end the search. *)
+      if cost >= max_cost then begin
+        if exh_cost > 0 then
+          LOG "Searched %s to exhaustive cost %d." (Spec.to_string spec) exh_cost LEVEL TRACE;
+        None
+      end
+
+      (* Otherwise, examine the next row in the search tree. *)
+      else begin
+        current_cost := cost;
         let row = Sstream.next solver in
         match List.find_map row ~f:ident with
         | Some result -> Some result
         | None -> search' (exh_cost + 1)
+      end
     in search' 0
   in
 
-  let rec search_unbounded (cost: int) (hypos: hypothesis list) =
+  let rec search_unbounded (cost: int) (hypos: hypothesis list) =    
     let can_search hypo =
       total_cost hypo.skel.Spec.cost (hypo.max_exh_cost + 1) <= cost
     in
