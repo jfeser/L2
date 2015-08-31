@@ -10,27 +10,86 @@ exception TypeError of Error.t
 
 let total_infer_time = ref (Time.Span.of_float 0.0)
 
-let unify_error ?msg (t1: typ) (t2: typ) =
+module Type0 = struct
+  type t = typ with compare, sexp
+
+  let equal t1 t2 = compare t1 t2 = 0
+
+  (** Return the nesting depth of this type. For example, the type
+      "int" has a nesting depth of 1, and the type "list[int]" has a
+      nesting depth of 2. *)
+  let rec nesting_depth (t: t) : int =
+    match t with
+    | Const_t _ | Var_t _ -> 1
+    | App_t (_, args) -> 1 + (List.max (List.map ~f:nesting_depth args))
+    | Arrow_t (args, ret) ->
+      let args_max = (List.max (List.map ~f:nesting_depth args)) in
+      let ret_depth = nesting_depth ret in
+      if args_max > ret_depth then args_max else ret_depth
+
+  (** Normalize a type by renaming each of its quantified type variables. *)
+  let normalize (t: t) : t =
+    let count = ref (-1) in
+    let fresh_name () = incr count; "t" ^ (Int.to_string !count) in
+    let rec norm ctx typ = match typ with
+      | Const_t _
+      | Var_t {contents = Free _} -> typ
+      | Var_t {contents = Link typ'} -> norm ctx typ'
+      | Var_t {contents = Quant name} ->
+        (match Ctx.lookup ctx name with
+         | Some name' -> Var_t (ref (Quant name'))
+         | None -> let name' = fresh_name () in
+           Ctx.update ctx name name'; Var_t (ref (Quant name')))
+      | App_t (const, args) -> App_t (const, List.map args ~f:(norm ctx))
+      | Arrow_t (args, ret) -> Arrow_t (List.map args ~f:(norm ctx), norm ctx ret)
+    in
+    norm (Ctx.empty ()) t
+      
+  (** Parse a type from a string. *)
+  let of_string (s: string) : t =
+    let lexbuf = Lexing.from_string s in
+    try Parser.typ_eof Lexer.token lexbuf with
+    | Parser.Error -> raise (ParseError s)
+    | Lexer.SyntaxError _ -> raise (ParseError s)
+    | Parsing.Parse_error -> raise (ParseError s)
+
+  (** Convert a type to a string. *)
+  let rec to_string (t: t) : string =
+    let tlist_str typs =
+      typs |> List.map ~f:to_string |> String.concat ~sep:", "
+    in
+    match t with
+    | Const_t Num_t -> "num"
+    | Const_t Bool_t -> "bool"
+    | Var_t {contents = Free (id, _)} -> "ft" ^ (Int.to_string id)
+    | Var_t {contents = Quant name} -> name
+    | Var_t {contents = Link typ'} -> to_string typ'
+    | App_t (id, args) -> sprintf "%s[%s]" id (tlist_str args)
+    | Arrow_t ([arg], ret) -> sprintf "(%s -> %s)" (to_string arg) (to_string ret)
+    | Arrow_t (args, ret) -> sprintf "((%s) -> %s)" (tlist_str args) (to_string ret)
+end
+
+let unify_error ?msg t1 t2 =
   raise @@ TypeError (Error.of_thunk (fun () -> match msg with
       | Some msg ->
         sprintf "Failed to unify %s and %s: %s"
-          (typ_to_string t1) (typ_to_string t2) (Info.to_string_hum msg)
+          (Type0.to_string t1) (Type0.to_string t2) (Info.to_string_hum msg)
       | None ->
         sprintf "Failed to unify %s and %s."
-          (typ_to_string t1) (typ_to_string t2)))
+          (Type0.to_string t1) (Type0.to_string t2)))
     
 module TypedExpr = struct
   type t =
-    | Num of int * Type.t
-    | Bool of bool * Type.t
-    | List of t list * Type.t
-    | Tree of t Tree.t * Type.t
-    | Id of id * Type.t
-    | Let of (id * t * t) * Type.t
-    | Lambda of (id list * t) * Type.t
-    | Apply of (t * (t list)) * Type.t
-    | Op of (Op.t * (t list)) * Type.t
-  with compare, sexp, variants
+    | Num of int * Type0.t
+    | Bool of bool * Type0.t
+    | List of t list * Type0.t
+    | Tree of t Tree.t * Type0.t
+    | Id of id * Type0.t
+    | Let of (id * t * t) * Type0.t
+    | Lambda of (id list * t) * Type0.t
+    | Apply of (t * (t list)) * Type0.t
+    | Op of (Op.t * (t list)) * Type0.t
+  with compare, sexp
 
   let normalize (expr: t) : t =
     let count = ref (-1) in
@@ -130,7 +189,7 @@ module Unifier = struct
           IntMap.add ~key:name ~data:typ m) ~init:outer inner
     in merge s1 (IntMap.map ~f:(fun t -> apply s1 t) s2)
 
-  let rec of_types (t1: typ) (t2: typ) : t =
+  let rec of_types_exn (t1: typ) (t2: typ) : t =
     (* Check whether the free variable 'id' occurs in type 'typ'. If it
        does, we cannot substitute 'typ' for 'id' due to infinite
        recursion. *)
@@ -146,40 +205,43 @@ module Unifier = struct
     if t1 = t2 then IntMap.empty else
       match t1, t2 with
       | Var_t {contents = Link x}, y
-      | x, Var_t {contents = Link y} -> of_types x y
+      | x, Var_t {contents = Link y} -> of_types_exn x y
       | Var_t {contents = Free (x, _)}, Var_t {contents = Free (y, _)}
         when x = y ->
         unify_error t1 t2 ~msg:(Info.of_thunk (fun () ->
             sprintf "Free variable %d occurred in %s and %s."
-              x (typ_to_string t1) (typ_to_string t2)))
+              x (Type0.to_string t1) (Type0.to_string t2)))
       | t, Var_t ({contents = Free (id, _)})
       | Var_t ({contents = Free (id, _)}), t ->
         if occurs id t then
           unify_error t1 t2 ~msg:(Info.of_thunk (fun () ->
-              sprintf "Free variable %d occurs in %s." id (typ_to_string t)))
+              sprintf "Free variable %d occurs in %s." id (Type0.to_string t)))
         else IntMap.singleton id t
       | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
         let s1 =
           List.fold2_exn ~init:IntMap.empty args1 args2 ~f:(fun s a1 a2 ->
-              compose s (of_types a1 a2))
+              compose s (of_types_exn a1 a2))
         in
-        let s2 = of_types ret1 ret2 in
+        let s2 = of_types_exn ret1 ret2 in
         compose s1 s2
       | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
         List.fold2_exn ~init:IntMap.empty args1 args2 ~f:(fun s a1 a2 ->
-            compose s (of_types a1 a2))
+            compose s (of_types_exn a1 a2))
       | _ -> unify_error t1 t2
+
+  let of_types t1 t2 =
+    try Some (of_types_exn t1 t2) with TypeError _ -> None
 end
 
 let fresh_free level = Var_t (ref (Free (Fresh.int (), level)))
 
-let normalize = Type.normalize
+let normalize = Type0.normalize
 
 let occurs id level typ =
   let error (msg: Info.t) =
     raise @@ TypeError (Error.of_thunk (fun () ->
         sprintf "Failed occurs check in %s: %s"
-          (typ_to_string typ) (Info.to_string_hum msg)))
+          (Type0.to_string typ) (Info.to_string_hum msg)))
   in
 
   let rec occurs' id level typ =
@@ -303,7 +365,7 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : TypedExpr.t =
        | Some t -> Id (name, instantiate level t)
        | None -> error (Info.of_thunk (fun () ->
            sprintf "%s is unbound in context %s."
-             name (Ctx.to_string ctx typ_to_string))))
+             name (Ctx.to_string ctx Type0.to_string))))
     | `Lambda (args, body) ->
       (* Generate fresh type variables for each argument and bind them
          into the existing context. *)
@@ -356,7 +418,7 @@ let stdlib_tctx = [
   "zip", "(list[a], list[a]) -> list[list[a]]";
 
   "inf", "num";
-] |> List.map ~f:(fun (name, str) -> name, Type.of_string str) |> Ctx.of_alist_exn
+] |> List.map ~f:(fun (name, str) -> name, Type0.of_string str) |> Ctx.of_alist_exn
 
 (** Infer the type of an expression in context. Returns an expression
 tree annotated with types. *)
@@ -424,4 +486,8 @@ let free ?(bound=stdlib_names) (e: TypedExpr.t) : (id * typ) list =
 (*   | Op ((_, args), _) -> List.find ~f:(contains_name x) args *)
 (*   | Let ((_, e1, e2), _) -> contains_name x e1 || contains_name x e2 *)
 
-let type_nesting_depth = Type.nesting_depth
+module Type = struct
+  include Type0
+
+  let are_unifiable t1 t2 = Option.is_some (Unifier.of_types t1 t2)
+end

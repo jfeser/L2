@@ -3,6 +3,7 @@ open OUnit2
 
 open Ast
 open Collections
+open Infer
 
 let identity (x: 'a) : 'a = x
 
@@ -79,7 +80,7 @@ let test_parse_expr =
 
 let test_parse_typ =
   make_tests ~in_f:Type.of_string ~out_f:identity
-    ~in_str:identity ~out_str:Expr.typ_to_string ~res_str:Expr.typ_to_string
+    ~in_str:identity ~out_str:Type.to_string ~res_str:Type.to_string
     "parse_typ"
     [ "num", Const_t Num_t;
     ]
@@ -176,7 +177,7 @@ let test_typeof =
         |> Infer.normalize)
     ~out_f:(fun str -> Type.of_string str |> Infer.normalize)
     ~in_str:identity ~out_str:identity
-    ~res_str:Expr.typ_to_string
+    ~res_str:Type.to_string
     "typeof"
     [
       "1", "num";
@@ -319,7 +320,7 @@ let test_m_partition =
 (*   make_tests ~in_f:(fun exs -> exs |> List.map ~f:Example.of_string |> Search.signature |> Infer.normalize) *)
 (*              ~out_f:Type.of_string *)
 (*              ~in_str:(fun exs -> "[" ^ (String.concat ~sep:"; " exs) ^ "]") *)
-(*              ~out_str:identity ~res_str:Expr.typ_to_string *)
+(*              ~out_str:identity ~res_str:Type.to_string *)
 (*              "signature" *)
 (*              [ ["(f 1) -> 1"; "(f 2) -> 2"], "num -> num"; *)
 (*                ["(f #f 0) -> 1"; "(f #t 5) -> 2"], "(bool, num) -> num"; *)

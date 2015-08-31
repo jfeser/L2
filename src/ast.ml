@@ -62,3 +62,12 @@ type expr =
 
 type example = expr * expr with compare, sexp
 type constr = expr * (id list) with compare, sexp
+
+type value = [
+  | `Num of int
+  | `Bool of bool
+  | `List of value list
+  | `Tree of value Tree.t
+  | `Closure of expr * (value Ctx.t)
+  | `Unit
+] with compare, sexp

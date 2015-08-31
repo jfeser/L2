@@ -34,7 +34,13 @@ module Op = struct
   }
 
   let metadata_by_op =
-    let t = Type.of_string in
+    let t s =
+      let lexbuf = Lexing.from_string s in
+      try Parser.typ_eof Lexer.token lexbuf with
+      | Parser.Error -> raise (ParseError s)
+      | Lexer.SyntaxError _ -> raise (ParseError s)
+      | Parsing.Parse_error -> raise (ParseError s)
+    in
     [
       Plus,     { typ = t "(num, num) -> num"; commut = true; assoc = true; str = "+"; cost = 1; };
       Minus,    { typ = t "(num, num) -> num"; commut = false; assoc = false; str = "-"; cost = 1; };
@@ -140,6 +146,14 @@ let normalize ?(bound=String.Set.empty) (expr: t) : expr =
        in `Lambda (args', norm ctx' body)
   in norm (Ctx.empty ()) expr
 
+let rec of_value = function
+  | `Num x -> `Num x
+  | `Bool x -> `Bool x
+  | `List x -> `List (List.map ~f:of_value x)
+  | `Tree x -> `Tree (Tree.map ~f:of_value x)
+  | `Unit -> failwith "Tried to convert unit to expression."
+  | `Closure _ -> failwith "Tried to convert closure to expression."
+
 (** Parse an expression from a string. *)
 let of_string (s: string) : t =
   let lexbuf = Lexing.from_string s in
@@ -180,18 +194,3 @@ let all_abstract (e: t) : bool =
     | `Apply (x, y) -> (f b x) && (List.for_all ~f:(f b) y)
     | `Lambda (_, x) -> f b x
   in f String.Set.empty e
-
-(** Convert a type to a string. *)
-let rec typ_to_string (typ: typ) : string =
-  let tlist_str typs =
-    typs |> List.map ~f:typ_to_string |> String.concat ~sep:", "
-  in
-  match typ with
-  | Const_t Num_t -> "num"
-  | Const_t Bool_t -> "bool"
-  | Var_t {contents = Free (id, _)} -> "ft" ^ (Int.to_string id)
-  | Var_t {contents = Quant name} -> name
-  | Var_t {contents = Link typ'} -> typ_to_string typ'
-  | App_t (id, args) -> sprintf "%s[%s]" id (tlist_str args)
-  | Arrow_t ([arg], ret) -> sprintf "(%s -> %s)" (typ_to_string arg) (typ_to_string ret)
-  | Arrow_t (args, ret) -> sprintf "((%s) -> %s)" (tlist_str args) (typ_to_string ret)

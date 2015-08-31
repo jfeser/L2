@@ -16,6 +16,8 @@ module ListExt = struct
     | y::ys -> if cmp x y <= 0 then x::l else y::(insert ys x ~cmp:cmp)
 
   let max = List.fold_left ~f:(fun a e -> if e > a then e else a) ~init:Int.min_value
+
+  let int_sum : int list -> int = List.fold_left ~f:(fun x y -> x + y) ~init:0
 end
 module List = ListExt
 
@@ -254,7 +256,10 @@ end
 module StringMap = Map.Make(String)
 
 module Ctx = struct
-  type 'a t = 'a StringMap.t ref with compare
+  type 'a t =
+    'a StringMap.t ref
+  with compare, sexp
+    
   exception UnboundError of string
 
   (** Return an empty context. *)

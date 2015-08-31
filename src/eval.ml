@@ -8,15 +8,6 @@ exception RuntimeError of string
 
 exception HitRecursionLimit
 
-type value = [
-  | `Num of int
-  | `Bool of bool
-  | `List of value list
-  | `Tree of value Tree.t
-  | `Closure of expr * (value Ctx.t)
-  | `Unit
-] with compare
-
 let rec value_to_string v =
   let join = String.concat ~sep:" " in
   match v with

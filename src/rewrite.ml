@@ -46,7 +46,7 @@ let fold_constants (expr: expr) : expr option =
     | `Lambda (a, e)  -> let fe = fold e in if is_constant fe then fe else `Lambda (a, fe)
     | `Apply (f, a)   -> `Apply (fold f, fold_all a)
     | `Op (op, args)  ->
-      let rec value_to_const (value: Eval.value) : expr option =
+      let rec value_to_const (value: value) : expr option =
         match value with
         | `Num x -> Some (`Num x)
         | `Bool x -> Some (`Bool x)

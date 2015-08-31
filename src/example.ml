@@ -2,6 +2,7 @@ open Core.Std
 
 open Ast
 open Collections
+open Infer
 open Util
 
 type t = example
@@ -44,12 +45,12 @@ let split (exs: t list) : (string * t list) list =
         | _ -> failwith "Expected a non-empty list.")
 
 (** Infer a function signature from input/output examples. *)
-let signature ?(ctx=Ctx.empty ()) (examples: t list) : typ =
+let signature ?(ctx=Ctx.empty ()) (examples: t list) : Type.t =
   let _, inputs, results = List.map examples ~f:to_triple |> unzip3 in
   let res_typ =
-    match Infer.TypedExpr.to_type (Infer.infer ctx (`List results)) with
+    match TypedExpr.to_type (infer ctx (`List results)) with
     | App_t ("list", [t]) -> t
-    | t -> failwith (sprintf "Unexpected result type: %s" (Expr.typ_to_string t))
+    | t -> failwith (sprintf "Unexpected result type: %s" (Type.to_string t))
   in
   let typ =
     match inputs with

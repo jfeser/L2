@@ -68,7 +68,7 @@ let sort_of_type (ctx: Z3.context) (typ: typ) : Z3.Sort.sort =
   | Const_t Bool_t -> Z3.Boolean.mk_sort ctx
   | App_t ("list", _) -> list_sort ctx
   | App_t ("tree", _) -> tree_sort ctx
-  | _ -> Z3.Sort.mk_uninterpreted_s ctx (Expr.typ_to_string typ)
+  | _ -> Z3.Sort.mk_uninterpreted_s ctx (Type.to_string typ)
 
 (** Same as sort_of_type, but uses the built in Z3 list type. *)
 let rec sort_of_type' (ctx: Z3.context) (typ: typ) : Z3.Sort.sort =
@@ -79,7 +79,7 @@ let rec sort_of_type' (ctx: Z3.context) (typ: typ) : Z3.Sort.sort =
     Z3.Z3List.mk_list_s ctx (Type.to_string typ) (sort_of_type' ctx t)
   | App_t ("tree", _) -> tree_sort ctx
   | Var_t ({contents = Free _}) -> failwith "Cannot convert free type variable to Z3 sort."
-  | _ -> Z3.Sort.mk_uninterpreted_s ctx (Expr.typ_to_string typ)
+  | _ -> Z3.Sort.mk_uninterpreted_s ctx (Type.to_string typ)
 
 (** Generate a Z3 assertion from a boolean expression. *)
 let rec assert_of_expr (zctx: Z3.context) (expr: TypedExpr.t) : Z3.Expr.expr =

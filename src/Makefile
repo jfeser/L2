@@ -9,6 +9,7 @@ FLAGS = \
 	-pkg parmap \
 	-pkg yojson \
 	-pkg ounit \
+	-pkg hashcons \
 	-pkg camlp4.lib \
 	-pkg sexplib.syntax,comparelib.syntax,fieldslib.syntax,variantslib.syntax,bin_prot.syntax \
 	-tag thread \
