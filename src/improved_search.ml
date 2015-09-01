@@ -61,17 +61,21 @@ module Skeleton = struct
       sprintf "(lambda (%s) %s)" (String.concat ~sep:" " args) (ts body)
     | Hole_h (h, _) -> sprintf "?%d" h.Hole.id
 
-  let rec to_expr = function
+  let rec to_expr (f: Hole.t -> Expr.t) (s: 'a t) : Expr.t =
+    match s with
     | Num_h (x, _) -> `Num x
     | Bool_h (x, _) -> `Bool x
     | Id_h (x, _) -> `Id x
-    | List_h (x, _) -> `List (List.map ~f:to_expr x)
-    | Tree_h (x, _) -> `Tree (Tree.map ~f:to_expr x)
-    | Let_h ((x, y, z), _) -> `Let (x, to_expr y, to_expr z)
-    | Lambda_h ((x, y), _) -> `Lambda (x, to_expr y)
-    | Apply_h ((x, y), _) -> `Apply (to_expr x, List.map ~f:to_expr y)
-    | Op_h ((x, y), _) -> `Op (x, List.map ~f:to_expr y)
-    | Hole_h _ -> failwith "Tried to convert skeleton with holes to expression."
+    | List_h (x, _) -> `List (List.map ~f:(to_expr f) x)
+    | Tree_h (x, _) -> `Tree (Tree.map ~f:(to_expr f) x)
+    | Let_h ((x, y, z), _) -> `Let (x, to_expr f y, to_expr f z)
+    | Lambda_h ((x, y), _) -> `Lambda (x, to_expr f y)
+    | Apply_h ((x, y), _) -> `Apply (to_expr f x, List.map ~f:(to_expr f) y)
+    | Op_h ((x, y), _) -> `Op (x, List.map ~f:(to_expr f) y)
+    | Hole_h (x, _) -> f x
+
+  let to_expr_exn s =
+    to_expr (fun _ -> failwith "Tried to convert skeleton with holes to expression.") s
 
   let compare = compare_t
   let hash = Hashtbl.hash
@@ -101,36 +105,48 @@ module Skeleton = struct
     | Apply_h (_, a) 
     | Op_h (_, a) 
     | Hole_h (_, a) -> a
+
+  let is_simplifiable base s =
+    let e = to_expr (fun h -> `Id (sprintf "h%d" h.Hole.id)) s in
+    Rewrite.is_redundant base e
 end
 
 module Specification = struct
-  type t =
-    | Bottom
-    | Top
-    | Examples of (value Ctx.t * value) list
-    | FunctionExamples of (value Ctx.t * value list * value) list
-  with compare, sexp
+  module T = struct
+    type t =
+      | Bottom
+      | Top
+      | Examples of (value Ctx.t * value) list
+      | FunctionExamples of (value Ctx.t * value list * value) list
+    with compare, sexp
+
+    let hash = Hashtbl.hash
+    let compare = compare_t
+  end
+
+  include T
+  include Hashable.Make(T)
 
   let of_sexp = t_of_sexp
   let to_sexp = sexp_of_t
 
-  let hash = Hashtbl.hash
-  let compare = compare_t
-
   let to_string s = Sexp.to_string (to_sexp s)
-  
+
   let verify spec expr = begin
     match spec with
     | Top -> true
     | Bottom -> false
     | Examples exs ->
       (try
-         List.for_all exs ~f:(fun (in_ctx, out) -> Eval.eval in_ctx expr = out)
+         List.for_all exs ~f:(fun (in_ctx, out) ->
+             let ctx = Ctx.merge_right Eval.stdlib_vctx in_ctx in
+             Eval.eval ctx expr = out)
        with Eval.RuntimeError _ -> false)
     | FunctionExamples exs ->
       (try
          List.for_all exs ~f:(fun (in_ctx, in_args, out) ->
-             Eval.eval in_ctx (`Apply (expr, List.map in_args ~f:Expr.of_value)) = out)
+             let ctx = Ctx.merge_right Eval.stdlib_vctx in_ctx in
+             Eval.eval ctx (`Apply (expr, List.map in_args ~f:Expr.of_value)) = out)
        with Eval.RuntimeError _ -> false)
   end
 end
@@ -221,7 +237,7 @@ module Hypothesis = struct
     {
       skeleton = HypothesisTable.hashcons table
           (Skeleton.Lambda_h ((args, body.skeleton.Hashcons.node), s));
-      cost = 1 + List.length args + body.cost;
+      cost = 1 + body.cost;
       kind = if body.kind = Abstract then Abstract else Concrete;
       holes = body.holes;
     }
@@ -252,10 +268,11 @@ module Hypothesis = struct
 
   let spec h : Specification.t = Skeleton.annotation h.skeleton.Hashcons.node
   
-  let to_expr h = begin
+  let to_expr (h: t) : Expr.t = begin
     if h.kind = Abstract then
       failwith "Tried to convert an abstract hypothesis to an expression.";
-    Skeleton.to_expr h.skeleton.Hashcons.node
+    let (s: Specification.t Skeleton.t) = h.skeleton.Hashcons.node in
+    Skeleton.to_expr_exn s
   end
 
   let to_string h = Sexp.to_string_hum (to_sexp h)
@@ -318,7 +335,8 @@ let generate_abstract_hypotheses hole spec =
             (in_ctx', out))
         in
         Specification.Examples hole_exs
-      | _ -> failwith "Unknown specification type."
+      | Specification.Bottom -> Specification.Bottom
+      | _ -> Specification.Top
     in
     [ Hypothesis.lambda (arg_names, Hypothesis.hole (Hole.create ctx ret_t) hole_spec) spec ]
 
@@ -343,8 +361,33 @@ let generate_abstract_hypotheses hole spec =
              | None -> None)
           | _ -> None)
     in
-    let apply_hypos = [] in
+    let apply_hypos =
+      List.filter_map (Ctx.to_alist Infer.stdlib_tctx) ~f:(fun (func, func_t) ->
+          let func_t = instantiate 0 func_t in
+          match func_t with
+          | Arrow_t (args_t, ret_t) ->
+            let hole_t = instantiate 0 hole.Hole.type_ in
+            (* Try to unify the return type of the operator with the type of the hole. *)
+            (match Infer.Unifier.of_types hole_t ret_t with
+             | Some unifier ->
+               (* If unification succeeds, apply the unifier to the rest of the type. *)
+               let args_t = List.map args_t ~f:(fun a -> Infer.Unifier.apply unifier a) in
+               let Arrow_t (args_t, ret_t) = normalize (generalize (-1) (Arrow_t (args_t, ret_t))) in
+               let arg_holes = List.map args_t ~f:(fun t ->
+                   Hypothesis.hole (Hole.create hole.Hole.ctx t) Specification.Top)
+               in
+               Some (Hypothesis.apply (Hypothesis.id func Specification.Top, arg_holes) spec)
+             | None -> None)
+          | _ -> None)
+    in
     op_hypos @ apply_hypos
+
+let generate_hypotheses =
+  let memo =
+    Memo.general (fun (hole, spec) ->
+        (generate_concrete_hypotheses hole spec) @ (generate_abstract_hypotheses hole spec))
+  in
+  fun hole spec -> memo (hole, spec)
 
 type result =
   | Solution of Hypothesis.t
@@ -353,6 +396,9 @@ type result =
 exception SynthesisException of result
 
 let synthesize hypo =
+  let base_terms = [
+    `Num 0; `Num 1; `Num Int.max_value; `Bool true; `Bool false; `List []
+  ] in
   let open Hypothesis in
   let heap = Heap.create ~cmp:compare_cost () in
   try
@@ -360,26 +406,36 @@ let synthesize hypo =
     while true do
       match Heap.pop heap with
       | Some h ->
-        (* let () = printf "%s\n" (Hypothesis.to_string h) in *)
-        List.iter h.holes ~f:(fun (hole, spec) ->
-            List.iter (generate_concrete_hypotheses hole spec) ~f:(fun c ->
-                if Specification.verify spec (Hypothesis.to_expr c) then
-                  let h = fill_hole hole ~parent:h ~child:c in
-                  if h.kind = Concrete && Specification.verify (Hypothesis.spec h) (to_expr h) then
-                    raise (SynthesisException (Solution h))
-                  else
-                    Heap.add heap h);
-            List.iter (generate_abstract_hypotheses hole spec) ~f:(fun c ->
-                let h = fill_hole hole ~parent:h ~child:c in
-                Heap.add heap h))
+        (* Take the hole with the smallest id. *)
+        let m_hole =
+          List.min_elt h.holes ~cmp:(fun (h1, _) (h2, _) -> Int.compare h1.Hole.id h2.Hole.id)
+        in
+        (match m_hole with
+         | Some (hole, spec) ->
+           List.iter (generate_hypotheses hole spec) ~f:(fun c ->
+               if c.kind = Abstract || Specification.verify spec (to_expr c) then
+                 let h = fill_hole hole ~parent:h ~child:c in
+
+                 match h.kind with
+                 | Concrete ->
+                   let () = printf "%s\n" (Skeleton.to_string_hum h.skeleton.Hashcons.node) in
+                   if Specification.verify (Hypothesis.spec h) (to_expr h) then
+                     raise (SynthesisException (Solution h))
+                 | Abstract ->
+                   if not (Skeleton.is_simplifiable base_terms h.Hypothesis.skeleton.Hashcons.node) then
+                     Heap.add heap h)
+         | None -> failwiths "BUG: Abstract hypothesis has no holes." h Hypothesis.to_sexp)
       | None -> raise (SynthesisException NoSolution)
     done; NoSolution
   with SynthesisException h -> h
 
-let h = Hypothesis.hole
-    (Hole.create (Ctx.empty ()) (Arrow_t ([Const_t Num_t; Const_t Num_t], Const_t Num_t)))
-    (Specification.FunctionExamples [Ctx.empty (), [`Num 1; `Num 2], `Num 3])
-let () =
-  match synthesize h with
-  | Solution s -> printf "Solution: %s\n" (Hypothesis.to_string s)
-  | NoSolution -> printf "No solution\n"
+(* let h = Hypothesis.hole *)
+(*     (Hole.create (Ctx.empty ()) (Type.of_string "(list[num]) -> num")) *)
+(*     (Specification.FunctionExamples [ *)
+(*         Ctx.empty (), [ `List [`Num 1] ], `Num 1; *)
+(*         Ctx.empty (), [ `List [`Num 1; `Num 2] ], `Num 2; *)
+(*       ]) *)
+(* let () = *)
+(*   match synthesize h with *)
+(*   | Solution s -> printf "Solution: %s\n" (Hypothesis.to_string s) *)
+(*   | NoSolution -> printf "No solution\n" *)

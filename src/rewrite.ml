@@ -108,6 +108,10 @@ let rewrite (expr: expr) : expr option =
            | [`List []; _] -> `List []
            | _ -> `Apply (func, args))
 
+       | `Id "merge" -> (match args with
+           | [`List []; _] | [_; `List []] -> `List []
+           | _ -> `Apply (func, args))
+
        | _ -> `Apply (func, args))
 
     | `Op (op, raw_args) ->

@@ -424,20 +424,41 @@ let time_solve config (_, bk_strs, example_strs, _) : (Expr.t list * Time.Span.t
   let examples = List.map example_strs ~f:Example.of_string in
 
   (* Attempt to synthesize from specification. *)
-  Util.with_runtime (fun () ->
-      let solutions = Search.solve ~init:Search.extended_init ~config ~bk examples in
-      Ctx.to_alist solutions
-      |> List.map ~f:(fun (name, lambda) ->
-          `Let (name, Expr.normalize lambda, `Id "_")))
+  if config.Config.improved_search then
+    let open Improved_search in
+    Util.with_runtime (fun () ->
+        let exs = List.map examples ~f:(fun ex -> match ex with
+            | (`Apply (_, args), out) ->
+              (Ctx.empty (), List.map ~f:(Eval.eval (Ctx.empty ())) args, Eval.eval (Ctx.empty ()) out)
+            | _ -> failwith "Unexpected example type.")
+        in
+        let t = Infer.Type.normalize (Example.signature examples)
+        in
+        let hypo = Hypothesis.hole
+            (Hole.create (Ctx.empty ()) t)
+            (Specification.FunctionExamples exs)
+        in
+        let () = printf "Synthesizing hypo %s\n" (Hypothesis.to_string hypo) in
+        let () = flush stdout in
+        match Improved_search.synthesize hypo with
+        | Solution s -> printf "%s\n" (Hypothesis.to_string s); []
+        | NoSolution -> printf "No solution\n"; [])
+  else
+    Util.with_runtime (fun () ->
+        let solutions = Search.solve ~init:Search.extended_init ~config ~bk examples in
+        Ctx.to_alist solutions
+        |> List.map ~f:(fun (name, lambda) ->
+            `Let (name, lambda, `Id "_")))
 
 let command =
   let spec =
     let open Command.Spec in
     empty
     +> flag "-c" ~aliases:["--config"] (optional string) ~doc:" read configuration from file"
-    +> flag "-f" ~aliases:["--input"] (optional string) ~doc:" read specification from file"
     +> flag "-d" ~aliases:["--debug"] (optional string)
       ~doc:" write debugging information to file in JSON format"
+    +> flag "-f" ~aliases:["--input"] (optional string) ~doc:" read specification from file"
+    +> flag "-i" no_arg ~doc:" use improved search"
     +> flag "-s" ~aliases:["--stdin"] no_arg ~doc:" read specification from standard input"
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
     +> flag "-V" ~aliases:["--very-verbose"] no_arg ~doc:" print many progress messages while searching"
@@ -448,7 +469,8 @@ let command =
   Command.basic
     ~summary:"Run test cases and print timing results"
     spec
-    (fun config_file spec_file json_file use_stdin verbose very_verbose use_solver testcase_name () ->
+    (fun config_file json_file spec_file use_improved_search use_stdin
+      verbose very_verbose use_solver testcase_name () ->
        let config =
          let open Config in
          (* Either load the initial config from a file or use the default config. *)
@@ -465,6 +487,7 @@ let command =
                if very_verbose then 2 else 1
              else 0;
            use_solver;
+           improved_search = use_improved_search;
          }
        in
 

@@ -33,12 +33,16 @@ module Skeleton : sig
   val to_sexp : ('a -> Sexp.t) -> 'a t -> Sexp.t
 
   val to_string_hum : 'a t -> string
-  val to_expr : 'a t -> Expr.t
+    
+  val to_expr : (Hole.t -> Expr.t) -> 'a t -> Expr.t
+  val to_expr_exn : 'a t -> Expr.t
                           
   val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
   val hash : 'a -> int
   val fill_hole : Hole.t -> parent:('a t) -> child:('a t) -> 'a t
   val annotation : 'a t -> 'a
+
+  val is_simplifiable : expr list -> 'a t -> bool
 end
 
 module Specification : sig
@@ -53,7 +57,7 @@ module Specification : sig
 
   val to_string : t -> string
   
-  val hash : 'a -> int
+  val hash : t -> int
   val compare : t -> t -> int
   val verify : t -> expr -> bool
 end
@@ -85,10 +89,6 @@ module Hypothesis : sig
   val fill_hole : Hole.t -> parent:t -> child:t -> t
 end
 
-val generate_concrete_hypotheses :
-  Hole.t -> Specification.t -> Hypothesis.t list
-val generate_abstract_hypotheses :
-  Hole.t -> Specification.t -> Hypothesis.t list
 type result = Solution of Hypothesis.t | NoSolution
-exception SynthesisException of result
+
 val synthesize : Hypothesis.t -> result
