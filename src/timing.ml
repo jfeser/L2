@@ -399,11 +399,11 @@ let testcases =
 let get_json (testcase_name, testcase_bk, testcase_examples, testcase_desc) runtime solution config : Json.json =
   let timers = [
     "search", Search.timer;
-    "deduction", Deduction.timer;
+    (* "deduction", Deduction.timer; *)
   ] in
   let counters = [
     "search", Search.counter;
-    "deduction", Deduction.counter;
+    (* "deduction", Deduction.counter; *)
   ] in
   `Assoc [
     "timers", `List (List.map timers ~f:(fun (name, timer) -> `Assoc [name, Timer.to_json timer]));
@@ -427,22 +427,12 @@ let time_solve config (_, bk_strs, example_strs, _) : (Expr.t list * Time.Span.t
   if config.Config.improved_search then
     let open Improved_search in
     Util.with_runtime (fun () ->
-        let exs = List.map examples ~f:(fun ex -> match ex with
-            | (`Apply (_, args), out) ->
-              (Ctx.empty (), List.map ~f:(Eval.eval (Ctx.empty ())) args, Eval.eval (Ctx.empty ()) out)
-            | _ -> failwith "Unexpected example type.")
-        in
-        let t = Infer.Type.normalize (Example.signature examples)
-        in
-        let hypo = Hypothesis.hole
-            (Hole.create (Ctx.empty ()) t)
-            (Specification.FunctionExamples exs)
-        in
+        let hypo = Improved_search.L2_Synthesizer.initial_hypothesis examples in
         let () = printf "Synthesizing hypo %s\n" (Hypothesis.to_string hypo) in
         let () = flush stdout in
-        match Improved_search.synthesize hypo with
-        | Solution s -> printf "%s\n" (Hypothesis.to_string s); []
-        | NoSolution -> printf "No solution\n"; [])
+        match Improved_search.L2_Synthesizer.synthesize hypo 20 with
+        | Improved_search.L2_Synthesizer.Solution s -> printf "%s\n" (Hypothesis.to_string s); []
+        | Improved_search.L2_Synthesizer.NoSolution -> printf "No solution\n"; [])
   else
     Util.with_runtime (fun () ->
         let solutions = Search.solve ~init:Search.extended_init ~config ~bk examples in

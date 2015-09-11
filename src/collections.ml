@@ -407,6 +407,16 @@ module Tree = struct
     | Empty -> Empty
     | Node (x, children) -> Node (f x, List.map children ~f:(map ~f:f))
 
+  let rec fold t ~f ~init = match t with
+    | Empty -> init
+    | Node (x, children) -> f x (List.map ~f:(fold ~f:f ~init:init) children)
+
+  let max t ~cmp = fold t ~init:None ~f:(fun elem children ->
+      let max_children = List.filter_opt children |> List.max_elt ~cmp:cmp in
+      match max_children with
+      | Some elem' -> if cmp elem elem' > 0 then Some elem else Some elem'
+      | None -> Some elem)
+
   let rec equal t1 t2 ~cmp = match t1, t2 with
     | Empty, Empty -> true
     | Node (x1, c1), Node (x2, c2) ->

@@ -19,6 +19,30 @@ module Type : sig
   val are_unifiable : t -> t -> bool
   val of_string : string -> t
   val to_string : t -> string
+
+  val num : t
+  val bool : t
+  val quant : id -> t
+  val list : t -> t
+  val tree : t -> t
+end
+
+module ImmutableType : sig
+  type t =
+    | Const_i of const_typ
+    | App_i of id * t list
+    | Arrow_i of t list * t
+    | Quant_i of string
+    | Free_i of int * level
+
+  module Table : Hashtbl.S with type key = t
+
+  val sexp_of_t : t -> Sexp.t
+  val t_of_sexp : Sexp.t -> t
+  val compare : t -> t -> int
+  val hash : t -> int
+  val of_type : Type.t -> t
+  val to_type : t -> Type.t
 end
 
 module TypedExpr : sig
@@ -47,10 +71,14 @@ module TypedExprMap : Map.S with type Key.t = TypedExpr.t
     
 module Unifier : sig
   type t
+  val empty : t
   val apply : t -> Type.t -> Type.t
   val compose : t -> t -> t
   val of_types_exn : Type.t -> Type.t -> t
   val of_types : Type.t -> Type.t -> t option
+  val t_of_sexp : Sexp.t -> t
+  val sexp_of_t : t -> Sexp.t
+  val to_string : t -> string
 end
 
 val fresh_free : int -> Type.t

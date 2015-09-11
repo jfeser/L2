@@ -19,6 +19,7 @@ FLAGS = \
 	-tag short_paths \
 	-cflags "-w A-4-44" \
 	-cflags -strict-sequence \
+	-cflags -g \
 	-use-menhir \
 	-j 4
 DEPENDENCIES = core bolt menhir ocamlfind
@@ -29,6 +30,9 @@ BUILD_DIR = _build
 all: timing.native tests.native
 
 %.native: *.ml
+	$(OCAMLBUILD) $(FLAGS) $@
+
+%.byte: *.ml
 	$(OCAMLBUILD) $(FLAGS) $@
 
 %.mli: *.ml

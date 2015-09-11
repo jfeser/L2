@@ -663,7 +663,7 @@ let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
 
     log_strs (Timer.to_strings timer);
 
-    Deduction.log_summary ();
+    (* Deduction.log_summary (); *)
     
     ret
   end ;;

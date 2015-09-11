@@ -44,6 +44,12 @@ module Type0 = struct
       | Arrow_t (args, ret) -> Arrow_t (List.map args ~f:(norm ctx), norm ctx ret)
     in
     norm (Ctx.empty ()) t
+
+  let num = Const_t Num_t
+  let bool = Const_t Bool_t
+  let quant name = Var_t (ref (Quant name))
+  let list t = App_t ("list", [t])
+  let tree t = App_t ("tree", [t])
       
   (** Parse a type from a string. *)
   let of_string (s: string) : t =
@@ -171,8 +177,15 @@ module TypedExprMap = Core.Std.Map.Make(TypedExpr)
     variables. *)
 module Unifier = struct
   module IntMap = Core.Std.Map.Make(Int)
-  type t = typ IntMap.t
+      
+  type t =
+    Type0.t IntMap.t
+  with sexp
 
+  let empty = IntMap.empty
+
+  let to_string u = Sexp.to_string_hum (sexp_of_t u)
+  
   let rec apply (s: t) (t: typ) : typ = match t with
     | Const_t _ | Var_t {contents = Quant _} -> t
     | Var_t {contents = Free (id, _)} ->
@@ -490,4 +503,37 @@ module Type = struct
   include Type0
 
   let are_unifiable t1 t2 = Option.is_some (Unifier.of_types t1 t2)
+end
+
+module ImmutableType = struct
+  module T = struct
+    type t =
+      | Const_i of const_typ
+      | App_i of id * t list
+      | Arrow_i of t list * t
+      | Quant_i of string
+      | Free_i of int * level
+    with compare, sexp
+
+    let hash = Hashtbl.hash
+  end
+
+  include T
+
+  module Table = Hashtbl.Make(T)
+
+  let rec of_type = function
+    | Const_t t -> Const_i t
+    | App_t (name, ts) -> App_i (name, List.map ~f:of_type ts)
+    | Arrow_t (args, ret) -> Arrow_i (List.map ~f:of_type args, of_type ret)
+    | Var_t {contents = Free (id, level)} -> Free_i (id, level)
+    | Var_t {contents = Link t} -> of_type t
+    | Var_t {contents = Quant name} -> Quant_i name
+
+  let rec to_type = function
+    | Const_i t -> Const_t t
+    | App_i (name, ts) -> App_t (name, List.map ~f:to_type ts)
+    | Arrow_i (args, ret) -> Arrow_t (List.map ~f:to_type args, to_type ret)
+    | Free_i (id, level) -> Var_t (ref (Free (id, level)))
+    | Quant_i name -> Var_t (ref (Quant name))
 end

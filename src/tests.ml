@@ -436,6 +436,7 @@ let () = run_test_tt_main
      [
        Eval_tests.tests;
        Unify_tests.tests;
+       Collections_tests.tests;
        
        test_parse_expr;
        test_parse_typ;

@@ -3,3 +3,5 @@ B src/_build/
 PKG core
 PKG Z3
 PKG hashcons
+PKG yojson
+PKG ounit
