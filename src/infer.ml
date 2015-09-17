@@ -15,6 +15,13 @@ module Type0 = struct
 
   let equal t1 t2 = compare t1 t2 = 0
 
+  let rec free_vars = function
+    | Var_t {contents = Free (id, _) } -> Int.Set.singleton id
+    | App_t (_, args) -> Int.Set.union_list (List.map args ~f:free_vars)
+    | Arrow_t (args, ret) ->
+      Int.Set.union (Int.Set.union_list (List.map args ~f:free_vars)) (free_vars ret)
+    | _ -> Int.Set.empty
+
   (** Return the nesting depth of this type. For example, the type
       "int" has a nesting depth of 1, and the type "list[int]" has a
       nesting depth of 2. *)
@@ -48,9 +55,12 @@ module Type0 = struct
   let num = Const_t Num_t
   let bool = Const_t Bool_t
   let quant name = Var_t (ref (Quant name))
+  let free id level = Var_t (ref (Free (id, level)))
   let list t = App_t ("list", [t])
   let tree t = App_t ("tree", [t])
-      
+  let arrow1 arg body = Arrow_t ([arg], body)
+  let arrow2 a1 a2 body = Arrow_t ([a1; a2], body)
+
   (** Parse a type from a string. *)
   let of_string (s: string) : t =
     let lexbuf = Lexing.from_string s in
@@ -83,7 +93,7 @@ let unify_error ?msg t1 t2 =
       | None ->
         sprintf "Failed to unify %s and %s."
           (Type0.to_string t1) (Type0.to_string t2)))
-    
+
 module TypedExpr = struct
   type t =
     | Num of int * Type0.t
@@ -176,16 +186,13 @@ module TypedExprMap = Core.Std.Map.Make(TypedExpr)
     can be applied to a type to fill in some or all of its free type
     variables. *)
 module Unifier = struct
-  module IntMap = Core.Std.Map.Make(Int)
-      
-  type t =
-    Type0.t IntMap.t
-  with sexp
+  type t = Type0.t IntMap.t with sexp
 
   let empty = IntMap.empty
 
+  let equal = IntMap.equal Type0.equal
   let to_string u = Sexp.to_string_hum (sexp_of_t u)
-  
+
   let rec apply (s: t) (t: typ) : typ = match t with
     | Const_t _ | Var_t {contents = Quant _} -> t
     | Var_t {contents = Free (id, _)} ->
@@ -244,6 +251,13 @@ module Unifier = struct
 
   let of_types t1 t2 =
     try Some (of_types_exn t1 t2) with TypeError _ -> None
+
+  let of_alist_exn = IntMap.of_alist_exn
+  let to_alist = IntMap.to_alist
+
+  let relevant_to u t =
+    let free_t = Type0.free_vars t in
+    IntMap.filter u ~f:(fun ~key:id ~data:_ -> Int.Set.mem free_t id)
 end
 
 let fresh_free level = Var_t (ref (Free (Fresh.int (), level)))

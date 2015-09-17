@@ -4,36 +4,34 @@ FLAGS = \
 	-use-ocamlfind \
 	-syntax camlp4o \
 	-pkg core \
-	-pkg Z3 \
-    -pkg bolt \
-	-pkg parmap \
 	-pkg yojson \
-	-pkg ounit \
+    -pkg bolt \
 	-pkg hashcons \
+	-pkg faillib \
 	-pkg camlp4.lib \
-	-pkg sexplib.syntax,comparelib.syntax,fieldslib.syntax,variantslib.syntax,bin_prot.syntax \
+	-pkg sexplib.syntax,comparelib.syntax \
 	-tag thread \
-	-tag debug \
-	-tag annot \
-	-tag bin_annot \
 	-tag short_paths \
-	-cflags "-w A-4-44" \
-	-cflags -strict-sequence \
-	-cflags -g \
+	-tag "warn(A-4-44)" \
+	-tag strict_sequence \
+	-tag strict_formats \
 	-use-menhir \
 	-j 4
-DEPENDENCIES = core bolt menhir ocamlfind
+DEPENDENCIES = core bolt yojson hashcons menhir ocamlfind
 BUILD_DIR = _build
 
-.PHONY: clean deps profile
+.PHONY: clean deps profile test release debug
 
-all: timing.native tests.native
+all: debug
 
-%.native: *.ml
-	$(OCAMLBUILD) $(FLAGS) $@
+test: *.ml
+	$(OCAMLBUILD) $(FLAGS) -pkg ounit tests.native
 
-%.byte: *.ml
-	$(OCAMLBUILD) $(FLAGS) $@
+release: *.ml
+	$(OCAMLBUILD) $(FLAGS) -cflags -unsafe -cflags -noassert timing.native
+
+debug: *.ml
+	$(OCAMLBUILD) $(FLAGS) -tag debug -tag bin_annot timing.native
 
 %.mli: *.ml
 	$(OCAMLBUILD) $(FLAGS) $(@:.mli=.inferred.mli); mv $(BUILD_DIR)/$(@:.mli=.inferred.mli) $@
@@ -46,4 +44,4 @@ clean:
 	$(OCAMLBUILD) -clean
 
 deps:
-	opam install $(DEPENDENCIES)
+	opam install --yes $(DEPENDENCIES)

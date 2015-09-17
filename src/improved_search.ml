@@ -14,6 +14,8 @@ module Symbol = struct
   let to_sexp = sexp_of_t
   let of_sexp = t_of_sexp
 
+  let equal s1 s2 = compare s1 s2 = 0
+
   let counter = ref 0
 
   let create name = begin
@@ -41,16 +43,18 @@ module StaticDistance = struct
       to_alist x
       |> List.map ~f:(fun (k, v) -> (increment_scope k, v))
       |> of_alist_exn
-  end      
+  end
 
-  let create distance index = (distance, index)
+  let create distance index =
+    if distance <= 0 || index <= 0 then raise (Invalid_argument "Argument out of range.") else
+      (distance, index)
+
   let distance x = let (a, b) = x in a
   let index x = let (a, b) = x in b
 
   let args num =
     List.range ~stride:1 ~start:`inclusive ~stop:`inclusive 1 num
     |> List.map ~f:(fun i -> (1, i))
-
 
   let to_string x =
     let (a, b) = x in
@@ -107,7 +111,7 @@ module Skeleton = struct
     | Hole_h of Hole.t * 'a
   with compare, sexp
 
-  let of_sexp = t_of_sexp 
+  let of_sexp = t_of_sexp
   let to_sexp = sexp_of_t
 
   let rec to_string_hum s =
@@ -169,7 +173,7 @@ module Skeleton = struct
 
   let to_expr_exn ?(ctx = StaticDistance.Map.empty) ?(fresh_name) s =
     match fresh_name with
-    | Some fresh -> 
+    | Some fresh ->
       to_expr ~ctx ~fresh_name:fresh
         (fun _ -> failwith "Tried to convert skeleton with holes to expression.") s
     | None -> to_expr ~ctx (fun _ -> failwith "Tried to convert skeleton with holes to expression.") s
@@ -192,15 +196,15 @@ module Skeleton = struct
     | Op_h ((x, y), s) -> Op_h ((x, List.map ~f:f y), s)
 
   let annotation = function
-    | Num_h (_, a) 
-    | Bool_h (_, a) 
-    | Id_h (_, a) 
-    | List_h (_, a) 
-    | Tree_h (_, a) 
-    | Let_h (_, a) 
-    | Lambda_h (_, a) 
-    | Apply_h (_, a) 
-    | Op_h (_, a) 
+    | Num_h (_, a)
+    | Bool_h (_, a)
+    | Id_h (_, a)
+    | List_h (_, a)
+    | Tree_h (_, a)
+    | Let_h (_, a)
+    | Lambda_h (_, a)
+    | Apply_h (_, a)
+    | Op_h (_, a)
     | Hole_h (_, a) -> a
 
   let rec map ~f s = match s with
@@ -282,7 +286,7 @@ module Specification = struct
     | Examples exs ->
       let exs =
         List.map exs ~f:(fun (in_ctx, out) ->
-            let in_ctx = 
+            let in_ctx =
               StaticDistance.Map.to_alist in_ctx
               |> List.map ~f:(fun (k, v) -> (StaticDistance.increment_scope k, v))
               |> StaticDistance.Map.of_alist_exn
@@ -293,7 +297,7 @@ module Specification = struct
     | FunctionExamples exs ->
       let exs =
         List.map exs ~f:(fun (in_ctx, in_args, out) ->
-            let in_ctx = 
+            let in_ctx =
               StaticDistance.Map.to_alist in_ctx
               |> List.map ~f:(fun (k, v) -> (StaticDistance.increment_scope k, v))
               |> StaticDistance.Map.of_alist_exn
@@ -303,188 +307,201 @@ module Specification = struct
       FunctionExamples exs
 end
 
-module HypothesisTable = Hashcons.Make(struct
-    type t = Specification.t Skeleton.t
-    let equal h1 h2 = Skeleton.compare Specification.compare h1 h2 = 0
-    let hash = Skeleton.hash
-  end)
+module type CostModel_Intf = sig
+  val id_cost : id -> int
+  val op_cost : Expr.Op.t -> int
+end
 
 module Hypothesis = struct
-  type kind =
-    | Abstract
-    | Concrete
-  with sexp
+  module H = struct
+    type skeleton = Specification.t Skeleton.t
 
-  type t = {
-    skeleton : Specification.t Skeleton.t Hashcons.hash_consed;
-    cost : int;
-    kind : kind;
-    holes : (Hole.t * Specification.t) list;
-  }
+    module Table = Hashcons.Make(struct
+        type t = skeleton
+        let equal h1 h2 = Skeleton.compare Specification.compare h1 h2 = 0
+        let hash = Skeleton.hash
+      end)
 
-  let table = HypothesisTable.create 100
+    type kind =
+      | Abstract
+      | Concrete
+    with sexp
 
-  let sexp_of_t h =
-    let open Sexp in
-    List [
-      List [ Atom "skeleton"; Skeleton.to_sexp Specification.to_sexp h.skeleton.Hashcons.node ];
-      List [ Atom "cost"; sexp_of_int h.cost ];
-      List [ Atom "kind"; sexp_of_kind h.kind ];
+    type t = {
+      skeleton : skeleton Hashcons.hash_consed;
+      cost : int;
+      kind : kind;
+      holes : (Hole.t * Specification.t) list;
+    }
+
+    let table = Table.create 100
+
+    let sexp_of_t h =
+      let open Sexp in
       List [
-        Atom "holes";
-        sexp_of_list (fun (hole, spec) -> List [ Hole.to_sexp hole; Specification.to_sexp spec ]) h.holes
-      ];
-    ]
+        List [ Atom "skeleton"; Skeleton.to_sexp Specification.to_sexp h.skeleton.Hashcons.node ];
+        List [ Atom "cost"; sexp_of_int h.cost ];
+        List [ Atom "kind"; sexp_of_kind h.kind ];
+        List [
+          Atom "holes";
+          sexp_of_list (fun (hole, spec) -> List [ Hole.to_sexp hole; Specification.to_sexp spec ]) h.holes
+        ];
+      ]
 
-  let t_of_sexp s =
-    let open Sexp in
-    match s with
-    | List [
-        List [ Atom "skeleton"; skel_s ];
-        List [ Atom "cost"; cost_s ];
-        List [ Atom "kind"; kind_s ];
-        List [ Atom "holes"; holes_s ];
-      ] -> {
-        skeleton = HypothesisTable.hashcons table (Skeleton.of_sexp Specification.of_sexp skel_s);
-        cost = Int.t_of_sexp cost_s;
-        kind = kind_of_sexp kind_s;
-        holes = List.t_of_sexp (Tuple2.t_of_sexp Hole.of_sexp Specification.of_sexp) holes_s;
+    let t_of_sexp s =
+      let open Sexp in
+      match s with
+      | List [
+          List [ Atom "skeleton"; skel_s ];
+          List [ Atom "cost"; cost_s ];
+          List [ Atom "kind"; kind_s ];
+          List [ Atom "holes"; holes_s ];
+        ] -> {
+          skeleton = Table.hashcons table (Skeleton.of_sexp Specification.of_sexp skel_s);
+          cost = Int.t_of_sexp cost_s;
+          kind = kind_of_sexp kind_s;
+          holes = List.t_of_sexp (Tuple2.t_of_sexp Hole.of_sexp Specification.of_sexp) holes_s;
+        }
+      | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
+
+    let to_sexp = sexp_of_t
+    let of_sexp = t_of_sexp
+
+    let compare_cost h1 h2 = Int.compare h1.cost h2.cost
+
+    let spec h : Specification.t = Skeleton.annotation h.skeleton.Hashcons.node
+
+    let to_expr (h: t) : Expr.t =
+      match h.kind with
+      | Abstract -> failwith "Tried to convert an abstract hypothesis to an expression."
+      | Concrete -> Skeleton.to_expr_exn (h.skeleton.Hashcons.node)
+
+    let to_string h = Sexp.to_string_hum (to_sexp h)
+    let to_string_hum h = Skeleton.to_string_hum (h.skeleton.Hashcons.node)
+
+    let apply_unifier h u =
+      {
+        h with
+        holes = List.map h.holes ~f:(fun (h, s) -> (Hole.apply_unifier u h, s));
+        skeleton = Table.hashcons table
+            (Skeleton.map h.skeleton.Hashcons.node ~f:(function
+                 | Skeleton.Hole_h (h, a) -> Skeleton.Hole_h (Hole.apply_unifier u h, a)
+                 | s -> s))
       }
-    | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
 
-  let to_sexp = sexp_of_t
-  let of_sexp = t_of_sexp
+    let fill_hole hole ~parent:p ~child:c = begin
+      if not (List.exists p.holes ~f:(fun (h, _) -> Hole.equal h hole)) then
+        failwith "Hypothesis does not contain the specified hole.";
+      let holes =
+        (List.filter p.holes ~f:(fun (h, _) -> not (Hole.equal h hole))) @ c.holes
+      in
+      {
+        skeleton =
+          Table.hashcons table
+            (Skeleton.fill_hole hole
+               ~parent:p.skeleton.Hashcons.node ~child:c.skeleton.Hashcons.node);
+        cost = p.cost + c.cost;
+        kind = if List.length holes = 0 then Concrete else Abstract;
+        holes;
+      }
+    end
 
-  let num x s : t = {
-    skeleton = HypothesisTable.hashcons table (Skeleton.Num_h (x, s));
-    cost = 1;
-    kind = Concrete;
-    holes = [];
-  }
-  let bool x s : t = {
-    skeleton = HypothesisTable.hashcons table (Skeleton.Bool_h (x, s));
-    cost = 1;
-    kind = Concrete;
-    holes = [];
-  }
-  let id_sd x s : t = {
-    skeleton = HypothesisTable.hashcons table (Skeleton.Id_h (Skeleton.StaticDistance x, s));
-    cost = 1;
-    kind = Concrete;
-    holes = [];
-  }
-  let id_name x s : t = {
-    skeleton = HypothesisTable.hashcons table (Skeleton.Id_h (Skeleton.Name x, s));
-    cost = 1;
-    kind = Concrete;
-    holes = [];
-  }
-  let hole x s : t = {
-    skeleton = HypothesisTable.hashcons table (Skeleton.Hole_h (x, s));
-    cost = 0;
-    kind = Abstract;
-    holes = [ (x, s) ];
-  }
-  let list (x: t list) s : t = {
-    skeleton = HypothesisTable.hashcons table
-        (Skeleton.List_h (List.map x ~f:(fun h -> h.skeleton.Hashcons.node), s));
-    cost = 1 + List.int_sum (List.map x ~f:(fun h -> h.cost));
-    kind = if List.exists x ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
-    holes = List.concat (List.map x ~f:(fun h -> h.holes));
-  }
-  let tree x s : t =
-    let flat = Tree.flatten x in
-    {
-      skeleton = HypothesisTable.hashcons table
-          (Skeleton.Tree_h (Tree.map x ~f:(fun h -> h.skeleton.Hashcons.node), s));
-      cost = 1 + List.int_sum (List.map flat ~f:(fun h -> h.cost));
-      kind = if List.exists flat ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
-      holes = List.concat (List.map (Tree.flatten x) ~f:(fun h -> h.holes));
-    }
-  let _let x s : t =
-    let (bound, body) = x in
-    {
-      skeleton = HypothesisTable.hashcons table
-          (Skeleton.Let_h ((bound.skeleton.Hashcons.node, body.skeleton.Hashcons.node), s));
-      cost = 1 + bound.cost + body.cost;
-      kind = if bound.kind = Abstract || body.kind = Abstract then Abstract else Concrete;
-      holes = bound.holes @ body.holes;
-    }
-  let lambda x s : t =
-    let (num_args, body) = x in
-    {
-      skeleton = HypothesisTable.hashcons table
-          (Skeleton.Lambda_h ((num_args, body.skeleton.Hashcons.node), s));
-      cost = 1 + body.cost;
-      kind = if body.kind = Abstract then Abstract else Concrete;
-      holes = body.holes;
-    }
-  let apply x s : t =
-    let (func, args) = x in
-    {
-      skeleton = HypothesisTable.hashcons table
-          (Skeleton.Apply_h
-             ((func.skeleton.Hashcons.node,
-               List.map args ~f:(fun h -> h.skeleton.Hashcons.node)), s));
-      cost = 1 + func.cost + List.int_sum (List.map args ~f:(fun h -> h.cost));
-      kind =
-        if func.kind = Abstract || List.exists args ~f:(fun h -> h.kind = Abstract) then
-          Abstract else Concrete;
-      holes = func.holes @ (List.concat (List.map args ~f:(fun h -> h.holes)));
-    }
-  let op x s : t =
-    let (op, args) = x in
-    {
-      skeleton = HypothesisTable.hashcons table
-          (Skeleton.Op_h ((op, List.map args ~f:(fun h -> h.skeleton.Hashcons.node)), s));
-      cost = 1 + Expr.Op.cost op + List.int_sum (List.map args ~f:(fun h -> h.cost));
-      kind = if List.exists args ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
-      holes = List.concat (List.map args ~f:(fun h -> h.holes));
-    }
+    let verify h = Specification.verify (spec h) h.skeleton.Hashcons.node
 
-  let compare_cost h1 h2 = Int.compare h1.cost h2.cost
-
-  let spec h : Specification.t = Skeleton.annotation h.skeleton.Hashcons.node
-
-  let to_expr (h: t) : Expr.t = begin
-    if h.kind = Abstract then
-      failwith "Tried to convert an abstract hypothesis to an expression.";
-    let (s: Specification.t Skeleton.t) = h.skeleton.Hashcons.node in
-    Skeleton.to_expr_exn s
+    let num x s : t = {
+      skeleton = Table.hashcons table (Skeleton.Num_h (x, s));
+      cost = 1;
+      kind = Concrete;
+      holes = [];
+    }
+    let bool x s : t = {
+      skeleton = Table.hashcons table (Skeleton.Bool_h (x, s));
+      cost = 1;
+      kind = Concrete;
+      holes = [];
+    }
+    let id_sd x s : t = {
+      skeleton = Table.hashcons table (Skeleton.Id_h (Skeleton.StaticDistance x, s));
+      cost = 1;
+      kind = Concrete;
+      holes = [];
+    }
+    let hole x s : t = {
+      skeleton = Table.hashcons table (Skeleton.Hole_h (x, s));
+      cost = 0;
+      kind = Abstract;
+      holes = [ (x, s) ];
+    }
+    let list (x: t list) s : t = {
+      skeleton = Table.hashcons table
+          (Skeleton.List_h (List.map x ~f:(fun h -> h.skeleton.Hashcons.node), s));
+      cost = 1 + List.int_sum (List.map x ~f:(fun h -> h.cost));
+      kind = if List.exists x ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
+      holes = List.concat (List.map x ~f:(fun h -> h.holes));
+    }
+    let tree x s : t =
+      let flat = Tree.flatten x in
+      {
+        skeleton = Table.hashcons table
+            (Skeleton.Tree_h (Tree.map x ~f:(fun h -> h.skeleton.Hashcons.node), s));
+        cost = 1 + List.int_sum (List.map flat ~f:(fun h -> h.cost));
+        kind = if List.exists flat ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
+        holes = List.concat (List.map (Tree.flatten x) ~f:(fun h -> h.holes));
+      }
+    let _let x s : t =
+      let (bound, body) = x in
+      {
+        skeleton = Table.hashcons table
+            (Skeleton.Let_h ((bound.skeleton.Hashcons.node, body.skeleton.Hashcons.node), s));
+        cost = 1 + bound.cost + body.cost;
+        kind = if bound.kind = Abstract || body.kind = Abstract then Abstract else Concrete;
+        holes = bound.holes @ body.holes;
+      }
+    let lambda x s : t =
+      let (num_args, body) = x in
+      {
+        skeleton = Table.hashcons table
+            (Skeleton.Lambda_h ((num_args, body.skeleton.Hashcons.node), s));
+        cost = 1 + body.cost;
+        kind = if body.kind = Abstract then Abstract else Concrete;
+        holes = body.holes;
+      }
+    let apply x s : t =
+      let (func, args) = x in
+      {
+        skeleton = Table.hashcons table
+            (Skeleton.Apply_h
+               ((func.skeleton.Hashcons.node,
+                 List.map args ~f:(fun h -> h.skeleton.Hashcons.node)), s));
+        cost = 1 + func.cost + List.int_sum (List.map args ~f:(fun h -> h.cost));
+        kind =
+          if func.kind = Abstract || List.exists args ~f:(fun h -> h.kind = Abstract) then
+            Abstract else Concrete;
+        holes = func.holes @ (List.concat (List.map args ~f:(fun h -> h.holes)));
+      }
   end
 
-  let to_string h = Sexp.to_string_hum (to_sexp h)
-  let to_string_hum h = Skeleton.to_string_hum (h.skeleton.Hashcons.node)
+  module Make (CostModel : CostModel_Intf) = struct
+    include H
 
-  let apply_unifier h u =
-    {
-      h with
-      holes = List.map h.holes ~f:(fun (h, s) -> (Hole.apply_unifier u h, s));
-      skeleton = HypothesisTable.hashcons table
-          (Skeleton.map h.skeleton.Hashcons.node ~f:(function
-               | Skeleton.Hole_h (h, a) -> Skeleton.Hole_h (Hole.apply_unifier u h, a)
-               | s -> s))
+    let id_name x s : t = {
+      skeleton = Table.hashcons table (Skeleton.Id_h (Skeleton.Name x, s));
+      cost = CostModel.id_cost x;
+      kind = Concrete;
+      holes = [];
     }
-
-  let fill_hole hole ~parent:p ~child:c = begin
-    if not (List.exists p.holes ~f:(fun (h, _) -> Hole.equal h hole)) then
-      failwith "Hypothesis does not contain the specified hole.";
-    (* if List.exists c.holes ~f:(fun (h, _) -> Hole.equal h hole) then *)
-    (*   failwiths "Same hole present in parent and child." (p, c) (Tuple.T2.sexp_of_t to_sexp to_sexp); *)
-    let holes =
-      (List.filter p.holes ~f:(fun (h, _) -> not (Hole.equal h hole))) @ c.holes
-    in
-    {
-      skeleton =
-        HypothesisTable.hashcons table
-          (Skeleton.fill_hole hole ~parent:p.skeleton.Hashcons.node ~child:c.skeleton.Hashcons.node);
-      cost = p.cost + c.cost;
-      kind = if List.length holes = 0 then Concrete else Abstract;
-      holes;
-    }
+    let op x s : t =
+      let (op, args) = x in
+      {
+        skeleton = Table.hashcons table
+            (Skeleton.Op_h ((op, List.map args ~f:(fun h -> h.skeleton.Hashcons.node)), s));
+        cost = CostModel.op_cost op + List.int_sum (List.map args ~f:(fun h -> h.cost));
+        kind = if List.exists args ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
+        holes = List.concat (List.map args ~f:(fun h -> h.holes));
+      }
   end
 
-  let verify h = Specification.verify (spec h) h.skeleton.Hashcons.node
+  include H
 end
 
 module type Generalizer_intf = sig
@@ -508,6 +525,19 @@ module Generalizer_impl = struct
           List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
               apply_unifier (fill_hole hole ~parent:p ~child:c) u))
           |> List.concat)
+end
+
+module L2_CostModel : CostModel_Intf = struct
+  let id_cost = function
+    | "foldr"
+    | "foldl"
+    | "foldt" -> 3
+    | "map"
+    | "mapt"
+    | "filter" -> 2
+    | _ -> 1
+
+  let op_cost = Expr.Op.cost
 end
 
 module L2_Generalizer = struct
@@ -540,149 +570,171 @@ module L2_Generalizer = struct
      I := <identifier in current scope>
   *)
 
-  let lambda = Symbol.create "Lambda"
-  let combinator = Symbol.create "Combinator"
-  let expression = Symbol.create "Expression"
-  let constant = Symbol.create "Constant"
-  let identifier = Symbol.create "Identifier"
+  module type Symbols_intf = sig
+    val lambda : Symbol.t
+    val combinator : Symbol.t
+    val expression : Symbol.t
+    val constant : Symbol.t
+    val identifier : Symbol.t
+  end
 
-  let combinators = [
-    "map"; "mapt"; "filter"; "foldl"; "foldr"; "foldt"; "rec"
-  ]
-  let functions = Ctx.filter Infer.stdlib_tctx ~f:(fun ~key:k ~data:v ->
-      not (List.mem ~equal:String.equal combinators k))
+  module Make (Symbols : Symbols_intf) = struct
+    module H = Hypothesis.Make(L2_CostModel)
 
-  let generate_constants hole spec =
-    let constants = [
-      Type.num, [
-        Hypothesis.num 0 spec;
-        Hypothesis.num 1 spec;
-        Hypothesis.num Int.max_value spec;          
-      ];
-      Type.bool, [
-        Hypothesis.bool true spec;
-        Hypothesis.bool false spec;
-      ];
-      Type.list (Type.quant "a") |> instantiate 0, [
-        Hypothesis.list [] spec;
-      ]
-    ] in
-    List.concat_map constants ~f:(fun (t, xs) ->
-        match Infer.Unifier.of_types hole.Hole.type_ t with
-        | Some u -> List.map xs ~f:(fun x -> (x, u))
-        | None -> [])
+    include Symbols
 
-  let generate_identifiers hole spec =
-    List.filter_map (StaticDistance.Map.to_alist hole.Hole.ctx) ~f:(fun (id, id_t) ->
-        Option.map (Unifier.of_types hole.Hole.type_ id_t) ~f:(fun u ->
-            Hypothesis.id_sd id spec, u))
+    let combinators = [
+      "map"; "mapt"; "filter"; "foldl"; "foldr"; "foldt"; "rec"
+    ]
+    let functions = Ctx.filter Infer.stdlib_tctx ~f:(fun ~key:k ~data:v ->
+        not (List.mem ~equal:String.equal combinators k))
 
-  let generate_expressions hole spec =
-    let op_exprs = List.filter_map Expr.Op.all ~f:(fun op ->
-        let op_t = instantiate 0 (Expr.Op.meta op).Expr.Op.typ in
-        match op_t with
-        | Arrow_t (args_t, ret_t) ->
-          (* Try to unify the return type of the operator with the type of the hole. *)
-          Option.map (Unifier.of_types hole.Hole.type_ ret_t) ~f:(fun u ->
-              (* If unification succeeds, apply the unifier to the rest of the type. *)
-              let args_t = List.map args_t ~f:(Unifier.apply u) in
-              let arg_holes = List.map args_t ~f:(fun t ->
-                  Hypothesis.hole (Hole.create hole.Hole.ctx t expression) Specification.Top)
-              in
-              Hypothesis.op (op, arg_holes) spec, u)
-        | _ -> None)
-    in
-    let apply_exprs = List.filter_map (Ctx.to_alist functions) ~f:(fun (func, func_t) ->
-        let func_t = instantiate 0 func_t in
-        match func_t with
-        | Arrow_t (args_t, ret_t) ->
-          (* Try to unify the return type of the operator with the type of the hole. *)
-          Option.map (Unifier.of_types hole.Hole.type_ ret_t) ~f:(fun u ->
-              (* If unification succeeds, apply the unifier to the rest of the type. *)
-              let args_t = List.map args_t ~f:(Unifier.apply u) in
-              let arg_holes = List.map args_t ~f:(fun t ->
-                  Hypothesis.hole (Hole.create hole.Hole.ctx t expression) Specification.Top)
-              in
-              Hypothesis.apply (Hypothesis.id_name func Specification.Top, arg_holes) spec, u)
-        | _ -> None)
-    in
-    op_exprs @ apply_exprs
+    let generate_constants hole spec =
+      let constants = [
+        Type.num, [
+          H.num 0 spec;
+          H.num 1 spec;
+          H.num Int.max_value spec;
+        ];
+        Type.bool, [
+          H.bool true spec;
+          H.bool false spec;
+        ];
+        Type.list (Type.quant "a") |> instantiate 0, [
+          H.list [] spec;
+        ]
+      ] in
+      List.concat_map constants ~f:(fun (t, xs) ->
+          match Infer.Unifier.of_types hole.Hole.type_ t with
+          | Some u -> List.map xs ~f:(fun x -> (x, u))
+          | None -> [])
 
-  let generate_lambdas hole spec =
-    match hole.Hole.type_ with
-    (* If the hole has an arrow type, generate a lambda expression with
-       the right number of arguments and push the specification down. *)
-    | Arrow_t (args_t, ret_t) ->
-      let num_args = List.length args_t in
-      let arg_names = StaticDistance.args num_args in
+    let generate_identifiers hole spec =
+      List.filter_map (StaticDistance.Map.to_alist hole.Hole.ctx) ~f:(fun (id, id_t) ->
+          Option.map (Unifier.of_types hole.Hole.type_ id_t) ~f:(fun u ->
+              H.id_sd id spec, u))
 
-      (* The lambda introduces a new scope, so remember to increment
-         the scope of the parent specification. *)
-      let hole_spec = match Specification.increment_scope spec with
-        | Specification.FunctionExamples exs ->
-          let hole_exs = List.map exs ~f:(fun (in_ctx, in_args, out) ->
-              let value_ctx = StaticDistance.Map.of_alist_exn (List.zip_exn arg_names in_args) in
-              let in_ctx =
-                StaticDistance.Map.merge value_ctx in_ctx ~f:(fun ~key:k v ->
-                    match v with
-                    | `Both (x, _)
-                    | `Left x
-                    | `Right x -> Some x)
-              in
-              (in_ctx, out))
-          in
-          Specification.Examples hole_exs
-        | Specification.Bottom -> Specification.Bottom
-        | _ -> Specification.Top
+    let generate_expressions hole spec =
+      let op_exprs = List.filter_map Expr.Op.all ~f:(fun op ->
+          let op_t = instantiate 0 (Expr.Op.meta op).Expr.Op.typ in
+          match op_t with
+          | Arrow_t (args_t, ret_t) ->
+            (* Try to unify the return type of the operator with the type of the hole. *)
+            Option.map (Unifier.of_types hole.Hole.type_ ret_t) ~f:(fun u ->
+                (* If unification succeeds, apply the unifier to the rest of the type. *)
+                let args_t = List.map args_t ~f:(Unifier.apply u) in
+                let arg_holes = List.map args_t ~f:(fun t ->
+                    H.hole (Hole.create hole.Hole.ctx t expression) Specification.Top)
+                in
+                H.op (op, arg_holes) spec, u)
+          | _ -> None)
       in
-      let type_ctx =
-        List.fold (List.zip_exn arg_names args_t) ~init:(StaticDistance.Map.increment_scope hole.Hole.ctx)
-          ~f:(fun ctx (arg, arg_t) -> StaticDistance.Map.add ctx ~key:arg ~data:arg_t)
-      in
-      let lambda =
-        Hypothesis.lambda (num_args, Hypothesis.hole (Hole.create type_ctx ret_t combinator) hole_spec) spec
-      in
-      [ lambda, Unifier.empty ]
-    | _ -> []
-
-  let generate_combinators hole spec =
-    List.filter_map (Ctx.to_alist Infer.stdlib_tctx) ~f:(fun (func, func_t) ->
-        if List.mem ~equal:String.equal combinators func then
+      let apply_exprs = List.filter_map (Ctx.to_alist functions) ~f:(fun (func, func_t) ->
           let func_t = instantiate 0 func_t in
           match func_t with
           | Arrow_t (args_t, ret_t) ->
             (* Try to unify the return type of the operator with the type of the hole. *)
-            Option.map (Unifier.of_types ret_t hole.Hole.type_) ~f:(fun u ->
+            Option.map (Unifier.of_types hole.Hole.type_ ret_t) ~f:(fun u ->
                 (* If unification succeeds, apply the unifier to the rest of the type. *)
-                let args_t = List.map args_t ~f:(Infer.Unifier.apply u) in
+                let args_t = List.map args_t ~f:(Unifier.apply u) in
                 let arg_holes = List.map args_t ~f:(fun t ->
-                    match t with
-                    | Arrow_t _ -> 
-                      Hypothesis.hole (Hole.create hole.Hole.ctx t lambda) Specification.Top
-                    | _ ->
-                      Hypothesis.hole (Hole.create hole.Hole.ctx t identifier) Specification.Top)
+                    H.hole (Hole.create hole.Hole.ctx t expression) Specification.Top)
                 in
-                Hypothesis.apply (Hypothesis.id_name func Specification.Top, arg_holes) spec, u)
-          | _ -> None
-        else None)
+                H.apply (H.id_name func Specification.Top, arg_holes) spec, u)
+          | _ -> None)
+      in
+      op_exprs @ apply_exprs
 
-  let select_generators symbol =
-    if symbol = constant then
-      [ generate_constants ]
-    else if symbol = identifier then
-      [ generate_identifiers ]
-    else if symbol = lambda then
-      [ generate_lambdas ]
-    else if symbol = expression then
-      [ generate_expressions; generate_identifiers; generate_constants ]
-    else if symbol = combinator then
-      [ generate_combinators; generate_expressions; generate_constants ]
-    else
-      failwiths "Unknown symbol type." symbol Symbol.to_sexp
+    let generate_lambdas hole spec =
+      match hole.Hole.type_ with
+      (* If the hole has an arrow type, generate a lambda expression with
+         the right number of arguments and push the specification down. *)
+      | Arrow_t (args_t, ret_t) ->
+        let num_args = List.length args_t in
+        let arg_names = StaticDistance.args num_args in
 
-  let generalize hole spec =
-    let generators = select_generators hole.Hole.symbol in
-    List.concat (List.map generators ~f:(fun g -> g hole spec))
+        (* The lambda introduces a new scope, so remember to increment
+           the scope of the parent specification. *)
+        let hole_spec = match Specification.increment_scope spec with
+          | Specification.FunctionExamples exs ->
+            let hole_exs = List.map exs ~f:(fun (in_ctx, in_args, out) ->
+                let value_ctx = StaticDistance.Map.of_alist_exn (List.zip_exn arg_names in_args) in
+                let in_ctx =
+                  StaticDistance.Map.merge value_ctx in_ctx ~f:(fun ~key:k v ->
+                      match v with
+                      | `Both (x, _)
+                      | `Left x
+                      | `Right x -> Some x)
+                in
+                (in_ctx, out))
+            in
+            Specification.Examples hole_exs
+          | Specification.Bottom -> Specification.Bottom
+          | _ -> Specification.Top
+        in
+        let type_ctx =
+          List.fold (List.zip_exn arg_names args_t) ~init:(StaticDistance.Map.increment_scope hole.Hole.ctx)
+            ~f:(fun ctx (arg, arg_t) -> StaticDistance.Map.add ctx ~key:arg ~data:arg_t)
+        in
+        let lambda =
+          H.lambda (num_args, H.hole (Hole.create type_ctx ret_t combinator) hole_spec) spec
+        in
+        [ lambda, Unifier.empty ]
+      | _ -> []
+
+    let generate_combinators hole spec =
+      
+      List.filter_map (Ctx.to_alist Infer.stdlib_tctx) ~f:(fun (func, func_t) ->
+          if List.mem ~equal:String.equal combinators func then
+            let func_t = instantiate 0 func_t in
+            match func_t with
+            | Arrow_t (args_t, ret_t) ->
+              (* Try to unify the return type of the operator with the type of the hole. *)
+              Option.map (Unifier.of_types ret_t hole.Hole.type_) ~f:(fun u ->
+                  (* If unification succeeds, apply the unifier to the rest of the type. *)
+                  let args_t = List.map args_t ~f:(Infer.Unifier.apply u) in
+                  let arg_holes = match (func, args_t) with
+                    | "map", [ t1; t2 ] | "mapt", [ t1; t2 ] | "filter", [ t1; t2 ] -> [
+                        H.hole (Hole.create hole.Hole.ctx t1 identifier) Specification.Top;
+                        H.hole (Hole.create hole.Hole.ctx t2 lambda) Specification.Top;
+                      ]
+                    | "foldr", [ t1; t2; t3 ] | "foldl", [ t1; t2; t3 ] | "foldt", [ t1; t2; t3 ] -> [
+                        H.hole (Hole.create hole.Hole.ctx t1 identifier) Specification.Top;
+                        H.hole (Hole.create hole.Hole.ctx t2 lambda) Specification.Top;
+                        H.hole (Hole.create hole.Hole.ctx t3 constant) Specification.Top;
+                      ]
+                    | name, _ -> failwith (sprintf "Unexpected combinator name: %s" name)
+                  in
+                  H.apply (H.id_name func Specification.Top, arg_holes) spec, u)
+            | _ -> None
+          else None)
+
+    let select_generators symbol =
+      if symbol = constant then
+        [ generate_constants ]
+      else if symbol = identifier then
+        [ generate_identifiers ]
+      else if symbol = lambda then
+        [ generate_lambdas ]
+      else if symbol = expression then
+        [ generate_expressions; generate_identifiers; generate_constants ]
+      else if symbol = combinator then
+        [ generate_combinators; generate_expressions; generate_constants ]
+      else
+        failwiths "Unknown symbol type." symbol Symbol.to_sexp
+
+    let generalize hole spec =
+      let generators = select_generators hole.Hole.symbol in
+      List.concat (List.map generators ~f:(fun g -> g hole spec))
+  end
+
+  include Make (struct
+      let lambda = Symbol.create "Lambda"
+      let combinator = Symbol.create "Combinator"
+      let expression = Symbol.create "Expression"
+      let constant = Symbol.create "Constant"
+      let identifier = Symbol.create "Identifier"
+    end)
 end
 
 module type Synthesizer_intf = sig
@@ -736,7 +788,24 @@ end
 
 module BFS_Synthesizer = Make_BFS_Synthesizer(L2_Generalizer)
 
+(** Maps (hole, spec) pairs to the hypotheses that can fill in the hole and match the spec. 
+
+    The memoizer can be queried with a hole, a spec and a cost.
+
+    Internally, the type of the hole and the types in the type context
+    of the hole are normalized by substituting their free type
+    variable ids with fresh ones. The memoizer only stores the
+    normalized holes. This increases potential for sharing when
+    different holes have the same type structure but different ids in
+    their free type variables.
+*)
 module Memoizer = struct
+  let denormalize_unifier u map =
+    Unifier.to_alist u
+    |> List.filter_map ~f:(fun (k, v) ->
+        Option.map (IntMap.find map k) ~f:(fun k' -> k', v))
+    |> Unifier.of_alist_exn
+
   module Key = struct
     module Hole_without_id = struct
       type t = {
@@ -745,11 +814,29 @@ module Memoizer = struct
         symbol : Symbol.t;
       } with compare, sexp
 
-      let of_hole h = {
-        ctx = h.Hole.ctx;
-        type_ = h.Hole.type_;
-        symbol = h.Hole.symbol;
-      }
+      let normalize_free ctx t =
+        let fresh_int = Util.Fresh.mk_fresh_int_fun () in
+        let rec norm t = match t with
+          | Var_t { contents = Quant _ }
+          | Const_t _ -> t
+          | App_t (name, args) -> App_t (name, List.map args ~f:norm)
+          | Arrow_t (args, ret) -> Arrow_t (List.map args ~f:norm, norm ret)
+          | Var_t { contents = Free (id, level) } ->
+            (match IntMap.find !ctx id with
+             | Some id -> Type.free id level
+             | None ->
+               let new_id = fresh_int () in
+               ctx := IntMap.add !ctx new_id id;
+               Type.free new_id level)
+          | Var_t { contents = Link t } -> norm t
+        in
+        norm t
+
+      let of_hole h =
+        let free_ctx = ref IntMap.empty in
+        let type_ = normalize_free free_ctx h.Hole.type_ in
+        let type_ctx = StaticDistance.Map.map h.Hole.ctx ~f:(normalize_free free_ctx) in
+        ({ ctx = type_ctx; symbol = h.Hole.symbol; type_; }, !free_ctx)
     end
 
     type t = {
@@ -759,99 +846,79 @@ module Memoizer = struct
 
     let hash = Hashtbl.hash
 
-    let of_hole_spec hole spec = {
-      hole = Hole_without_id.of_hole hole;
-      spec;
-    }
+    let of_hole_spec hole spec =
+      let (hole, map) = Hole_without_id.of_hole hole in
+      ({ hole; spec; }, map)
   end
 
   module HoleTable = Hashtbl.Make(Key)
   module CostTable = Int.Table
-  module TypeTable = ImmutableType.Table
 
-  module State = struct
+  module HoleState = struct
     type t = {
-      hypos : (Hypothesis.t * Unifier.t) list CostTable.t;
-      frontier : (Hypothesis.t * Unifier.t) Heap.t;
-    }
-
-    let sexp_of_t s =
-      let open Sexp in
-      let module H = Hypothesis in 
-      List [
-        List [
-          Atom "hypos";
-          CostTable.sexp_of_t (List.sexp_of_t (Tuple.T2.sexp_of_t H.to_sexp Unifier.sexp_of_t)) s.hypos
-        ];
-        List [
-          Atom "frontier";
-          Heap.to_list s.frontier
-          |> List.sexp_of_t (Tuple.T2.sexp_of_t H.to_sexp Unifier.sexp_of_t)
-        ];
-      ]
+      hypotheses : (Hypothesis.t * Unifier.t) list CostTable.t;
+      generalizations : (Hypothesis.t * Unifier.t) list Lazy.t;
+    } with sexp
   end
 
   type t = {
-    table : State.t HoleTable.t;
+    hole_table : HoleState.t HoleTable.t;
     generalize : Generalizer_impl.t;
-  } 
-
-  let base_terms = [
-    `Num 0; `Num 1; `Num Int.max_value; `Bool true; `Bool false; `List []
-  ]
+  }
 
   let create generalize = {
-    table = HoleTable.create ();
+    hole_table = HoleTable.create ();
     generalize;
   }
 
-  let fill m hole spec cost =
-    let module S = State in
-    let module H = Hypothesis in
-    let rec loop state =
-      match Heap.pop_if state.S.frontier (fun (h, _) -> h.H.cost < cost) with
-      | Some (h, h_u) ->
-        (* let () = Debug.eprintf "Expanding %s" (Hypothesis.to_string h) in *)
-        let m_hole =
-          List.min_elt h.H.holes ~cmp:(fun (h1, _) (h2, _) -> Int.compare h1.Hole.id h2.Hole.id)
-        in
-        (match m_hole with
-         | Some (hole, spec) ->
-           List.iter (m.generalize hole spec) ~f:(fun (c, c_u) ->
-               (* let () = Debug.eprintf "Considering child %s" (Hypothesis.to_string c) in *)
-               if c.H.kind = H.Abstract || Hypothesis.verify c then
-                 let u = Unifier.compose c_u h_u in
-                 let h = H.apply_unifier (H.fill_hole hole ~parent:h ~child:c) u in
-                 (* if not (Skeleton.is_simplifiable base_terms h.H.skeleton.Hashcons.node) then *)
-                   match h.H.kind with
-                   | H.Concrete -> CostTable.add_multi state.S.hypos ~key:h.H.cost ~data:(h, u)
-                   | H.Abstract -> Heap.add state.S.frontier (h, u))
-         | None -> failwiths "BUG: Abstract hypothesis has no holes." h H.to_sexp);
-        loop state
-      | None -> ()
-    in
-    let state = HoleTable.find_exn m.table (Key.of_hole_spec hole spec) in
-    if not (CostTable.mem state.S.hypos cost) then begin
-      CostTable.add_exn state.S.hypos cost [];
-      loop state
-    end
-
-  let get m hole spec cost =
-    let module S = State in
-    let module H = Hypothesis in
-    let key = Key.of_hole_spec hole spec in
-    let state = HoleTable.find_or_add m.table key ~default:(fun () ->
-        let frontier = Heap.create ~cmp:(fun (h1, _) (h2, _) -> H.compare_cost h1 h2) () in
-        Heap.add frontier (H.hole hole spec, Unifier.empty);
-        { S.hypos = CostTable.create (); frontier; })
-    in
-    match CostTable.find state.S.hypos cost with
-    | Some hs -> hs
-    | None -> 
-      fill m hole spec cost;
-      match CostTable.find state.S.hypos cost with
-      | Some hs -> hs
-      | None -> failwiths "BUG: Memoizer.fill failed." state S.sexp_of_t
+  let rec get m hole spec cost =
+    (* let () = *)
+    (*   Debug.eprintf "Getting %s %s at cost %d" (Hole.to_string hole) *)
+    (*     (Specification.to_string spec) cost *)
+    (* in *)
+    if cost < 0 then raise (Invalid_argument "Argument out of range.") else
+    if cost = 0 then [] else
+      let module S = HoleState in
+      let module H = Hypothesis in
+      let (key, map) = Key.of_hole_spec hole spec in
+      let state = HoleTable.find_or_add m.hole_table key ~default:(fun () ->
+          {
+            S.hypotheses = CostTable.create ();
+            S.generalizations = Lazy.from_fun (fun () -> m.generalize hole spec);
+          })
+      in
+      let ret =
+        match CostTable.find state.S.hypotheses cost with
+        | Some hs -> hs
+        | None ->
+          let hs = List.concat_map (Lazy.force state.S.generalizations) ~f:(fun (p, p_u) ->
+              match p.H.kind with
+              | H.Concrete -> if p.H.cost = cost then [ (p, p_u) ] else []
+              | H.Abstract -> if p.H.cost >= cost then [] else
+                  let num_holes = List.length p.H.holes in
+                  List.concat_map (Util.m_partition (cost - p.H.cost) num_holes)
+                    ~f:(fun hole_costs ->
+                        List.fold2_exn p.H.holes hole_costs ~init:[ (p, p_u) ]
+                          ~f:(fun hs (hole, spec) hole_cost ->
+                              List.concat_map hs ~f:(fun (p, p_u) ->
+                                  let children = get m hole spec hole_cost in
+                                  List.map children ~f:(fun (c, c_u) ->
+                                      let u = Unifier.compose c_u p_u in
+                                      let h = H.fill_hole hole ~parent:p ~child:c in
+                                      h, u))))
+                  |> List.filter ~f:(fun (h, u) ->
+                      match h.H.kind with
+                      | H.Concrete -> H.verify h
+                      | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.to_sexp))
+          in
+          CostTable.add_exn state.S.hypotheses ~key:cost ~data:hs; hs
+      in
+      let ret = List.map ret ~f:(fun (h, u) -> (h, denormalize_unifier u map)) in
+      (* let () = *)
+      (*   Debug.eprintf "Returning %d hypos:" (List.length ret); *)
+      (*   List.iter ret ~f:(fun (h, _) -> Debug.eprint (H.to_string_hum h)) *)
+      (* in *)
+      ret
 end
 
 module L2_Synthesizer = struct
@@ -860,23 +927,6 @@ module L2_Synthesizer = struct
     | NoSolution
 
   exception SynthesisException of result
-
-  (* TODO: Build DFS search. Maintain list of "combinator hypotheses"
-     equivalent to the hypos in the original search. At each step of
-     the search, for each h in this list, search the concrete hypos
-     that can fill in its holes up to the current cost.
-
-     Can use the same cost model as the original search.
-
-     Memoization: we can memoize the enumeration of concrete
-     hypotheses for each (hole, spec) combo. Must maintain a list of
-     concrete hypos that are spec-compatible as well as a frontier of
-     abstract hypos. When searching a hole, simply enumerate the
-     concrete hypos until we run out, then start expanding on the
-     frontier.
-
-     Can discard memoization table between cost increases?
-  *)
 
   let generalize_expr hole spec =
     let symbol = hole.Hole.symbol in
@@ -910,47 +960,35 @@ module L2_Synthesizer = struct
 
     let of_hypothesis h = {
       hypothesis = h;
-      max_search_cost = ref (total_cost h.Hypothesis.cost 0);
+      max_search_cost = ref 0;
     }
   end
-  
-  let search hypo max_cost : int =
-    let open Hypothesis in
+
+  let search hypo start_exh_cost end_cost : int =
+    let module H = Hypothesis in
     let rec search (exh_cost: int) =
-      let cost = total_cost hypo.cost exh_cost in
-
-      let () = Debug.eprintf "Searching cost %d" cost in
-
       (* If the cost of searching this level exceeds the max cost, end the search. *)
-      if cost >= max_cost then exh_cost else
+      if (total_cost hypo.H.cost exh_cost) >= end_cost then exh_cost else
 
         (* Otherwise, examine the next row in the search tree. *)
         begin
-          let num_holes = List.length hypo.holes in
-          List.iter (Util.m_partition exh_cost num_holes) ~f:(fun hole_costs ->
-              let hypos =
-                match List.zip hypo.holes hole_costs with
-                | Some xs -> 
-                  List.fold_left xs ~init:[ hypo ] ~f:(fun hs ((hole, spec), hole_cost) ->
-                      List.concat_map hs ~f:(fun p ->
-                          let children = Memoizer.get memoizer hole spec exh_cost in
-                          List.map children ~f:(fun (c, u) ->
-                              assert (c.kind = Concrete);
-                              assert (c.cost = exh_cost);
-                              apply_unifier (fill_hole hole ~parent:p ~child:c) u)))
-                | None ->
-                  failwiths "BUG: Unexpected result from Util.m_partition."
-                    hole_costs (List.sexp_of_t Int.sexp_of_t)
-              in
-              List.iter hypos ~f:(fun h -> match h.kind with
-                  | Concrete ->
-                    let () = Debug.eprintf "Verifying %s\n" (to_string_hum h) in
-                    if verify h then raise (SynthesisException (Solution h))
-                  | Abstract -> failwiths "BUG: Did not fill in all holes." h to_sexp));
+          let num_holes = List.length hypo.H.holes in
+          List.concat_map (Util.m_partition exh_cost num_holes) ~f:(fun hole_costs ->
+              List.fold2_exn hypo.H.holes hole_costs ~init:[ (hypo, Unifier.empty) ]
+                ~f:(fun hs (hole, spec) hole_cost -> List.concat_map hs ~f:(fun (p, p_u) ->
+                    let children = Memoizer.get memoizer hole spec hole_cost in
+                    List.map children ~f:(fun (c, c_u) ->
+                        let u = Unifier.compose c_u p_u in
+                        let h = H.fill_hole hole ~parent:p ~child:c in
+                        h, u))))
+          |> List.iter ~f:(fun (h, u) ->
+              match h.H.kind with
+              | H.Concrete -> if H.verify h then raise (SynthesisException (Solution h))
+              | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.to_sexp);
           search (exh_cost + 1)
         end
     in
-    search 1
+    search start_exh_cost
 
   let select_generators symbol =
     let open L2_Generalizer in
@@ -974,30 +1012,31 @@ module L2_Synthesizer = struct
   let generalize_all = L2_Generalizer.generalize_all ~generalize:generalize
 
   let synthesize hypo max_cost =
-    let open Hypothesis in
-    let fresh_hypos = ref [ AnnotatedH.of_hypothesis hypo ] in
+    let module H = Hypothesis in
+    let module AH = AnnotatedH in 
+    let fresh_hypos = ref [ AH.of_hypothesis hypo ] in
     let stale_hypos = ref [] in
 
-    try 
+    try
       for cost = 1 to max_cost do
         (* Search each hypothesis that can be searched at this cost. If
            the search succeeds it will throw an exception. *)
         List.iter (!fresh_hypos @ !stale_hypos) ~f:(fun h ->
-            if !(h.AnnotatedH.max_search_cost) < cost then
-              let () = Debug.eprintf "Searching up to %d %s"
-                  cost (Hypothesis.to_string_hum h.AnnotatedH.hypothesis) in
-              h.AnnotatedH.max_search_cost := search h.AnnotatedH.hypothesis cost);
+            if total_cost h.AH.hypothesis.H.cost (!(h.AH.max_search_cost) + 1) <= cost then
+              let () =
+                Debug.eprintf "Searching up to %d %s (cost = %d)"
+                  cost (H.to_string_hum h.AH.hypothesis) (h.AH.hypothesis.H.cost)
+              in
+              h.AH.max_search_cost := search h.AH.hypothesis !(h.AH.max_search_cost) cost);
 
         (* Generalize each hypothesis that is cheap enough to generalize. *)
         let (generalizable, remaining) = List.partition_tf !fresh_hypos ~f:(fun h ->
-            !(h.AnnotatedH.max_search_cost) < cost)
+            h.AH.hypothesis.H.cost < cost)
         in
-        let children =
-          List.map generalizable ~f:(fun h ->
-              generalize_all h.AnnotatedH.hypothesis
-              |> List.map ~f:(fun c -> { h with AnnotatedH.hypothesis = c }))
-          |> List.concat
+        let children = List.concat_map generalizable ~f:(fun h ->
+            generalize_all h.AH.hypothesis |> List.map ~f:AH.of_hypothesis)
         in
+        let () = List.iter children ~f:(fun h -> Debug.eprint (Hypothesis.to_string h.AH.hypothesis)) in
         fresh_hypos := remaining @ children;
         stale_hypos := !stale_hypos @ generalizable;
       done; NoSolution

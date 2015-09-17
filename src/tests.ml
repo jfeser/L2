@@ -168,61 +168,6 @@ let test_eval =
                  (let shiftr (lambda (a) (foldr a (lambda (c b) (foldl c (lambda (e d) (cons (last a) (cons b (cdr c)))) [1])) [])) (shiftr [4 0 5])))", `List [`Num 5; `Num 4; `Num 0];
     ]
 
-let test_typeof =
-  make_tests
-    ~in_f:(fun str ->
-        Expr.of_string str
-        |> (Infer.infer (Ctx.empty ()))
-        |> Infer.TypedExpr.to_type
-        |> Infer.normalize)
-    ~out_f:(fun str -> Type.of_string str |> Infer.normalize)
-    ~in_str:identity ~out_str:identity
-    ~res_str:Type.to_string
-    "typeof"
-    [
-      "1", "num";
-      "#t", "bool";
-      "#f", "bool";
-      "[]", "list[a]";
-      "[1 2 3]", "list[num]";
-      "(+ 1 2)", "num";
-      "(< 1 2)", "bool";
-      "(cons 1 [])", "list[num]";
-      "(cons 1 [1 2 3])", "list[num]";
-      "(car [1 2 3])", "num";
-      "(cdr [1 2 3])", "list[num]";
-      "(car (cdr [1 2 3]))", "num";
-      "(let f (lambda (x) (+ 1 x)) f)", "num -> num";
-      "(let f (lambda (x y) (+ x y)) f)", "(num, num) -> num";
-      "(let g (lambda (x y f) (+ x (f y))) g)", "(num, a, (a -> num)) -> num";
-      "(lambda (x y f) (+ x (f y)))", "(num, a, (a -> num)) -> num";
-      "(let g (lambda (x y) (lambda (f) (f x y))) g)", "(a, b) -> (((a, b) -> c) -> c)";
-      "(let f (lambda (x) (cons x [])) f)", "t1 -> list[t1]";
-      "(map [] (lambda (x) (+ x 1)))", "list[num]";
-      "(map [1 2 3] (lambda (x) (+ x 1)))", "list[num]";
-      "(let f (lambda (x y) (+ x y)) (f 1 2))", "num";
-      "(let f (lambda (x) (+ x 1)) (f 1))", "num";
-      "(let f (lambda (x) (+ x 1)) (f 1))", "num";
-      "(lambda (x) (let y x y))", "t1 -> t1";
-      "(lambda (x) (let y (lambda (z) z) y))", "t0 -> (t1 -> t1)";
-      "(let f (lambda (x) x) (let id (lambda (y) y) (= f id)))", "bool";
-      "(let apply (lambda (f x) (f x)) apply)", "((a -> b), a) -> b";
-      "(lambda (f) (let x (lambda (g y) (let z (g y) (= f g))) x))", "(a -> b) -> (((a -> b), a) -> bool)";
-      "(lambda (f) (let x (lambda (g) (let z (g 1) (= f g))) x))", "(num -> b) -> ((num -> b) -> bool)";
-      "(lambda (f) (lambda (g) (let z (g 1) (= f g))))", "(num -> b) -> ((num -> b) -> bool)";
-      "(lambda (f) (let x (lambda (g) (= f g)) x))", "a -> (a -> bool)";
-      "(lambda (f g) (let z (g 1) (= f g)))", "((num -> a), (num -> a)) -> bool";
-      "(lambda (l x) (= [x] l))", "(list[a], a) -> bool";
-      "(let a 0 (let b 1 (lambda (x) (cons a [b]))))", "a -> list[num]";
-      "(lambda (y) (if (= 0 y) 0 1))", "num -> num";
-      "(lambda (y) (= y 1))", "num -> bool";
-      "{}", "tree[a]";
-      "{1}", "tree[num]";
-      "{1 {2}}", "tree[num]";
-      "(value {1})", "num";
-      "(children {1 {2} {3}})", "list[tree[num]]";
-    ]
-
 let test_fold_constants =
   make_tests ~in_f:(fun str -> str |> Expr.of_string |> Rewrite.fold_constants)
     ~out_f:(fun str -> Some (Expr.of_string str))
@@ -437,6 +382,8 @@ let () = run_test_tt_main
        Eval_tests.tests;
        Unify_tests.tests;
        Collections_tests.tests;
+       Type_tests.tests;
+       Improved_search_tests.tests;
        
        test_parse_expr;
        test_parse_typ;
@@ -444,7 +391,6 @@ let () = run_test_tt_main
 
        test_eval;
        (* test_unify; *)
-       test_typeof;
        (* test_signature; *)
 
        (* test_expand; *)

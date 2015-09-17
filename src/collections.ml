@@ -253,6 +253,7 @@ struct
     sprintf "Total sets stored: %d\n" (Hashtbl.length i.store)
 end
 
+module IntMap = Core.Std.Map.Make(Int)
 module StringMap = Map.Make(String)
 
 module Ctx = struct
