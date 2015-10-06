@@ -24,14 +24,17 @@ BUILD_DIR = _build
 
 all: debug
 
-test: *.ml
+test:
 	$(OCAMLBUILD) $(FLAGS) -pkg ounit tests.native
 
-release: *.ml
+release:
 	$(OCAMLBUILD) $(FLAGS) -cflags -unsafe -cflags -noassert timing.native
 
-debug: *.ml
+debug:
 	$(OCAMLBUILD) $(FLAGS) -tag debug -tag bin_annot timing.native
+
+debug-byte:
+	$(OCAMLBUILD) $(FLAGS) -tag debug -tag bin_annot timing.byte
 
 %.mli: *.ml
 	$(OCAMLBUILD) $(FLAGS) $(@:.mli=.inferred.mli); mv $(BUILD_DIR)/$(@:.mli=.inferred.mli) $@

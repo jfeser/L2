@@ -426,13 +426,12 @@ let time_solve config (_, bk_strs, example_strs, _) : (Expr.t list * Time.Span.t
   (* Attempt to synthesize from specification. *)
   if config.Config.improved_search then
     let open Improved_search in
+    let open Hypothesis in
     Util.with_runtime (fun () ->
-        let hypo = Improved_search.L2_Synthesizer.initial_hypothesis examples in
-        let () = printf "Synthesizing hypo %s\n" (Hypothesis.to_string hypo) in
-        let () = flush stdout in
-        match Improved_search.L2_Synthesizer.synthesize hypo 20 with
-        | Improved_search.L2_Synthesizer.Solution s -> printf "%s\n" (Hypothesis.to_string s); []
-        | Improved_search.L2_Synthesizer.NoSolution -> printf "No solution\n"; [])
+        let hypo = L2_Synthesizer.initial_hypothesis examples in
+        match L2_Synthesizer.synthesize hypo ~cost:20 with
+        | Some s -> printf "%s\n" (Hypothesis.to_string s); []
+        | None -> printf "No solution\n"; [])
   else
     Util.with_runtime (fun () ->
         let solutions = Search.solve ~init:Search.extended_init ~config ~bk examples in

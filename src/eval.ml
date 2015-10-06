@@ -1,10 +1,11 @@
 open Core.Std
+open Printf
 
 open Ast
 open Collections
 
 (** Exceptions that can be thrown by the evaluation and type-checking functions. *)
-exception RuntimeError of string
+exception RuntimeError of Error.t
 
 exception HitRecursionLimit
 
@@ -19,77 +20,78 @@ let rec value_to_string v =
   | `Unit -> "unit"
 
 (** Raise a bad argument error. *)
-let arg_error op args =
-  raise (RuntimeError
-           (Printf.sprintf "Bad arguments to %s: (%s)."
-              (Expr.Op.to_string op)
-              (String.concat ~sep:" " (List.map ~f:Expr.to_string args))))
+let arg_error expr =
+  let err = Error.create "Bad function arguments." expr Expr.sexp_of_t in
+  raise (RuntimeError err)
 
 (** Raise a wrong # of arguments error. *)
-let argn_error id = raise (RuntimeError ("Wrong # of arguments to " ^ id))
+let argn_error expr sexp =
+  let err = Error.create "Wrong number of arguments." expr sexp in
+  raise (RuntimeError err)
 
-let stdlib =
-  ["inf", `Num Int.max_value]
-  @ ([
-      "foldr", "(lambda (l f i) (if (= l []) i (f (foldr (cdr l) f i) (car l))))";
-      "foldl", "(lambda (l f i) (if (= l []) i (foldl (cdr l) f (f i (car l)))))";
-      "map", "(lambda (l f) (if (= l []) [] (cons (f (car l)) (map (cdr l) f))))";
-      "filter", "(lambda (l f) (if (= l []) []
+let divide_by_zero_error () =
+  raise (RuntimeError (Error.of_string "Divide by zero."))
+
+let stdlib = ["inf", `Num Int.max_value] @ ([
+    "foldr", "(lambda (l f i) (if (= l []) i (f (foldr (cdr l) f i) (car l))))";
+    "foldl", "(lambda (l f i) (if (= l []) i (foldl (cdr l) f (f i (car l)))))";
+    "map", "(lambda (l f) (if (= l []) [] (cons (f (car l)) (map (cdr l) f))))";
+    "filter", "(lambda (l f) (if (= l []) []
              (if (f (car l))
              (cons (car l) (filter (cdr l) f))
              (filter (cdr l) f))))";
-      "mapt", "(lambda (t f)
+    "mapt", "(lambda (t f)
            (if (= t {}) {}
            (tree (f (value t)) (map (children t) (lambda (c) (mapt c f))))))";
-      "foldt", "(lambda (t f i)
+    "foldt", "(lambda (t f i)
             (if (= t {}) i
             (f (map (children t) (lambda (ct) (foldt ct f i)))
                 (value t))))";
-      "merge", "(lambda (x y) (if (= x []) y (if (= y []) x (let a (car x) (let b (car y) (if (< a b) (cons a (merge (cdr x) y)) (cons b (merge x (cdr y)))))))))";
-      "take", "(lambda (l x) (if (= [] l) [] (if (> x 0) (cons (car l) (take (cdr l) (- x 1))) [])))";
-      "zip", "(lambda (x y)
+    "merge", "(lambda (x y) (if (= x []) y (if (= y []) x (let a (car x) (let b (car y) (if (< a b) (cons a (merge (cdr x) y)) (cons b (merge x (cdr y)))))))))";
+    "take", "(lambda (l x) (if (= [] l) [] (if (> x 0) (cons (car l) (take (cdr l) (- x 1))) [])))";
+    "zip", "(lambda (x y)
             (if (| (= x []) (= y []))
             []
             (cons (cons (car x) (cons (car y) [])) (zip (cdr x) (cdr y)))))";
-      "intersperse",
-      "(lambda (l e)
+    "intersperse",
+    "(lambda (l e)
   (if (= l []) []
     (let xs (cdr l)
       (if (= xs []) l
         (cons (car l) (cons e (intersperse xs e)))))))";
-      "append",
-      "(lambda (l1 l2)
+    "append",
+    "(lambda (l1 l2)
   (if (= l1 []) l2
     (if (= l2 []) l1
       (cons (car l1) (append (cdr l1) l2)))))";
-      "reverse",
-      "(lambda (l)
+    "reverse",
+    "(lambda (l)
   (if (= l []) []
     (append (reverse (cdr l)) [(car l)])))";
-      "concat",
-      "(lambda (l)
+    "concat",
+    "(lambda (l)
   (if (= l []) []
     (append (car l) (concat (cdr l)))))";
-      "drop",
-      "(lambda (l x)
+    "drop",
+    "(lambda (l x)
   (if (= x 0) l
     (drop (cdr l) (- x 1))))";
-      "sort",
-      "(lambda (l)
+    "sort",
+    "(lambda (l)
   (if (= l []) []
     (let p (car l)
          (let lesser (filter (cdr l) (lambda (e) (< e p)))
               (let greater (filter (cdr l) (lambda (e) (>= e p)))
                    (append (sort lesser) (cons p (sort greater))))))))";
-        "dedup",
-      "(lambda (l)
+    "dedup",
+    "(lambda (l)
     (if (= l []) []
       (if (= (cdr l) []) l
         (let sl (sort l)
              (let x1 (car sl)
                   (let x2 (car (cdr sl))
                        (if (= x1 x2) (dedup (cdr sl)) (cons x1 (dedup (cdr sl))))))))))"
-    ] |> List.map ~f:(fun (name, str) -> name, Expr.of_string str))
+  ] |> List.map ~f:(fun (name, str) -> name, Expr.of_string str))
 
 let eval_ctx_of_alist =
   List.fold_left ~init:(Ctx.empty ())
@@ -102,125 +104,129 @@ let eval_ctx_of_alist =
 let (stdlib_vctx: value Ctx.t) = eval_ctx_of_alist stdlib
 
 (** Evaluate an expression in the provided context. *)
-let eval ?recursion_limit:(limit = (-1)) ctx expr : value =
-  let ctx' =
-    Ctx.merge stdlib_vctx ctx ~f:(fun ~key:_ value ->
-        match value with
-        | `Both (_, v) | `Left v | `Right v -> Some v) in
-  let rec ev ctx lim expr : value =
-    if lim = 0
-    then (
-      LOG "Exceeded recursion limit." LEVEL TRACE;
-      raise (RuntimeError (sprintf "Exceeded recursion limit: %s" (Expr.to_string expr)))
-    )
+let eval ?recursion_limit ctx expr =
+  let rec eval limit ctx expr =
+    if limit = 0 then begin
+      match recursion_limit with
+      | Some l -> 
+        let err = Error.create "Exceeded recursion limit." (l, expr) <:sexp_of<int * Expr.t>> in
+        raise (RuntimeError err)
+      | None -> failwith "BUG: No recursion limit specified but limit = 0."
+    end
     else
-      let ev_all = List.map ~f:(ev ctx lim) in
+      let limit = limit - 1 in
+      let eval_all = List.map ~f:(eval limit ctx) in
       match expr with
       | `Num x  -> `Num x
       | `Bool x -> `Bool x
-      | `List x -> `List (ev_all x)
-      | `Tree x -> `Tree (Tree.map x ~f:(ev ctx lim))
+      | `List x -> `List (eval_all x)
+      | `Tree x -> `Tree (Tree.map x ~f:(eval limit ctx))
       | `Id id  ->
         (match Ctx.lookup ctx id with
          | Some x -> x
-         | None -> raise @@ RuntimeError (sprintf "Unbound lookup %s." id))
+         | None -> raise @@ RuntimeError (Error.create "Unbound lookup." id sexp_of_id))
       | `Let (name, bound, body) ->
-        let ctx' = Ctx.bind ctx name `Unit in
-        Ctx.update ctx' name (ev ctx' lim bound);
-        ev ctx' lim body
+        let ctx = Ctx.bind ctx name `Unit in
+        Ctx.update ctx name (eval limit ctx bound);
+        eval limit ctx body
       | `Lambda _ as lambda -> `Closure (lambda, ctx)
       | `Apply (func, args) ->
-        (match ev ctx lim func with
+        (match eval limit ctx func with
          | `Closure (`Lambda (arg_names, body), enclosed_ctx) ->
-           (match List.zip arg_names (ev_all args) with
+           (match List.zip arg_names (eval_all args) with
             | Some bindings ->
-              let ctx' =
-                List.fold bindings ~init:(enclosed_ctx)
-                  ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value)
+              let ctx =
+                List.fold bindings ~init:enclosed_ctx ~f:(fun ctx (arg_name, value) ->
+                    Ctx.bind ctx arg_name value)
               in
-              ev ctx' (lim - 1) body
-            | None -> argn_error @@ Expr.to_string body)
-         | _ -> raise @@ RuntimeError (sprintf "Tried to apply a non-function: %s"
-                                         (Expr.to_string expr)))
+              eval limit ctx body
+            | None -> argn_error expr Expr.sexp_of_t)
+         | _ -> raise @@ RuntimeError
+             (Error.create "Tried to apply a non-function." expr Expr.sexp_of_t))
 
-      | `Op (op, args) ->
-        (match op with
-         | Not -> (match ev_all args with
-             | [`Bool x] -> `Bool (not x)
-             | _ -> arg_error op args)
-         | Car -> (match ev_all args with
-             | [`List (x::_)] -> x
-             | _ -> arg_error op args)
-         | Cdr -> (match ev_all args with
-             | [`List (_::xs)] -> `List xs
-             | _ -> arg_error op args)
-         | Plus -> (match ev_all args with
-             | [`Num x; `Num y] -> `Num (x + y)
-             | _ -> arg_error op args)
-         | Minus -> (match ev_all args with
-             | [`Num x; `Num y] -> `Num (x - y)
-             | _ -> arg_error op args)
-         | Mul -> (match ev_all args with
-             | [`Num x; `Num y] -> `Num (x * y)
-             | _ -> arg_error op args)
-         | Div -> (match ev_all args with
-             | [`Num x; `Num y] ->
-               if y = 0 then raise (RuntimeError "Divide by zero.") else `Num (x / y)
-             | _ -> arg_error op args)
-         | Mod -> (match ev_all args with
-             | [`Num x; `Num y] ->
-               if y = 0 then raise (RuntimeError "Divide by zero.") else `Num (x mod y)
-             | _ -> arg_error op args)
-         | Eq -> (match ev_all args with
-             | [x; y] -> (try `Bool (x = y) with Invalid_argument _ -> arg_error op args)
-             | _ -> arg_error op args)
-         | Neq -> (match ev_all args with
-             | [x; y] -> (try `Bool (x <> y) with Invalid_argument _ -> arg_error op args)
-             | _ -> arg_error op args)
-         | Lt -> (match ev_all args with
-             | [`Num x; `Num y] -> `Bool (x < y)
-             | _ -> arg_error op args)
-         | Leq -> (match ev_all args with
-             | [`Num x; `Num y] -> `Bool (x <= y)
-             | _ -> arg_error op args)
-         | Gt -> (match ev_all args with
-             | [`Num x; `Num y] -> `Bool (x > y)
-             | _ -> arg_error op args)
-         | Geq -> (match ev_all args with
-             | [`Num x; `Num y] -> `Bool (x >= y)
-             | _ -> arg_error op args)
-         | And -> (match ev_all args with
-             | [`Bool x; `Bool y] -> `Bool (x && y)
-             | _ -> arg_error op args)
-         | Or -> (match ev_all args with
-             | [`Bool x; `Bool y] -> `Bool (x || y)
-             | _ -> arg_error op args)
-         | RCons -> (match ev_all args with
-             | [`List y; x] -> `List (x :: y)
-             | _ -> arg_error op args)
-         | Cons -> (match ev_all args with
-             | [x; `List y] -> `List (x :: y)
-             | _ -> arg_error op args)
-         | Tree -> (match ev_all args with
-             | [x; `List y] ->
-               let (y': value Tree.t list) = List.map y ~f:(fun e -> match e with `Tree t -> t | _ -> arg_error op args) in
-               `Tree (Tree.Node (x, y'))
-             | _ -> arg_error op args)
-         | Value -> (match ev_all args with
-             | [`Tree (Tree.Node (x, _))] -> x
-             | _ -> arg_error op args)
-         | Children -> (match ev_all args with
-             | [`Tree Tree.Empty] -> `List []
-             | [`Tree (Tree.Node (_, x))] -> `List (List.map x ~f:(fun e -> `Tree e))
-             | _ -> arg_error op args)
-         | If -> (match args with
-             | [ux; uy; uz] -> (match ev ctx lim ux with
-                 | `Bool x -> if x then ev ctx lim uy
-                   else ev ctx lim uz
-                 | _ -> arg_error op args)
-             | _ -> arg_error op args))
+      | `Op (op, args) -> (match op with
+          | Not -> (match eval_all args with
+              | [`Bool x] -> `Bool (not x)
+              | _ -> arg_error expr)
+          | Car -> (match eval_all args with
+              | [`List (x::_)] -> x
+              | _ -> arg_error expr)
+          | Cdr -> (match eval_all args with
+              | [`List (_::xs)] -> `List xs
+              | _ -> arg_error expr)
+          | Plus -> (match eval_all args with
+              | [`Num x; `Num y] -> `Num (x + y)
+              | _ -> arg_error expr)
+          | Minus -> (match eval_all args with
+              | [`Num x; `Num y] -> `Num (x - y)
+              | _ -> arg_error expr)
+          | Mul -> (match eval_all args with
+              | [`Num x; `Num y] -> `Num (x * y)
+              | _ -> arg_error expr)
+          | Div -> (match eval_all args with
+              | [`Num x; `Num y] -> if y = 0 then divide_by_zero_error () else `Num (x / y)
+              | _ -> arg_error expr)
+          | Mod -> (match eval_all args with
+              | [`Num x; `Num y] -> if y = 0 then divide_by_zero_error () else `Num (x mod y)
+              | _ -> arg_error expr)
+          | Eq -> (match eval_all args with
+              | [x; y] -> (try `Bool (x = y) with Invalid_argument _ -> arg_error expr)
+              | _ -> arg_error expr)
+          | Neq -> (match eval_all args with
+              | [x; y] -> (try `Bool (x <> y) with Invalid_argument _ -> arg_error expr)
+              | _ -> arg_error expr)
+          | Lt -> (match eval_all args with
+              | [`Num x; `Num y] -> `Bool (x < y)
+              | _ -> arg_error expr)
+          | Leq -> (match eval_all args with
+              | [`Num x; `Num y] -> `Bool (x <= y)
+              | _ -> arg_error expr)
+          | Gt -> (match eval_all args with
+              | [`Num x; `Num y] -> `Bool (x > y)
+              | _ -> arg_error expr)
+          | Geq -> (match eval_all args with
+              | [`Num x; `Num y] -> `Bool (x >= y)
+              | _ -> arg_error expr)
+          | And -> (match eval_all args with
+              | [`Bool x; `Bool y] -> `Bool (x && y)
+              | _ -> arg_error expr)
+          | Or -> (match eval_all args with
+              | [`Bool x; `Bool y] -> `Bool (x || y)
+              | _ -> arg_error expr)
+          | RCons -> (match eval_all args with
+              | [`List y; x] -> `List (x :: y)
+              | _ -> arg_error expr)
+          | Cons -> (match eval_all args with
+              | [x; `List y] -> `List (x :: y)
+              | _ -> arg_error expr)
+          | Tree -> (match eval_all args with
+              | [x; `List y] ->
+                let y = List.map y ~f:(function
+                    | `Tree t -> t
+                    | _ -> arg_error expr)
+                in
+                `Tree (Tree.Node (x, y))
+              | _ -> arg_error expr)
+          | Value -> (match eval_all args with
+              | [`Tree (Tree.Node (x, _))] -> x
+              | _ -> arg_error expr)
+          | Children -> (match eval_all args with
+              | [`Tree Tree.Empty] -> `List []
+              | [`Tree (Tree.Node (_, x))] -> `List (List.map x ~f:(fun e -> `Tree e))
+              | _ -> arg_error expr)
+          | If -> (match args with
+              | [ux; uy; uz] -> (match eval limit ctx ux with
+                  | `Bool x -> if x then eval limit ctx uy else eval limit ctx uz
+                  | _ -> arg_error expr)
+              | _ -> arg_error expr))
   in
-  ev ctx' limit expr
+  let ctx = Ctx.merge stdlib_vctx ctx ~f:(fun ~key:_ value ->
+      match value with
+      | `Both (_, v) | `Left v | `Right v -> Some v)
+  in
+  match recursion_limit with
+  | Some limit -> eval limit ctx expr
+  | None -> eval (-1) ctx expr
 
 module ExprValue = struct
   type t = [
@@ -235,7 +241,7 @@ module ExprValue = struct
     | `Lambda of id list * t
     | `Apply of t * (t list)
     | `Op of op * (t list)
-  ] with compare
+  ] with compare, sexp
 
   let rec to_string (e: t) : string =
     let list_to_string l = String.concat ~sep:" " (List.map ~f:to_string l) in
@@ -271,6 +277,7 @@ module ExprValue = struct
     | `List x -> `List (List.map x ~f:of_value)
     | `Tree x -> `Tree (Tree.map x ~f:of_value)
     | `Closure (x, ctx) -> `Closure (of_expr x, Ctx.map ctx ~f:of_value)
+    | `Unit -> `Unit
 end
 
 let (stdlib_evctx: ExprValue.t Ctx.t) =
@@ -313,7 +320,7 @@ let partial_eval
                   ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value)
               in
               ev ctx' (lim - 1) body
-            | None -> argn_error @@ ExprValue.to_string body)
+            | None -> argn_error expr ExprValue.sexp_of_t)
          | e -> `Apply (e, args))
 
       | `Op (op, raw_args) ->
@@ -343,14 +350,14 @@ let partial_eval
                | [`Op (Div, [y; z]); x] when x = z -> y
                | _ -> `Op (op, Lazy.force args))
            | Div -> (match Lazy.force args with
-               | [_; `Num 0] -> raise (RuntimeError "Divide by 0.")
+               | [_; `Num 0] -> divide_by_zero_error ()
                | [`Num x; `Num y] -> `Num (x / y)
                | [`Num 0; _] -> `Num 0
                | [x; `Num 1] -> x
                | [x; y] when x = y -> `Num 1
                | _ -> `Op (op, Lazy.force args))
            | Mod -> (match Lazy.force args with
-               | [_; `Num 0] -> raise (RuntimeError "Modulus by 0.")
+               | [_; `Num 0] -> divide_by_zero_error ()
                | [`Num x; `Num y] -> `Num (x mod y)
                | [`Num 0; _] | [_; `Num 1] -> `Num 0
                | [x; y] when x = y -> `Num 0
@@ -438,13 +445,13 @@ let partial_eval
                | _ -> `Op (RCons, Lazy.force args))
            | Car -> (match Lazy.force args with
                | [`List (x::_)] -> x
-               | [`List []] -> raise (RuntimeError "Car of empty list.")
+               | [`List []] -> raise (RuntimeError (Error.of_string "Car of empty list."))
                | [`Op (Cons, [x; _])] -> x
                | [`Op (RCons, [_; x])] -> x
                | _ -> `Op (op, Lazy.force args))
            | Cdr -> (match Lazy.force args with
                | [`List (_::xs)] -> `List xs
-               | [`List []] -> raise (RuntimeError "Cdr of empty list.")
+               | [`List []] -> raise (RuntimeError (Error.of_string "Cdr of empty list."))
                | [`Op (Cons, [_; x])]
                | [`Op (RCons, [x; _])] -> x
                | _ -> `Op (op, Lazy.force args))
@@ -455,7 +462,7 @@ let partial_eval
                    | x -> `Op (If, [x; uy; uz]))
                | _ -> expr)
            | Value -> (match Lazy.force args with
-               | [`Tree Tree.Empty] -> raise (RuntimeError "Value of empty tree.")
+               | [`Tree Tree.Empty] -> raise (RuntimeError (Error.of_string "Value of empty tree."))
                | [`Tree (Tree.Node (x, _))] -> x
                | [`Op (Tree, [x; _])] -> x
                | _ -> `Op (op, Lazy.force args))

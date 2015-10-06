@@ -492,7 +492,7 @@ let solve_single
                        true
                      | Eval.RuntimeError err ->
                        LOG "Partial evalution of %s failed with error %s."
-                         (Eval.ExprValue.to_string expr) err
+                         (Eval.ExprValue.to_string expr) (Error.to_string_hum err)
                          LEVEL TRACE;
                        false)
            | _ -> failwith "Bad result from solve_single.")

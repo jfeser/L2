@@ -33,6 +33,8 @@ module Op = struct
     cost   : int;
   }
 
+  let equal o1 o2 = compare_op o1 o2 = 0
+
   let metadata_by_op =
     let t s =
       let lexbuf = Lexing.from_string s in

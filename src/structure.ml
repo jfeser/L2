@@ -75,7 +75,7 @@ module Spec = struct
               | App_t ("tree", [elem_typ]) ->
                 if List.for_all examples ~f:(fun ((_, result), vctx) ->
                     match Ctx.lookup_exn vctx name, result with
-                    | `Tree x, `Tree y -> Tree.equal x y ~cmp:(fun _ _ -> true)
+                    | `Tree x, `Tree y -> Tree.equal x y ~equal:(fun _ _ -> true)
                     | `Apply _, `Tree _ -> true
                     | _ -> false)
                 then Some elem_typ else None

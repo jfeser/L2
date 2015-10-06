@@ -391,7 +391,7 @@ module Tree = struct
   type 'a t =
     | Empty
     | Node of 'a * 'a t list
-    with compare, sexp
+  with compare, sexp
 
   let rec to_string t ~str =
     match t with
@@ -418,17 +418,25 @@ module Tree = struct
       | Some elem' -> if cmp elem elem' > 0 then Some elem else Some elem'
       | None -> Some elem)
 
-  let rec equal t1 t2 ~cmp = match t1, t2 with
+  let rec equal ~equal:e t1 t2 = match t1, t2 with
     | Empty, Empty -> true
-    | Node (x1, c1), Node (x2, c2) ->
-       if cmp x1 x2
-       then (match List.zip c1 c2 with
-             | Some pairs -> List.for_all pairs ~f:(fun (ce1, ce2) -> equal ce1 ce2 ~cmp:cmp)
-             | None -> false)
-       else false
+    | Node (x1, c1), Node (x2, c2) -> e x1 x2 && List.equal c1 c2 ~equal:(equal ~equal:e)
     | _ -> false
 
   let rec flatten (t: 'a t) : 'a list = match t with
     | Empty -> []
     | Node (x, y) -> [x] @ List.concat_map y ~f:flatten
+
+  let rec for_all t ~f = match t with
+    | Empty -> true
+    | Node (x, children) -> (f x) && (List.for_all children ~f:(for_all ~f))
+
+  let rec zip (t1: 'a t) (t2: 'b t) : ('a * 'b) t Option.t = match t1, t2 with
+    | Empty, Empty -> Some Empty
+    | Node _, Empty | Empty, Node _ -> None
+    | Node (x1, c1), Node (x2, c2) ->
+      Option.bind (List.zip c1 c2) (fun c ->
+        List.map c ~f:(fun (t1, t2) -> zip t1 t2)
+        |> Option.all
+        |> Option.map ~f:(fun c -> Node ((x1, x2), c)))
 end
