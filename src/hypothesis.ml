@@ -64,8 +64,8 @@ module Symbol = struct
        | `Duplicate -> raise (Sexp.Of_sexp_error (Failure "Symbol already loaded.", s)))
     | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
 
-  let compare = Int.compare
-  let equal = Int.equal
+  let (compare: t -> t -> int) = Int.compare
+  let (equal: t -> t -> bool) = Int.equal
 
   let create (name: string) : t = begin
     let id = incr counter; !counter in
@@ -76,7 +76,7 @@ module Symbol = struct
 end
 
 module Hole = struct
-  type id = int with sexp
+  type id = int with sexp, compare
   
   type t = {
     id  : id;
@@ -85,6 +85,8 @@ module Hole = struct
     symbol : Symbol.t;
   } with sexp
 
+  let id_to_string = Int.to_string
+  
   let compare h1 h2 = Int.compare h1.id h2.id
 
   let counter = ref 0
@@ -236,20 +238,6 @@ module Skeleton = struct
   let compare = compare_t
   let hash = Hashtbl.hash
 
-  let rec fill_hole hole ~parent:p ~child:c =
-    let f p' = fill_hole hole ~child:c ~parent:p' in
-    match p with
-    | Num_h _
-    | Bool_h _
-    | Id_h _ -> p
-    | Hole_h (h, _) -> if Hole.equal h hole then c else p
-    | List_h (x, s) -> List_h (List.map ~f:f x, s)
-    | Tree_h (x, s) -> Tree_h (Tree.map ~f:f x, s)
-    | Let_h ((x, y), s) -> Let_h ((f x, f y), s)
-    | Lambda_h ((x, y), s) -> Lambda_h ((x, f y), s)
-    | Apply_h ((x, y), s) -> Apply_h ((f x, List.map ~f:f y), s)
-    | Op_h ((x, y), s) -> Op_h ((x, List.map ~f:f y), s)
-
   let annotation = function
     | Num_h (_, a)
     | Bool_h (_, a)
@@ -273,6 +261,44 @@ module Skeleton = struct
     | Lambda_h ((args, body), a) -> f (Lambda_h ((args, map ~f:f body), a))
     | Apply_h ((func, args), a) -> f (Apply_h ((map ~f:f func, List.map ~f:(map ~f:f) args), a))
     | Op_h ((op, args), a) -> f (Op_h ((op, List.map ~f:(map ~f:f) args), a))
+
+  let map_annotation ~f s = match s with
+    | Num_h (x, a) -> Num_h (x, f a)
+    | Bool_h (x, a) -> Bool_h (x, f a)
+    | Id_h (x, a) -> Id_h (x, f a)
+    | List_h (x, a) -> List_h (x, f a)
+    | Tree_h (x, a) -> Tree_h (x, f a)
+    | Let_h (x, a) -> Let_h (x, f a)
+    | Lambda_h (x, a) -> Lambda_h (x, f a)
+    | Apply_h (x, a) -> Apply_h (x, f a)
+    | Op_h (x, a) -> Op_h (x, f a)
+    | Hole_h (x, a) -> Hole_h (x, f a)
+
+  let rec fill_hole hole ~parent:p ~child:c =
+    let f p' = fill_hole hole ~child:c ~parent:p' in
+    match p with
+    | Num_h _
+    | Bool_h _
+    | Id_h _ -> p
+    | Hole_h (h, s) -> if Hole.equal h hole then (map_annotation c ~f:(fun _ -> s)) else p
+    | List_h (x, s) -> List_h (List.map ~f:f x, s)
+    | Tree_h (x, s) -> Tree_h (Tree.map ~f:f x, s)
+    | Let_h ((x, y), s) -> Let_h ((f x, f y), s)
+    | Lambda_h ((x, y), s) -> Lambda_h ((x, f y), s)
+    | Apply_h ((x, y), s) -> Apply_h ((f x, List.map ~f:f y), s)
+    | Op_h ((x, y), s) -> Op_h ((x, List.map ~f:f y), s)
+
+  let rec holes = function
+    | Num_h _
+    | Bool_h _
+    | Id_h _ -> []
+    | List_h (x, _) -> List.concat_map x ~f:holes
+    | Tree_h (x, _) -> List.concat_map (Tree.flatten x) ~f:holes
+    | Let_h ((bound, body), _) -> (holes bound) @ (holes body)
+    | Lambda_h ((_, body), _) -> holes body
+    | Apply_h ((func, args), _) -> (holes func) @ (List.concat_map args ~f:holes)
+    | Op_h ((_, args), _) -> List.concat_map args ~f:holes
+    | Hole_h (hole, spec) -> [ (hole, spec) ]
 end
 
 module Specification = struct
@@ -485,6 +511,15 @@ module Hypothesis = struct
     
     let to_string h = Sexp.to_string_hum (sexp_of_t h)
     let to_string_hum h = Skeleton.to_string_hum (h.skeleton.Hashcons.node)
+
+    let map h ~skeleton:f =
+      let skeleton = f h.skeleton.Hashcons.node in
+      let holes = Skeleton.holes skeleton in
+      { h with
+        skeleton = Table.hashcons table skeleton;
+        kind = if List.length holes = 0 then Concrete else Abstract;
+        holes;
+      }
 
     let apply_unifier h u =
       {

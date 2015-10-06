@@ -37,6 +37,10 @@ module Hole : sig
   }
 
   include Sexpable.S with type t := t
+  val id_of_sexp : Sexp.t -> id
+  val sexp_of_id : id -> Sexp.t
+  val compare_id : id -> id -> int
+  val id_to_string : id -> string
     
   val compare : t -> t -> int
   val equal : t -> t -> bool
@@ -63,6 +67,9 @@ module Skeleton : sig
     | Hole_h of Hole.t * 'a
 
   include Sexpable.S1 with type 'a t := 'a t
+  val id_of_sexp : Sexp.t -> id
+  val sexp_of_id : id -> Sexp.t
+  val compare_id : id -> id -> int
 
   val equal : equal:('a -> 'a -> bool) -> 'a t -> 'a t -> bool
   val to_string_hum : 'a t -> string
@@ -77,6 +84,7 @@ module Skeleton : sig
   val fill_hole : Hole.t -> parent:'a t -> child:'a t -> 'a t
   val annotation : 'a t -> 'a
   val map : f:('a t -> 'a t) -> 'a t -> 'a t
+  val map_annotation : f:('a -> 'a) -> 'a t -> 'a t
 end
 
 module Specification : sig
@@ -134,8 +142,8 @@ module Hypothesis : sig
     holes : (Hole.t * Specification.t) list;
   }
 
-  val sexp_of_t : t -> Sexplib.Type.t
-  val t_of_sexp : Sexplib.Type.t -> t
+  include Sexpable with type t := t
+
   val compare_cost : t -> t -> int
   val spec : t -> Specification.t
   val to_expr : t -> Expr.t
@@ -144,6 +152,9 @@ module Hypothesis : sig
   val apply_unifier : t -> Unifier.t -> t
   val fill_hole : Hole.t -> parent:t -> child:t -> t
   val verify : t -> bool
+  val map : t -> skeleton:(Specification.t Skeleton.t -> Specification.t Skeleton.t) -> t
+
+  (** Constructors *)
   val num : int -> Specification.t -> t
   val bool : bool -> Specification.t -> t
   val id_sd : StaticDistance.t -> Specification.t -> t

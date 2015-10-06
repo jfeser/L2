@@ -11,6 +11,7 @@ exception Unknown
 type term =
   | Var of id
   | Term of id * term list
+with sexp
 
 type sterm =
   | Cons of sterm * sterm
@@ -18,7 +19,7 @@ type sterm =
   | V of id (* Variable *)
   | U of id * bool (* Volatile? variable *)
 
-type substitution = (id * term) list
+type substitution = (id * term) list with sexp
 
 let rec sterm_to_string (s: sterm) : string =
   let ts = sterm_to_string in
@@ -62,6 +63,36 @@ let sterm_of_expr (e: Expr.t) : sterm option =
     | `Lambda _
     | `Op _ -> raise Unknown
   in try Some (f e) with Unknown -> None
+
+let sterm_of_value v =
+  let rec f v = match v with
+    | `Num x -> K (Int.to_string x)
+    | `Bool x -> K (if x then "true" else "false")
+    | `List [] -> K "[]"
+    | `List (x::xs) -> Cons (f x, f (`List xs))
+    | `Unit
+    | `Closure _
+    | `Tree _ -> raise Unknown
+  in try Some (f v) with Unknown -> None
+
+let sterm_of_result r =
+  let fresh_name = Util.Fresh.mk_fresh_name_fun () in
+  let open Symbolic_execution in
+  let rec f r = match r with
+    | Num_r x -> K (Int.to_string x)
+    | Bool_r x -> K (if x then "true" else "false")
+    | List_r [] -> K "[]"
+    | List_r (x::xs) -> Cons (f x, f (List_r xs))
+    | Id_r (StaticDistance sd) -> V (Hypothesis.StaticDistance.to_string sd)
+    | Id_r (Name id) -> V id
+    | Op_r (RCons, [xs; x])
+    | Op_r (Cons, [x; xs]) -> Cons (f x, f xs)
+    | Symbol_r id -> V (Hypothesis.Hole.id_to_string id)
+    | Apply_r _ -> V (fresh_name ())
+    | Closure_r _
+    | Tree_r _
+    | Op_r _ -> raise Unknown
+  in try Some (f r) with Unknown -> None
 
 (* the occurs check *)
 let rec occurs (x : id) (t : term) : bool =

@@ -57,34 +57,38 @@ module L2_Deduction : Deduction_intf = struct
   end
   
   module Make_deduce_2 (M : Deduce_2_intf) = struct
+    let lambda_spec collection_id parent_spec =
+      let open Result.Monad_infix in
+      match parent_spec with
+      | Sp.Examples exs ->
+        let m_hole_exs =
+          List.map (Sp.Examples.to_list exs) ~f:(fun (ctx, out_v) ->
+              let in_v = match StaticDistance.Map.find ctx collection_id with
+                | Some in_v -> in_v
+                | None -> lookup_err M.name collection_id
+              in
+              Result.map (M.examples_of_io in_v out_v) ~f:(fun io ->
+                  List.map io ~f:(fun (i, o) -> (ctx, [i]), o)))
+          |> Result.all
+          >>| List.concat
+          >>= fun hole_exs ->
+          Result.map_error (Sp.FunctionExamples.of_list hole_exs) ~f:(fun _ -> ())
+        in
+        begin
+          match m_hole_exs with
+          | Ok hole_exs -> Sp.FunctionExamples hole_exs
+          | Error () -> Sp.Bottom
+        end
+      | Sp.Top -> Sp.Top
+      | Sp.Bottom -> Sp.Bottom
+      | _ -> spec_err M.name parent_spec
+
     let deduce spec args =
       let open Result.Monad_infix in
       match args with
-      | [ Sk.Id_h (Sk.StaticDistance sd, _) as list; Sk.Hole_h (hole, Sp.Top) ] -> begin
-          match spec with
-          | Sp.Examples exs ->
-            let m_hole_exs =
-              List.map (Sp.Examples.to_list exs) ~f:(fun (ctx, out_v) ->
-                  let in_v = match StaticDistance.Map.find ctx sd with
-                    | Some in_v -> in_v
-                    | None -> lookup_err M.name sd
-                  in
-                  Result.map (M.examples_of_io in_v out_v) ~f:(fun io ->
-                    List.map io ~f:(fun (i, o) -> (ctx, [i]), o)))
-              |> Result.all
-              >>| List.concat
-              >>= fun hole_exs ->
-              Result.map_error (Sp.FunctionExamples.of_list hole_exs) ~f:(fun _ -> ())
-            in
-            let hole_spec = match m_hole_exs with
-              | Ok hole_exs -> Sp.FunctionExamples hole_exs
-              | Error () -> Sp.Bottom
-            in
-            [ list; Sk.Hole_h (hole, hole_spec) ]
-          | Sp.Top -> args
-          | Sp.Bottom -> [ list; Sk.Hole_h (hole, Sp.Bottom) ]
-          | _ -> spec_err M.name spec
-        end
+      | [ Sk.Id_h (Sk.StaticDistance sd, _) as list; lambda ] when (Sk.annotation lambda) = Sp.Top ->
+        let child_spec = lambda_spec sd spec in
+        [ list; Sk.map_annotation lambda ~f:(fun _ -> child_spec) ]
       | _ -> args
   end
 
@@ -93,7 +97,7 @@ module L2_Deduction : Deduction_intf = struct
     val is_base_case : value -> bool
     val examples_of_io : value -> value -> ((value * value) list, unit) Result.t
   end
-  
+
   (* module Make_deduce_fold (M : Deduce_fold_intf) = struct *)
   (*   let deduce spec args = *)
   (*     let open Result.Monad_infix in *)
@@ -148,7 +152,7 @@ module L2_Deduction : Deduction_intf = struct
   (*       end *)
   (*     | _ -> args *)
   (* end *)
-  
+
   module Deduce_map = Make_deduce_2 (struct
       let name = "map"
       let examples_of_io in_v out_v =
@@ -178,27 +182,27 @@ module L2_Deduction : Deduction_intf = struct
         |> Option.value ~default:(Error ())
     end)
 
-    module Deduce_filter = Make_deduce_2 (struct
-        let name = "filter"
+  module Deduce_filter = Make_deduce_2 (struct
+      let name = "filter"
 
-        let rec f = function
-          (* If there are no inputs and no outputs, then there are no
-             examples, but filter is valid. *)
-          | [], [] -> Some []
+      let rec f = function
+        (* If there are no inputs and no outputs, then there are no
+           examples, but filter is valid. *)
+        | [], [] -> Some []
 
-          (* If there are some inputs and no outputs, then the inputs
-             must have been filtered. *)
-          | (_::_ as inputs), [] -> Some (List.map inputs ~f:(fun i -> i, `Bool false))
+        (* If there are some inputs and no outputs, then the inputs
+           must have been filtered. *)
+        | (_::_ as inputs), [] -> Some (List.map inputs ~f:(fun i -> i, `Bool false))
 
-          (* If there are some outputs and no inputs, then filter is
-             not valid. *)
-          | [], _::_ -> None
+        (* If there are some outputs and no inputs, then filter is
+           not valid. *)
+        | [], _::_ -> None
 
-          | i::is, o::os when i = o ->
-            Option.map (f (is, os)) ~f:(fun exs -> (i, `Bool true)::exs)
+        | i::is, o::os when i = o ->
+          Option.map (f (is, os)) ~f:(fun exs -> (i, `Bool true)::exs)
 
-          | i::is, (_::_ as outputs) ->
-            Option.map (f (is, outputs)) ~f:(fun exs -> (i, `Bool false)::exs)
+        | i::is, (_::_ as outputs) ->
+          Option.map (f (is, outputs)) ~f:(fun exs -> (i, `Bool false)::exs)
 
       let examples_of_io in_v out_v =
         let out = match out_v with
@@ -211,6 +215,33 @@ module L2_Deduction : Deduction_intf = struct
         in
         Option.value_map (f (inp, out)) ~default:(Error ()) ~f:(fun io -> Ok io)
     end)
+
+  let deduce_lambda lambda spec =
+    let (num_args, body) = lambda in
+    if (Sk.annotation body) = Sp.Top then
+      let child_spec = match Sp.increment_scope spec with
+        | Sp.FunctionExamples exs ->
+          let arg_names = StaticDistance.args num_args in
+          let child_exs =
+            Sp.FunctionExamples.to_list exs
+            |> List.map ~f:(fun ((in_ctx, in_args), out) ->
+                let value_ctx = StaticDistance.Map.of_alist_exn (List.zip_exn arg_names in_args) in
+                let in_ctx = StaticDistance.Map.merge value_ctx in_ctx ~f:(fun ~key:_ v ->
+                    match v with
+                    | `Both (x, _)
+                    | `Left x
+                    | `Right x -> Some x)
+                in
+                (in_ctx, out))
+            |> Sp.Examples.of_list_exn
+          in
+          Sp.Examples child_exs
+        | Sp.Bottom -> Sp.Bottom
+        | Sp.Top -> Sp.Top
+        | _ -> spec_err "<lambda>" spec
+      in
+      (num_args, Sk.map_annotation body ~f:(fun _ -> child_spec))
+    else lambda
   
   let rec push_specifications (skel: Specification.t Skeleton.t) =
     match skel with
@@ -222,7 +253,9 @@ module L2_Deduction : Deduction_intf = struct
     | Sk.Tree_h (t, s) -> Sk.Tree_h (Tree.map t ~f:push_specifications, s)
     | Sk.Let_h ((bound, body), s) ->
       Sk.Let_h ((push_specifications bound, push_specifications body), s)
-    | Sk.Lambda_h ((num_args, body), s) -> Sk.Lambda_h ((num_args, push_specifications body), s)
+    | Sk.Lambda_h (lambda, s) ->
+      let (num_args, body) = deduce_lambda lambda s in
+      Sk.Lambda_h ((num_args, push_specifications body), s)
     | Sk.Op_h ((op, args), s) -> Sk.Op_h ((op, List.map args ~f:push_specifications), s)
     | Sk.Apply_h ((func, args), s) ->
       let args =
@@ -397,7 +430,6 @@ module L2_Generalizer = struct
       | _ -> []
 
     let generate_combinators hole spec =
-
       List.filter_map (Ctx.to_alist Infer.stdlib_tctx) ~f:(fun (func, func_t) ->
           if List.mem ~equal:String.equal combinators func then
             let func_t = instantiate 0 func_t in
@@ -634,8 +666,39 @@ module Memoizer = struct
 end
 
 module L2_Prune : Prune_intf = struct
-  let should_prune h = false
-    (* Rewrite.is_rewritable h.Hypothesis.skeleton.Hashcons.node *)
+  let recursion_limit = 100
+    
+  let should_prune h =
+    let module SE = Symbolic_execution in
+    let module SP = Specification in
+    let spec = Hypothesis.spec h in
+    match spec with
+    | SP.Examples exs ->
+      let () = Debug.eprint (Hypothesis.to_string_hum h) in
+      List.exists (SP.Examples.to_list exs) ~f:(fun (inputs, expected_output) ->
+          try
+            let output =
+              SE.partially_evaluate ~recursion_limit
+                ~ctx:(StaticDistance.Map.map inputs ~f:SE.result_of_value)
+                h.Hypothesis.skeleton.Hashcons.node
+            in
+            let () = Debug.eprintf "%s" (Sexp.to_string (SE.sexp_of_result output)) in
+            match Unify.sterm_of_result output, Unify.sterm_of_value expected_output with
+            | Some output, Some expected_output -> begin
+                try
+                  let sub =
+                    Unify.unify_one (Unify.translate output) (Unify.translate expected_output)
+                  in
+                  let () = Debug.eprintf "%s" (Sexp.to_string (<:sexp_of<Unify.substitution>> sub)) in
+                  false
+                with Unify.Non_unifiable -> true
+              end
+            | _ -> false
+          with
+          | SE.EvalError `HitRecursionLimit
+          | SE.EvalError `UnhandledConditional -> false
+          | SE.EvalError _ -> true)
+    | _ -> false
 end
 
 module L2_Memoizer = Memoizer.Make
@@ -731,7 +794,7 @@ module L2_Synthesizer = struct
         end
     in
     search start_exh_cost
-
+      
   let synthesize hypo ~cost:max_cost =
     let module H = Hypothesis in
     let module AH = AnnotatedH in
@@ -752,6 +815,7 @@ module L2_Synthesizer = struct
         in
         let children = List.concat_map generalizable ~f:(fun h ->
             Generalizer_impl.generalize_all ~generalize:generalize_combinator h.AH.hypothesis
+            |> List.map ~f:(Hypothesis.map ~skeleton:L2_Deduction.push_specifications)
             |> List.map ~f:AH.of_hypothesis)
         in
         fresh_hypos := remaining @ children;
