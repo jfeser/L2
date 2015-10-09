@@ -349,9 +349,6 @@ module L2_Deduction : Deduction_intf = struct
                     | Symbol_r _ -> None
                     | Apply_r _ -> m_exs
                     | _ -> begin
-
-                        (* let () = Debug.eprintf "R %s" (Skeleton.to_string_hum s) in *)
-
                         (* Convert output and expected output to terms and
                            unify. If unification fails, discard the candidate. *)
                         match sterm_of_result out_a with
@@ -386,16 +383,14 @@ module L2_Deduction : Deduction_intf = struct
             let new_exs = Hole.Id.Map.map new_exs ~f:Sp.Examples.of_list in
             if Hole.Id.Map.exists new_exs ~f:Result.is_error then None else
               Some (Hole.Id.Map.map new_exs ~f:Or_error.ok_exn))
-        |>  Option.map ~f:(fun new_exs -> Skeleton.map s ~f:(function
-            | Skeleton.Hole_h (hole, old_spec) as s -> begin
-                match Hole.Id.Map.find new_exs hole.Hole.id with
-                | Some exs -> begin match old_spec with
-                    | Sp.Top -> Skeleton.Hole_h (hole, Sp.Examples exs)
-                    | _ -> s
-                  end
-                | None -> s
+        |>  Option.map ~f:(fun new_exs -> Skeleton.map_hole s ~f:(fun (hole, old_spec) ->
+            let s = Sk.Hole_h (hole, old_spec) in
+            match Hole.Id.Map.find new_exs hole.Hole.id with
+            | Some exs -> begin match old_spec with
+                | Sp.Top -> Skeleton.Hole_h (hole, Sp.Examples exs)
+                | _ -> s
               end
-            | s -> s))
+            | None -> s))
       | _ -> Some s
     else Some s
 end
@@ -541,35 +536,13 @@ module L2_Generalizer = struct
       | Arrow_t (args_t, ret_t) ->
         let num_args = List.length args_t in
         let arg_names = StaticDistance.args num_args in
-
-        (* The lambda introduces a new scope, so remember to increment
-           the scope of the parent specification. *)
-        let hole_spec = match Sp.increment_scope spec with
-          | Sp.FunctionExamples exs ->
-            let hole_exs =
-              Sp.FunctionExamples.to_list exs
-              |> List.map ~f:(fun ((in_ctx, in_args), out) ->
-                  let value_ctx = StaticDistance.Map.of_alist_exn (List.zip_exn arg_names in_args) in
-                  let in_ctx = StaticDistance.Map.merge value_ctx in_ctx ~f:(fun ~key:_ v ->
-                      match v with
-                      | `Both (x, _)
-                      | `Left x
-                      | `Right x -> Some x)
-                  in
-                  (in_ctx, out))
-              |> Sp.Examples.of_list_exn
-            in
-            Sp.Examples hole_exs
-          | Sp.Bottom -> Sp.Bottom
-          | _ -> Sp.Top
-        in
         let type_ctx =
           List.fold (List.zip_exn arg_names args_t)
             ~init:(StaticDistance.map_increment_scope hole.Hole.ctx)
             ~f:(fun ctx (arg, arg_t) -> StaticDistance.Map.add ctx ~key:arg ~data:arg_t)
         in
         let lambda =
-          H.lambda (num_args, H.hole (Hole.create type_ctx ret_t combinator) hole_spec) spec
+          H.lambda (num_args, H.hole (Hole.create type_ctx ret_t combinator) Sp.Top) spec
         in
         [ lambda, Unifier.empty ]
       | _ -> []
@@ -885,7 +858,6 @@ module L2_Synthesizer = struct
     let rec search (exh_cost: int) =
       (* If the cost of searching this level exceeds the max cost, end the search. *)
       if (total_cost (H.cost hypo) exh_cost) >= end_cost then exh_cost else
-        let () = Debug.eprintf "Searching %s up to cost %d" (H.to_string_hum hypo) exh_cost in
         (* Otherwise, examine the next row in the search tree. *)
         begin
           let num_holes = List.length (H.holes hypo) in
@@ -899,14 +871,31 @@ module L2_Synthesizer = struct
                         h, u))))
           |> List.iter ~f:(fun (h, _) ->
               match H.kind h with
-              | H.Concrete ->
-                let () = Debug.eprintf "Verifying %d %s" (H.cost h) (H.to_string_hum h) in
-                if H.verify h then raise (SynthesisException h)
+              | H.Concrete -> if H.verify h then raise (SynthesisException h)
               | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t);
           search (exh_cost + 1)
         end
     in
     search start_exh_cost
+
+  let generalize_all ~generalize:gen hypo =
+    let open Hypothesis in
+    List.fold_left
+      (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
+      ~init:[ hypo ]
+      ~f:(fun hypos (hole, spec) ->
+          let children = List.filter (gen hole spec) ~f:(fun (c, _) ->
+              kind c = Abstract || Specification.verify spec (skeleton c))
+          in
+          List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
+              apply_unifier (fill_hole hole ~parent:p ~child:c) u))
+          |> List.concat
+
+          (* After generalizing, try to push specifications down the
+               skeleton. Filter out any hypothesis with a Bottom spec. *)
+          |> List.filter_map ~f:(fun h ->
+              Option.map (L2_Deduction.push_specifications (skeleton h))
+                L2_Hypothesis.of_skeleton))
       
   let synthesize hypo ~cost:max_cost =
     let module H = Hypothesis in
@@ -927,13 +916,8 @@ module L2_Synthesizer = struct
             (H.cost h.AH.hypothesis) < cost)
         in
         let children = List.concat_map generalizable ~f:(fun h ->
-            Generalizer_impl.generalize_all ~generalize:generalize_combinator h.AH.hypothesis
-
-            (* After generalizing, try to push specifications down the
-               skeleton. Filter out any hypothesis with a Bottom spec. *)
-            |> List.filter_map ~f:(fun h ->
-                Option.map (L2_Deduction.push_specifications (H.skeleton h))
-                  L2_Hypothesis.of_skeleton)
+            (* let () = Debug.eprintf "Generalizing %s" (H.to_string h.AH.hypothesis) in *)
+            generalize_all ~generalize:generalize_combinator h.AH.hypothesis
             |> List.map ~f:AH.of_hypothesis)
         in
         fresh_hypos := remaining @ children;

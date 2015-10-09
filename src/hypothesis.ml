@@ -83,11 +83,10 @@ module Hole = struct
     ctx : Type.t StaticDistance.Map.t;
     type_ : Type.t;
     symbol : Symbol.t;
-  } with sexp
+  } with sexp, compare
 
   let counter = ref 0
   
-  let compare h1 h2 = Int.compare h1.id h2.id
   let equal h1 h2 = h1.id = h2.id
   let to_string h = Sexp.to_string_hum (sexp_of_t h)
 
@@ -246,18 +245,6 @@ module Skeleton = struct
     | Op_h (_, a)
     | Hole_h (_, a) -> a
 
-  let rec map ~f s = match s with
-    | Num_h _
-    | Bool_h _
-    | Id_h _
-    | Hole_h _ -> f s
-    | List_h (x, a) -> f (List_h (List.map ~f:(map ~f:f) x, a))
-    | Tree_h (x, a) -> f (Tree_h (Tree.map ~f:(map ~f:f) x, a))
-    | Let_h ((bound, body), a) -> f (Let_h ((map ~f:f bound, map ~f:f body), a))
-    | Lambda_h ((args, body), a) -> f (Lambda_h ((args, map ~f:f body), a))
-    | Apply_h ((func, args), a) -> f (Apply_h ((map ~f:f func, List.map ~f:(map ~f:f) args), a))
-    | Op_h ((op, args), a) -> f (Op_h ((op, List.map ~f:(map ~f:f) args), a))
-
   let map_annotation ~f s = match s with
     | Num_h (x, a) -> Num_h (x, f a)
     | Bool_h (x, a) -> Bool_h (x, f a)
@@ -270,19 +257,24 @@ module Skeleton = struct
     | Op_h (x, a) -> Op_h (x, f a)
     | Hole_h (x, a) -> Hole_h (x, f a)
 
-  let rec fill_hole hole ~parent:p ~child:c =
-    let f p' = fill_hole hole ~child:c ~parent:p' in
-    match p with
+  let rec map_hole ~f s =
+    match s with
     | Num_h _
     | Bool_h _
-    | Id_h _ -> p
-    | Hole_h (h, s) -> if Hole.equal h hole then (map_annotation c ~f:(fun _ -> s)) else p
-    | List_h (x, s) -> List_h (List.map ~f:f x, s)
-    | Tree_h (x, s) -> Tree_h (Tree.map ~f:f x, s)
-    | Let_h ((x, y), s) -> Let_h ((f x, f y), s)
-    | Lambda_h ((x, y), s) -> Lambda_h ((x, f y), s)
-    | Apply_h ((x, y), s) -> Apply_h ((f x, List.map ~f:f y), s)
-    | Op_h ((x, y), s) -> Op_h ((x, List.map ~f:f y), s)
+    | Id_h _ -> s
+    | Hole_h (h, s) -> f (h, s)
+    | List_h (x, s) -> List_h (List.map ~f:(map_hole ~f) x, s)
+    | Tree_h (x, s) -> Tree_h (Tree.map ~f:(map_hole ~f) x, s)
+    | Let_h ((x, y), s) -> Let_h ((map_hole ~f x, map_hole ~f y), s)
+    | Lambda_h ((x, y), s) -> Lambda_h ((x, map_hole ~f y), s)
+    | Apply_h ((x, y), s) -> Apply_h ((map_hole ~f x, List.map ~f:(map_hole ~f) y), s)
+    | Op_h ((x, y), s) -> Op_h ((x, List.map ~f:(map_hole ~f) y), s)
+
+
+  let rec fill_hole hole ~parent:p ~child:c =
+    map_hole p ~f:(fun (hole', spec) ->
+        if Hole.equal hole hole' then (map_annotation c ~f:(fun _ -> spec))
+        else Hole_h (hole', spec))
 
   let rec holes = function
     | Num_h _
@@ -527,9 +519,8 @@ module Hypothesis = struct
         h with
         holes = List.map h.holes ~f:(fun (h, s) -> (Hole.apply_unifier u h, s));
         skeleton = Table.hashcons table
-            (Sk.map (skeleton h) ~f:(function
-                 | Sk.Hole_h (h, a) -> Sk.Hole_h (Hole.apply_unifier u h, a)
-                 | s -> s))
+            (Sk.map_hole (skeleton h) ~f:(fun (hole, spec) -> 
+                 Sk.Hole_h (Hole.apply_unifier u hole, spec)))
       }
 
     let fill_hole hole ~parent:p ~child:c = begin

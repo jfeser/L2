@@ -85,7 +85,7 @@ module Skeleton : sig
   val hash : 'a -> int
   val fill_hole : Hole.t -> parent:'a t -> child:'a t -> 'a t
   val annotation : 'a t -> 'a
-  val map : f:('a t -> 'a t) -> 'a t -> 'a t
+  val map_hole : f:(Hole.t * 'a -> 'a t) -> 'a t -> 'a t
   val map_annotation : f:('a -> 'a) -> 'a t -> 'a t
 end
 
