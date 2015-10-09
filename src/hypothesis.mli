@@ -28,19 +28,21 @@ module Symbol : sig
 end
 
 module Hole : sig
-  type id
+  module Id : sig
+    type t
+    include Sexpable.S with type t := t
+    include Comparable.S with type t := t
+    include Stringable.S with type t := t
+  end
+  
   type t = {
-    id : id;
+    id : Id.t;
     ctx : Type.t StaticDistance.Map.t;
     type_ : Type.t;
     symbol : Symbol.t;
   }
 
   include Sexpable.S with type t := t
-  val id_of_sexp : Sexp.t -> id
-  val sexp_of_id : id -> Sexp.t
-  val compare_id : id -> id -> int
-  val id_to_string : id -> string
     
   val compare : t -> t -> int
   val equal : t -> t -> bool
@@ -124,8 +126,15 @@ module Specification : sig
 end
 
 module type CostModel_Intf = sig
-  val id_cost : string -> int
+  val id_cost : Skeleton.id -> int
   val op_cost : Expr.Op.t -> int
+  val lambda_cost : int
+  val num_cost : int
+  val bool_cost : int
+  val hole_cost : int
+  val let_cost : int
+  val list_cost : int
+  val tree_cost : int
 end
 
 module Hypothesis : sig
@@ -135,38 +144,41 @@ module Hypothesis : sig
     | Abstract
     | Concrete
 
-  type t = {
-    skeleton : skeleton Hashcons.hash_consed;
-    cost : int;
-    kind : kind;
-    holes : (Hole.t * Specification.t) list;
-  }
+  type t
 
   include Sexpable with type t := t
 
-  val compare_cost : t -> t -> int
+  val skeleton : t -> skeleton
+  val cost : t -> int
+  val kind : t -> kind
+  val holes : t -> (Hole.t * Specification.t) list
   val spec : t -> Specification.t
+
   val to_expr : t -> Expr.t
   val to_string : t -> string
   val to_string_hum : t -> string
+  
+  val compare_cost : t -> t -> int
   val apply_unifier : t -> Unifier.t -> t
   val fill_hole : Hole.t -> parent:t -> child:t -> t
   val verify : t -> bool
-  val map : t -> skeleton:(Specification.t Skeleton.t -> Specification.t Skeleton.t) -> t
 
-  (** Constructors *)
-  val num : int -> Specification.t -> t
-  val bool : bool -> Specification.t -> t
-  val id_sd : StaticDistance.t -> Specification.t -> t
-  val hole : Hole.t -> Specification.t -> t
-  val list : t list -> Specification.t -> t
-  val tree : t Collections.Tree.t -> Specification.t -> t
-  val _let : t * t -> Specification.t -> t
-  val lambda : int * t -> Specification.t -> t
-  val apply : t * t list -> Specification.t -> t
-
+  (** Create a Hypothesis module that depends on a cost model. The
+      functions that modify the hypothesis costs are located here. *)
   module Make : functor (CostModel : CostModel_Intf) -> sig
+    val of_skeleton : skeleton -> t
+
+    (** Constructors *)
+    val num : int -> Specification.t -> t
+    val bool : bool -> Specification.t -> t
+    val id_sd : StaticDistance.t -> Specification.t -> t
     val id_name : string -> Specification.t -> t
+    val hole : Hole.t -> Specification.t -> t
+    val list : t list -> Specification.t -> t
+    val tree : t Collections.Tree.t -> Specification.t -> t
+    val _let : t * t -> Specification.t -> t
+    val lambda : int * t -> Specification.t -> t
+    val apply : t * t list -> Specification.t -> t
     val op : Ast.op * t list -> Specification.t -> t
   end
 end

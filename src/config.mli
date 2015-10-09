@@ -31,3 +31,6 @@ val sexp_of_t : t -> Sexplib.Type.t
 
 val of_string : bytes -> t
 val to_string : t -> bytes
+
+(** The current configuration. *)
+val config : t ref

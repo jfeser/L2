@@ -3,6 +3,44 @@ open Core.Std
 open Collections
 open Hypothesis
 
+(* module UnificationContext = struct *)
+(* end *)
+
+(* type unify_error = [ *)
+(*   | `FailedOccursCheck *)
+(*   | `NonUnifiable *)
+(* ] *)
+
+(* exception UnifyError of unify_error *)
+
+(* type term = *)
+(*   | Variable of int *)
+(*   | Constant of int *)
+(*   | Apply of int * term list *)
+
+(* let rec occurs var t = match t with *)
+(*   | Variable x -> var = x *)
+(*   | Apply (f, a) -> List.exists a ~f:(occurs var) *)
+(*   | Constant _ -> false *)
+
+(* let rec apply sub t = match t with *)
+(*   | Variable x -> Option.value (Int.Map.find sub x) ~default:t *)
+(*   | Apply (f, a) -> Apply (f, List.map a ~f:(apply sub)) *)
+(*   | Constant _ -> t *)
+
+(* let rec unify t1 t2 = *)
+(*   match t1, t2 with *)
+(*   | Variable x, Variable y -> if x = y then Int.Map.empty else Int.Map.singleton x t2 *)
+(*   | Constant x, Constant y -> if x = y then Int.Map.empty else raise (UnifyError `NonUnifiable) *)
+(*   | Apply (f1, a1), Apply (f2, a2) -> *)
+(*     if f1 = f2 then match List.zip a1 a2 with *)
+(*       | Some a -> List.fold_left a ~init:Int.Map.empty ~f:(fun sub (a1, a2) -> *)
+(*           let sub' = unify a1 a2 in *)
+(*           Int.Map.merge sub sub' ~f:(function *)
+(*               | `Both (x1, x2) -> )) *)
+(*       | None -> raise (UnifyError `NonUnifiable) *)
+(*     else raise (UnifyError `NonUnifiable) *)
+
 (* type variable = *)
 (*   | Free of int *)
 (*   | Input of int *)
@@ -85,14 +123,6 @@ open Hypothesis
 (*   [ Binary (Eq, Variable (Free 0), Constant (Int 0)); Binary (Eq, Variable Output, Variable (Free 0)) ]; *)
 (* ] *)
 
-(* type unify_error = [ *)
-(*   | `FailedOccursCheck *)
-(*   | `UnboundVariable *)
-(*   | `Nonunifiable *)
-(* ] *)
-
-(* exception UnifyError of unify_error *)
-
 (* let rec occurs var term = match term with *)
 (*   | Constant _ | Variable (Input _) -> raise (UnifyError `FailedOccursCheck) *)
 (*   | Variable var' -> if var' = var then raise (UnifyError `FailedOccursCheck) *)
@@ -148,7 +178,7 @@ type result =
   | Id_r of Skeleton.id
   | Apply_r of result * result list
   | Op_r of Expr.Op.t * result list
-  | Symbol_r of Hole.id
+  | Symbol_r of Hole.Id.t
   | Closure_r of Specification.t Skeleton.t * result StaticDistance.Map.t ref
 with compare, sexp
 
@@ -419,40 +449,68 @@ let partially_evaluate ?recursion_limit ?(ctx = StaticDistance.Map.empty) skelet
         eval limit ctx body
       | S.Apply_h ((func, args), _) ->
         let args = eval_all args in
-        begin match eval limit ctx func with
-          | Closure_r (S.Lambda_h ((num_args, body), _), ctx) -> begin
-              match List.zip (StaticDistance.args num_args) args with
-              | Some bindings ->
-                let ctx = ref (List.fold bindings ~init:!ctx ~f:(fun ctx (name, value) ->
-                    StaticDistance.Map.add ctx ~key:name ~data:value))
-                in
-                eval limit ctx body
-              | None -> raise (EvalError `WrongNumberOfArguments)
-            end
+        let func = eval limit ctx func in
+        begin try match func with
+          (* | Closure_r (S.Lambda_h ((num_args, body), _), ctx) -> begin *)
+          (*     match List.zip (StaticDistance.args num_args) args with *)
+          (*     | Some bindings -> *)
+          (*       let ctx = ref (List.fold bindings ~init:!ctx ~f:(fun ctx (name, value) -> *)
+          (*           StaticDistance.Map.add ctx ~key:name ~data:value)) *)
+          (*       in *)
+          (*       eval limit ctx body *)
+          (*     | None -> raise (EvalError `WrongNumberOfArguments) *)
+          (*   end *)
           | Id_r (S.Name "intersperse") as f -> (match args with
               | [List_r []; _] -> List_r []
               | [List_r [x]; _] -> List_r [x]
               | [List_r [x; y]; a] -> List_r [x; a; y]
               | [List_r [x; y; z]; a] -> List_r [x; a; y; a; z]
+              | [List_r [x; y; z; w]; a] -> List_r [x; a; y; a; z; a; w]
               | _ -> Apply_r (f, args))
           | Id_r (S.Name "sort") as f -> (match args with
               | [List_r []] -> List_r []
+              | [List_r [x]] -> List_r [x]
               | _ -> Apply_r (f, args))
           | Id_r (S.Name "reverse") as f -> (match args with
               | [List_r []] -> List_r []
               | [List_r [x]] -> List_r [x]
               | [List_r [x; y]] -> List_r [y; x]
               | [List_r [x; y; z]] -> List_r [z; y; x]
+              | [List_r [x; y; z; w]] -> List_r [w; z; y; x]
               | _ -> Apply_r (f, args))
           | Id_r (S.Name "append") as f -> (match args with
-              | [List_r []; x] | [x; List_r []] -> x
-              | [List_r [x]; y] -> Op_r (Cons, [x; y])
-              | [List_r [x; y]; z] -> Op_r (Cons, [Op_r (Cons, [x; y]); z])
+              | [List_r []; x]
+              | [x; List_r []] -> x
+              | [List_r [x]; y] -> Op_r (O.Cons, [x; y])
+              | [List_r [x; y]; z] -> Op_r (O.Cons, [x; Op_r (O.Cons, [y; z])])
               | _ -> Apply_r (f, args))
           | Id_r (S.Name "merge") as f -> (match args with
-              | [List_r []; x] | [x; List_r []] -> x
+              | [List_r []; x]
+              | [x; List_r []] -> x
+              | _ -> Apply_r (f, args))
+          | Id_r (S.Name "dedup") as f -> (match args with
+              | [List_r []] -> List_r []
+              | [List_r [x]] -> List_r [x]
+              | [List_r [x; y]] -> if x = y then List_r [x] else List_r [x; y]
+              | _ -> Apply_r (f, args))
+          | Id_r (S.Name "zip") as f -> (match args with
+              | [_; List_r []]
+              | [List_r []; _] -> List_r []
+              | [List_r [x]; List_r [y]] -> List_r [List_r [x; y]]
+              | [List_r [x; y]; List_r [z]] -> List_r [List_r [x; z]]
+              | [List_r [x; y; _]; List_r [z]] -> List_r [List_r [x; z]]
+              | _ -> Apply_r (f, args))
+          | Id_r (S.Name "take") as f -> (match args with
+              | [List_r []; _] -> List_r []
+              | _ -> Apply_r (f, args))
+          | Id_r (S.Name "drop") as f -> (match args with
+              | [List_r []; _] -> List_r []
+              | _ -> Apply_r (f, args))
+          | Id_r (S.Name "concat") as f -> (match args with
+              | [List_r []] -> List_r []
               | _ -> Apply_r (f, args))
           | r -> Apply_r (r, args)
+          with Invalid_argument _ -> Apply_r (func, args)
         end
       | S.Op_h ((O.If, args), _) -> begin
           match args with

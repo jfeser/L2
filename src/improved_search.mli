@@ -18,11 +18,12 @@ module type Synthesizer_intf = sig
   val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t
 end
 
-module Make_BFS_Synthesizer : functor (G : Generalizer_intf) -> Synthesizer_intf
-module L2_BFS_Synthesizer : Synthesizer_intf
-
-module type Prune_intf = sig
-  val should_prune : Hypothesis.t -> bool
+module type Deduction_intf = sig
+  (** Attempt to push all specifications towards the leaves of the
+      skeleton. If, in the process, any specification goes to bottom,
+      return None. *)
+  val push_specifications : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
+  val push_specifications_unification : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
 end
 
 module Memoizer : sig
@@ -32,7 +33,7 @@ module Memoizer : sig
     val get : t -> Hole.t -> Specification.t -> int -> (Hypothesis.t * Unifier.t) list
   end
 
-  module Make : functor (G: Generalizer_intf) -> functor (P: Prune_intf) -> S
+  module Make : functor (G: Generalizer_intf) -> functor (D: Deduction_intf) -> S
 end  
 
 module L2_Synthesizer : sig

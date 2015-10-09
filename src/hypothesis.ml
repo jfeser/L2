@@ -76,23 +76,19 @@ module Symbol = struct
 end
 
 module Hole = struct
-  type id = int with sexp, compare
+  module Id = Int
   
   type t = {
-    id  : id;
+    id  : Id.t;
     ctx : Type.t StaticDistance.Map.t;
     type_ : Type.t;
     symbol : Symbol.t;
   } with sexp
 
-  let id_to_string = Int.to_string
+  let counter = ref 0
   
   let compare h1 h2 = Int.compare h1.id h2.id
-
-  let counter = ref 0
-
   let equal h1 h2 = h1.id = h2.id
-
   let to_string h = Sexp.to_string_hum (sexp_of_t h)
 
   let create ctx type_ symbol = begin
@@ -443,18 +439,28 @@ module Specification = struct
 end
 
 module type CostModel_Intf = sig
-  val id_cost : Ast.id -> int
+  val id_cost : Skeleton.id -> int
   val op_cost : Expr.Op.t -> int
+  val lambda_cost : int
+  val num_cost : int
+  val bool_cost : int
+  val hole_cost : int
+  val let_cost : int
+  val list_cost : int
+  val tree_cost : int
 end
 
 module Hypothesis = struct
+  module Sk = Skeleton
+  module Sp = Specification
+    
   module H = struct
-    type skeleton = Specification.t Skeleton.t
+    type skeleton = Sp.t Sk.t
 
     module Table = Hashcons.Make(struct
         type t = skeleton
-        let equal h1 h2 = Skeleton.compare Specification.compare h1 h2 = 0
-        let hash = Skeleton.hash
+        let equal h1 h2 = Sk.compare Sp.compare h1 h2 = 0
+        let hash = Sk.hash
       end)
 
     type kind =
@@ -466,21 +472,27 @@ module Hypothesis = struct
       skeleton : skeleton Hashcons.hash_consed;
       cost : int;
       kind : kind;
-      holes : (Hole.t * Specification.t) list;
+      holes : (Hole.t * Sp.t) list;
     }
-
+    
     let table = Table.create 100
 
+    let skeleton h = h.skeleton.Hashcons.node
+    let cost h = h.cost
+    let kind h = h.kind
+    let holes h = h.holes
+    let spec h = Sk.annotation (skeleton h)
+    
     let sexp_of_t h =
       let open Sexp in
       List [
-        List [ Atom "skeleton"; Skeleton.sexp_of_t Specification.sexp_of_t h.skeleton.Hashcons.node ];
+        List [ Atom "skeleton"; Sk.sexp_of_t Sp.sexp_of_t (skeleton h) ];
         List [ Atom "cost"; sexp_of_int h.cost ];
         List [ Atom "kind"; sexp_of_kind h.kind ];
         List [
           Atom "holes";
           sexp_of_list (fun (hole, spec) ->
-              List [ Hole.sexp_of_t hole; Specification.sexp_of_t spec ]) h.holes
+              List [ Hole.sexp_of_t hole; Sp.sexp_of_t spec ]) h.holes
         ];
       ]
 
@@ -493,41 +505,30 @@ module Hypothesis = struct
           List [ Atom "kind"; kind_s ];
           List [ Atom "holes"; holes_s ];
         ] -> {
-          skeleton = Table.hashcons table (<:of_sexp<Specification.t Skeleton.t>> skel_s);
+          skeleton = Table.hashcons table (<:of_sexp<Sp.t Sk.t>> skel_s);
           cost = Int.t_of_sexp cost_s;
           kind = kind_of_sexp kind_s;
-          holes = <:of_sexp<(Hole.t * Specification.t) list>> holes_s;
+          holes = <:of_sexp<(Hole.t * Sp.t) list>> holes_s;
         }
       | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
 
     let compare_cost h1 h2 = Int.compare h1.cost h2.cost
 
-    let spec h : Specification.t = Skeleton.annotation h.skeleton.Hashcons.node
-
     let to_expr (h: t) : Expr.t =
       match h.kind with
       | Abstract -> failwith "Tried to convert an abstract hypothesis to an expression."
-      | Concrete -> Skeleton.to_expr_exn (h.skeleton.Hashcons.node)
+      | Concrete -> Sk.to_expr_exn (skeleton h)
     
     let to_string h = Sexp.to_string_hum (sexp_of_t h)
-    let to_string_hum h = Skeleton.to_string_hum (h.skeleton.Hashcons.node)
-
-    let map h ~skeleton:f =
-      let skeleton = f h.skeleton.Hashcons.node in
-      let holes = Skeleton.holes skeleton in
-      { h with
-        skeleton = Table.hashcons table skeleton;
-        kind = if List.length holes = 0 then Concrete else Abstract;
-        holes;
-      }
+    let to_string_hum h = Sk.to_string_hum (skeleton h)
 
     let apply_unifier h u =
       {
         h with
         holes = List.map h.holes ~f:(fun (h, s) -> (Hole.apply_unifier u h, s));
         skeleton = Table.hashcons table
-            (Skeleton.map h.skeleton.Hashcons.node ~f:(function
-                 | Skeleton.Hole_h (h, a) -> Skeleton.Hole_h (Hole.apply_unifier u h, a)
+            (Sk.map (skeleton h) ~f:(function
+                 | Sk.Hole_h (h, a) -> Sk.Hole_h (Hole.apply_unifier u h, a)
                  | s -> s))
       }
 
@@ -538,73 +539,95 @@ module Hypothesis = struct
         (List.filter p.holes ~f:(fun (h, _) -> not (Hole.equal h hole))) @ c.holes
       in
       {
-        skeleton =
-          Table.hashcons table
-            (Skeleton.fill_hole hole
-               ~parent:p.skeleton.Hashcons.node ~child:c.skeleton.Hashcons.node);
+        skeleton = Table.hashcons table
+            (Sk.fill_hole hole ~parent:(skeleton p) ~child:(skeleton c));
         cost = p.cost + c.cost;
         kind = if List.length holes = 0 then Concrete else Abstract;
         holes;
       }
     end
 
-    let verify h = Specification.verify (spec h) h.skeleton.Hashcons.node
+    let verify h = Sp.verify (spec h) (skeleton h)
+  end
 
+  module Make (CostModel : CostModel_Intf) = struct
+    include H
+
+    let rec compute_cost = function
+      | Sk.Num_h _ -> CostModel.num_cost
+      | Sk.Bool_h _ -> CostModel.bool_cost
+      | Sk.Hole_h _ -> CostModel.hole_cost
+      | Sk.Id_h (id, _) -> CostModel.id_cost id
+      | Sk.List_h (l, _) -> CostModel.list_cost + List.int_sum (List.map l ~f:compute_cost)
+      | Sk.Tree_h (t,_) -> CostModel.tree_cost + List.int_sum (List.map (Tree.flatten t) ~f:compute_cost)
+      | Sk.Let_h ((x, y), _) -> CostModel.let_cost + compute_cost x + compute_cost y
+      | Sk.Lambda_h ((_, x), _) -> CostModel.lambda_cost + compute_cost x
+      | Sk.Apply_h ((f, a), _) -> compute_cost f + List.int_sum (List.map a ~f:compute_cost)
+      | Sk.Op_h ((op, a), _) -> CostModel.op_cost op + List.int_sum (List.map a ~f:compute_cost)
+    
+    let of_skeleton s =
+      let holes = Sk.holes s in
+      {
+        skeleton = Table.hashcons table s;
+        kind = if List.length holes = 0 then Concrete else Abstract;
+        cost = compute_cost s;
+        holes;
+      }
+
+        
     let num x s : t = {
-      skeleton = Table.hashcons table (Skeleton.Num_h (x, s));
-      cost = 1;
+      skeleton = Table.hashcons table (Sk.Num_h (x, s));
+      cost = CostModel.num_cost;
       kind = Concrete;
       holes = [];
     }
     let bool x s : t = {
-      skeleton = Table.hashcons table (Skeleton.Bool_h (x, s));
-      cost = 1;
+      skeleton = Table.hashcons table (Sk.Bool_h (x, s));
+      cost = CostModel.bool_cost;
       kind = Concrete;
       holes = [];
     }
-    let id_sd x s : t = {
-      skeleton = Table.hashcons table (Skeleton.Id_h (Skeleton.StaticDistance x, s));
-      cost = 1;
-      kind = Concrete;
-      holes = [];
-    }
+    let id_sd x s : t =
+      let id = Sk.StaticDistance x in
+      {
+        skeleton = Table.hashcons table (Sk.Id_h (id, s));
+        cost = CostModel.id_cost id;
+        kind = Concrete;
+        holes = [];
+      }
     let hole x s : t = {
-      skeleton = Table.hashcons table (Skeleton.Hole_h (x, s));
-      cost = 0;
+      skeleton = Table.hashcons table (Sk.Hole_h (x, s));
+      cost = CostModel.hole_cost;
       kind = Abstract;
       holes = [ (x, s) ];
     }
     let list (x: t list) s : t = {
-      skeleton = Table.hashcons table
-          (Skeleton.List_h (List.map x ~f:(fun h -> h.skeleton.Hashcons.node), s));
-      cost = 1 + List.int_sum (List.map x ~f:(fun h -> h.cost));
+      skeleton = Table.hashcons table (Sk.List_h (List.map x ~f:skeleton, s));
+      cost = CostModel.list_cost + List.int_sum (List.map x ~f:cost);
       kind = if List.exists x ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
-      holes = List.concat (List.map x ~f:(fun h -> h.holes));
+      holes = List.concat_map x ~f:holes;
     }
     let tree x s : t =
       let flat = Tree.flatten x in
       {
-        skeleton = Table.hashcons table
-            (Skeleton.Tree_h (Tree.map x ~f:(fun h -> h.skeleton.Hashcons.node), s));
-        cost = 1 + List.int_sum (List.map flat ~f:(fun h -> h.cost));
+        skeleton = Table.hashcons table (Sk.Tree_h (Tree.map x ~f:skeleton, s));
+        cost = CostModel.tree_cost + List.int_sum (List.map flat ~f:cost);
         kind = if List.exists flat ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
-        holes = List.concat (List.map (Tree.flatten x) ~f:(fun h -> h.holes));
+        holes = List.concat_map flat ~f:holes;
       }
     let _let x s : t =
       let (bound, body) = x in
       {
-        skeleton = Table.hashcons table
-            (Skeleton.Let_h ((bound.skeleton.Hashcons.node, body.skeleton.Hashcons.node), s));
-        cost = 1 + bound.cost + body.cost;
+        skeleton = Table.hashcons table (Sk.Let_h ((skeleton bound, skeleton body), s));
+        cost = CostModel.let_cost + bound.cost + body.cost;
         kind = if bound.kind = Abstract || body.kind = Abstract then Abstract else Concrete;
         holes = bound.holes @ body.holes;
       }
     let lambda x s : t =
       let (num_args, body) = x in
       {
-        skeleton = Table.hashcons table
-            (Skeleton.Lambda_h ((num_args, body.skeleton.Hashcons.node), s));
-        cost = 1 + body.cost;
+        skeleton = Table.hashcons table (Sk.Lambda_h ((num_args, skeleton body), s));
+        cost = CostModel.lambda_cost + body.cost;
         kind = if body.kind = Abstract then Abstract else Concrete;
         holes = body.holes;
       }
@@ -612,34 +635,26 @@ module Hypothesis = struct
       let (func, args) = x in
       {
         skeleton = Table.hashcons table
-            (Skeleton.Apply_h
-               ((func.skeleton.Hashcons.node,
-                 List.map args ~f:(fun h -> h.skeleton.Hashcons.node)), s));
-        cost = func.cost + List.int_sum (List.map args ~f:(fun h -> h.cost));
+            (Sk.Apply_h ((skeleton func, List.map args ~f:skeleton), s));
+        cost = func.cost + List.int_sum (List.map args ~f:cost);
         kind =
           if func.kind = Abstract || List.exists args ~f:(fun h -> h.kind = Abstract) then
             Abstract else Concrete;
-        holes = func.holes @ (List.concat (List.map args ~f:(fun h -> h.holes)));
+        holes = func.holes @ (List.concat_map args ~f:holes);
       }
-  end
-
-  module Make (CostModel : CostModel_Intf) = struct
-    include H
-
     let id_name x s : t = {
-      skeleton = Table.hashcons table (Skeleton.Id_h (Skeleton.Name x, s));
-      cost = CostModel.id_cost x;
+      skeleton = Table.hashcons table (Sk.Id_h (Sk.Name x, s));
+      cost = CostModel.id_cost (Sk.Name x);
       kind = Concrete;
       holes = [];
     }
     let op x s : t =
       let (op, args) = x in
       {
-        skeleton = Table.hashcons table
-            (Skeleton.Op_h ((op, List.map args ~f:(fun h -> h.skeleton.Hashcons.node)), s));
-        cost = CostModel.op_cost op + List.int_sum (List.map args ~f:(fun h -> h.cost));
+        skeleton = Table.hashcons table (Sk.Op_h ((op, List.map args ~f:skeleton), s));
+        cost = CostModel.op_cost op + List.int_sum (List.map args ~f:cost);
         kind = if List.exists args ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
-        holes = List.concat (List.map args ~f:(fun h -> h.holes));
+        holes = List.concat_map args ~f:holes;
       }
   end
 

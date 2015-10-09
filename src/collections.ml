@@ -439,4 +439,10 @@ module Tree = struct
         List.map c ~f:(fun (t1, t2) -> zip t1 t2)
         |> Option.all
         |> Option.map ~f:(fun c -> Node ((x1, x2), c)))
+
+  let rec all (t: 'a Option.t t) : 'a t Option.t = match t with
+    | Empty -> Some Empty
+    | Node (x, c) -> Option.bind x (fun x ->
+        Option.map (List.map c ~f:all |> Option.all) (fun c ->
+            Node (x, c)))
 end

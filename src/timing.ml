@@ -419,9 +419,10 @@ let get_json (testcase_name, testcase_bk, testcase_examples, testcase_desc) runt
     "config", `String (Config.to_string config);
   ]  
 
-let time_solve config (_, bk_strs, example_strs, _) : (Expr.t list * Time.Span.t) =
+let time_solve (_, bk_strs, example_strs, _) : (Expr.t list * Time.Span.t) =
   let bk = List.map bk_strs ~f:(fun (name, impl) -> name, Expr.of_string impl) in
   let examples = List.map example_strs ~f:Example.of_string in
+  let config = !Config.config in
 
   (* Attempt to synthesize from specification. *)
   if config.Config.improved_search then
@@ -460,7 +461,7 @@ let command =
     spec
     (fun config_file json_file spec_file use_improved_search use_stdin
       verbose very_verbose use_solver testcase_name () ->
-       let config =
+       let () = Config.config :=
          let open Config in
          (* Either load the initial config from a file or use the default config. *)
          let initial_config = 
@@ -477,8 +478,7 @@ let command =
              else 0;
            use_solver;
            improved_search = use_improved_search;
-         }
-       in
+         }in
 
        let spec =
          if use_stdin then
@@ -508,7 +508,7 @@ let command =
              end
        in
 
-       let (solutions, solve_time) = time_solve config spec in
+       let (solutions, solve_time) = time_solve spec in
        let solutions_str = List.map solutions ~f:Expr.to_string |> String.concat ~sep:"\n" in
        let solve_time_str = Time.Span.to_short_string solve_time in
 
@@ -526,7 +526,7 @@ let command =
               (name, bk_printable, example_strs, desc)
               (Time.Span.to_sec solve_time)
               solutions_str
-              config)
+              !Config.config)
        | None -> ())
 
 let () = Command.run command

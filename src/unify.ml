@@ -87,7 +87,7 @@ let sterm_of_result r =
     | Id_r (Name id) -> V id
     | Op_r (RCons, [xs; x])
     | Op_r (Cons, [x; xs]) -> Cons (f x, f xs)
-    | Symbol_r id -> V (Hypothesis.Hole.id_to_string id)
+    | Symbol_r id -> V (Hypothesis.Hole.Id.to_string id)
     | Apply_r _ -> V (fresh_name ())
     | Closure_r _
     | Tree_r _
