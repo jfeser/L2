@@ -190,6 +190,27 @@ let rec result_of_value = function
   | `Unit -> failwith "Cannot convert unit."
   | `Num x -> Num_r x
 
+exception ConversionError
+
+let skeleton_of_result r =
+  let module S = Skeleton in
+  let hole = Hole.create StaticDistance.Map.empty Infer.Type.num (Symbol.create "TEST") in
+  let rec skeleton_of_result r =
+    match r with
+    | Num_r x -> S.Num_h (x, ())
+    | Bool_r x -> S.Bool_h (x, ())
+    | List_r x -> S.List_h (List.map x ~f:skeleton_of_result, ())
+    | Tree_r x -> S.Tree_h (Tree.map x ~f:skeleton_of_result, ())
+    | Id_r x -> S.Id_h (x, ())
+    | Apply_r (func, args) ->
+      S.Apply_h ((skeleton_of_result func, List.map args ~f:skeleton_of_result), ())
+    | Op_r (op, args) -> 
+      S.Op_h ((op, List.map args ~f:skeleton_of_result), ())
+    | Symbol_r _ -> S.Hole_h (hole, ())
+    | Closure_r (_,_) -> raise ConversionError
+  in
+  try Some (skeleton_of_result r) with ConversionError -> None 
+
 module PathContext = struct
   module PathConditionMap = Map.Make(struct
       type t = result list with compare, sexp

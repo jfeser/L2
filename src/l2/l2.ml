@@ -403,6 +403,7 @@ let get_json (testcase_name, testcase_bk, testcase_examples, testcase_desc) runt
   ] in
   let counters = [
     "search", Search.counter;
+    "improved_search", Improved_search.counter;
     (* "deduction", Deduction.counter; *)
   ] in
   `Assoc [

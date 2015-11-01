@@ -166,6 +166,7 @@ module Hypothesis : sig
   (** Create a Hypothesis module that depends on a cost model. The
       functions that modify the hypothesis costs are located here. *)
   module Make : functor (CostModel : CostModel_Intf) -> sig
+    val compute_cost : 'a Skeleton.t -> int
     val of_skeleton : skeleton -> t
 
     (** Constructors *)

@@ -270,7 +270,6 @@ module Skeleton = struct
     | Apply_h ((x, y), s) -> Apply_h ((map_hole ~f x, List.map ~f:(map_hole ~f) y), s)
     | Op_h ((x, y), s) -> Op_h ((x, List.map ~f:(map_hole ~f) y), s)
 
-
   let rec fill_hole hole ~parent:p ~child:c =
     map_hole p ~f:(fun (hole', spec) ->
         if Hole.equal hole hole' then (map_annotation c ~f:(fun _ -> spec))

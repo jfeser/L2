@@ -1,7 +1,10 @@
 open Core.Std
 
+open Collections
 open Hypothesis
 open Infer
+
+val counter : Collections.Counter.t
 
 module type Generalizer_intf = sig
   type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
@@ -11,7 +14,7 @@ end
 
 module Generalizer_impl : sig
   type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
-  val generalize_all : generalize:t -> Hypothesis.t -> Hypothesis.t list  
+  val generalize_all : generalize:t -> Hypothesis.t -> Hypothesis.t list
 end
   
 module type Synthesizer_intf = sig
@@ -35,6 +38,34 @@ module Memoizer : sig
 
   module Make : functor (G: Generalizer_intf) -> functor (D: Deduction_intf) -> S
 end  
+
+module L2_Generalizer : sig
+  module type Symbols_intf =
+    sig
+      val lambda : Symbol.t
+      val combinator : Symbol.t
+      val expression : Symbol.t
+      val constant : Symbol.t
+      val identifier : Symbol.t
+      val base_case : Symbol.t
+    end
+
+  module type S = sig
+    include Generalizer_intf
+    include Symbols_intf
+    val generate_constants : t
+    val generate_identifiers : t
+    val generate_expressions : t
+    val generate_lambdas : t
+    val generate_combinators : t
+    val select_generators : Symbol.t -> t list
+  end
+    
+  module Make : functor (Symbols : Symbols_intf) -> S
+  include Generalizer_intf
+end
+
+module L2_Memoizer : Memoizer.S
 
 module L2_Synthesizer : sig
   include Synthesizer_intf

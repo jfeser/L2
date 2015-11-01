@@ -185,37 +185,37 @@ let test_fold_constants =
       "(lambda (x) (+ 1 (* 1 5)))", "6";
     ]
 
-let test_rewrite =
-  make_tests ~in_f:(fun str -> str |> Expr.of_string |> Rewrite.rewrite)
-    ~out_f:(fun str -> Some (Expr.of_string str))
-    ~in_str:identity ~out_str:identity
-    ~res_str:m_expr_to_string
-    "rewrite"
-    [ "1", "1";
-      "#f", "#f";
-      "[]", "[]";
-      "[1 2]", "[1 2]";
-      "(+ x 0)", "x";
-      "(+ 0 x)", "x";
-      "(+ 1 x)", "(+ 1 x)";
-      "(- x 0)", "x";
-      "(* x 0)", "0";
-      "(* 0 x)", "0";
-      "(* x 1)", "x";
-      "(* 1 x)", "x";
-      "(/ x 1)", "x";
-      "(/ 0 x)", "0";
-      "(/ x x)", "1";
-      "(% 0 x)", "0";
-      "(% x 1)", "0";
-      "(% x x)", "0";
-      "(!= x y)", "(!= x y)";
-      "(!= x x)", "#f";
-      "(+ (- y x) x)", "y";
-      "(- (+ y x) x)", "y";
-      "(- (+ y x) y)", "x";
-      "(= (= x y) #f)", "(!= x y)";
-    ]
+(* let test_rewrite = *)
+(*   make_tests ~in_f:(fun str -> str |> Expr.of_string |> Rewrite.rewrite) *)
+(*     ~out_f:(fun str -> Some (Expr.of_string str)) *)
+(*     ~in_str:identity ~out_str:identity *)
+(*     ~res_str:m_expr_to_string *)
+(*     "rewrite" *)
+(*     [ "1", "1"; *)
+(*       "#f", "#f"; *)
+(*       "[]", "[]"; *)
+(*       "[1 2]", "[1 2]"; *)
+(*       "(+ x 0)", "x"; *)
+(*       "(+ 0 x)", "x"; *)
+(*       "(+ 1 x)", "(+ 1 x)"; *)
+(*       "(- x 0)", "x"; *)
+(*       "(\* x 0)", "0"; *)
+(*       "(\* 0 x)", "0"; *)
+(*       "(\* x 1)", "x"; *)
+(*       "(\* 1 x)", "x"; *)
+(*       "(/ x 1)", "x"; *)
+(*       "(/ 0 x)", "0"; *)
+(*       "(/ x x)", "1"; *)
+(*       "(% 0 x)", "0"; *)
+(*       "(% x 1)", "0"; *)
+(*       "(% x x)", "0"; *)
+(*       "(!= x y)", "(!= x y)"; *)
+(*       "(!= x x)", "#f"; *)
+(*       "(+ (- y x) x)", "y"; *)
+(*       "(- (+ y x) x)", "y"; *)
+(*       "(- (+ y x) y)", "x"; *)
+(*       "(= (= x y) #f)", "(!= x y)"; *)
+(*     ] *)
 
 (* let test_normalize = *)
 (*   make_tests ~in_f:(fun str -> str |> Expr.of_string |> Rewrite.normalize) ~out_f:Expr.of_string *)
@@ -384,6 +384,7 @@ let () = run_test_tt_main
        Collections_tests.tests;
        Type_tests.tests;
        Improved_search_tests.tests;
+       Hypothesis_tests.tests;
        
        test_parse_expr;
        test_parse_typ;
@@ -401,7 +402,7 @@ let () = run_test_tt_main
        test_m_partition;
 
        test_fold_constants;
-       test_rewrite;
+       (* test_rewrite; *)
        (* test_normalize; *)
        (* test_denormalize; *)
 

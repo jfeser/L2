@@ -5,6 +5,45 @@ open Collections
 open Hypothesis
 open Infer
 
+let counter = Counter.empty ()
+let () =
+  let n = Counter.add_zero counter in
+  n "symb_exec_tried" "Number of expressions where symbolic execution was tried.";
+  n "symb_exec_failed" "Number of expressions where symbolic execution failed.";
+  n "symb_exec_fatal" "Number of expressions where symbolic execution failed fatally.";
+  n "unification_tried" "Number of expressions where unification was tried.";
+  n "unification_failed" "Number of expressions where unification failed.";
+  n "unification_pruned" "Number of times where an expression was pruned by unification.";
+  n "unification_succeeded" "Number of times where unification succeeded.";
+  n "push_spec_w_unification" "Tried to push spec using unification procedure."
+
+module L2_CostModel : CostModel_Intf = struct
+  module Sk = Skeleton
+    
+  let id_cost = function
+    | Sk.Name name -> begin match name with
+        | "foldr"
+        | "foldl"
+        | "foldt" -> 3
+        | "map"
+        | "mapt"
+        | "filter" -> 2
+        | _ -> 1
+      end
+    | Sk.StaticDistance sd -> 1
+
+  let op_cost = Expr.Op.cost
+  let lambda_cost = 1
+  let num_cost = 1
+  let bool_cost = 1
+  let hole_cost = 0
+  let let_cost = 1
+  let list_cost = 1
+  let tree_cost = 1
+end
+
+module L2_Hypothesis = Hypothesis.Make(L2_CostModel)
+
 module type Generalizer_intf = sig
   type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
   val generalize : t
@@ -334,50 +373,69 @@ module L2_Deduction : Deduction_intf = struct
     if (!Config.config).Config.deduction then
       let module SE = Symbolic_execution in
       let module Sp = Specification in
+      Counter.incr counter "push_spec_w_unification";
       match Skeleton.annotation s with
       | Sp.Examples exs ->
         let m_new_examples =
           List.fold (Sp.Examples.to_list exs) ~init:(Some Hole.Id.Map.empty) ~f:(fun m_exs (ins, out_e) ->
               Option.bind m_exs (fun exs -> 
                   try
+                    Counter.incr counter "symb_exec_tried";
+                    
                     (* Try symbolically executing the candidate in the example context. *)
                     let out_a = SE.partially_evaluate ~recursion_limit
                         ~ctx:(StaticDistance.Map.map ins ~f:SE.result_of_value) s
                     in
 
                     match out_a with
-                    | Symbol_r _ -> None
-                    | Apply_r _ -> m_exs
+                    | SE.Symbol_r _ -> None
+                    | SE.Apply_r _ ->
+                      begin
+                        match SE.skeleton_of_result out_a with
+                        | Some skel ->
+                          if (L2_Hypothesis.compute_cost skel) < (L2_Hypothesis.compute_cost s)
+                          then None else m_exs
+                        | None -> m_exs
+                      end
                     | _ -> begin
+                        Counter.incr counter "unification_tried";
+
                         (* Convert output and expected output to terms and
                            unify. If unification fails, discard the candidate. *)
                         match sterm_of_result out_a with
                         | Ok (out_a, symbol_names) -> begin match Unify.sterm_of_value out_e with
                             | Some out_e -> begin try
                                   let sub = Unify.unify_one (Unify.translate out_a) (Unify.translate out_e) in
-                                  (* let () = Debug.eprintf "U %s %s:\n%s" *)
-                                  (*     (Unify.sterm_to_string out_a) (Unify.sterm_to_string out_e) *)
-                                  (*     (Unify.sub_to_string sub) *)
-                                  (* in *)
+                                  Counter.incr counter "unification_succeeded";
                                   Some (List.fold sub ~init:exs ~f:(fun exs (var, term) ->
                                       match String.Map.find symbol_names var with
                                       | Some id ->
                                         Hole.Id.Map.add_multi exs ~key:id ~data:(ins, value_of_term term)
                                       | None -> exs))
-                                with Unify.Non_unifiable -> None
+                                with Unify.Non_unifiable ->
+                                  Counter.incr counter "unification_pruned";
+                                  None
                               end
-                            | None -> m_exs
+                            | None ->
+                              Counter.incr counter "unification_failed";
+                              m_exs
                           end
-                        | Error _ -> m_exs
+                        | Error _ ->
+                          Counter.incr counter "unification_failed";
+                          m_exs
                       end
                   with
                   (* These are non-fatal errors. We learn nothing about the
                      candidate, but we can't discard it either. *)
                   | SE.EvalError `HitRecursionLimit
-                  | SE.EvalError `UnhandledConditional -> m_exs
+                  | SE.EvalError `UnhandledConditional ->
+                    Counter.incr counter "symb_exec_failed";
+                    m_exs
 
                   (* All other errors are fatal, so we discard the candidate. *)
-                  | SE.EvalError _ -> None))
+                  | SE.EvalError _ ->
+                    Counter.incr counter "symb_exec_fatal";
+                    None))
         in
         Option.bind m_new_examples (fun new_exs ->
             let new_exs = Hole.Id.Map.map new_exs ~f:Sp.Examples.of_list in
@@ -395,36 +453,7 @@ module L2_Deduction : Deduction_intf = struct
     else Some s
 end
 
-module L2_CostModel : CostModel_Intf = struct
-  module Sk = Skeleton
-    
-  let id_cost = function
-    | Sk.Name name -> begin match name with
-        | "foldr"
-        | "foldl"
-        | "foldt" -> 3
-        | "map"
-        | "mapt"
-        | "filter" -> 2
-        | _ -> 1
-      end
-    | Sk.StaticDistance sd -> 1
-
-  let op_cost = Expr.Op.cost
-  let lambda_cost = 1
-  let num_cost = 1
-  let bool_cost = 1
-  let hole_cost = 0
-  let let_cost = 1
-  let list_cost = 1
-  let tree_cost = 1
-end
-
-module L2_Hypothesis = Hypothesis.Make(L2_CostModel)
-
 module L2_Generalizer = struct
-  include Generalizer_impl
-
   (* This generalizer generates programs of the following form. Each
      hole in the hypotheses that it returns is tagged with a symbol
      name that the generalizer uses to select the hypotheses that can
@@ -461,7 +490,20 @@ module L2_Generalizer = struct
     val base_case : Symbol.t
   end
 
-  module Make (Symbols : Symbols_intf) = struct
+  module type S = sig
+    include Generalizer_intf
+    include Symbols_intf
+    val generate_constants : t
+    val generate_identifiers : t
+    val generate_expressions : t
+    val generate_lambdas : t
+    val generate_combinators : t
+    val select_generators : Symbol.t -> t list
+  end
+
+  module Make (Symbols : Symbols_intf) : S = struct
+    include Generalizer_impl
+
     module Sp = Specification
     module H = L2_Hypothesis
 
@@ -822,7 +864,7 @@ module L2_Synthesizer = struct
       if symbol = constant then
         [ generate_constants ]
       else if symbol = base_case then
-        [ generate_constants; generate_identifiers ]
+        [ generate_identifiers; generate_constants; ]
       else if symbol = identifier then
         [ generate_identifiers ]
       else if symbol = lambda then
