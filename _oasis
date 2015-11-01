@@ -1,0 +1,66 @@
+Name: L2
+Version: 0.2.0
+Synopsis: Program synthesis from examples.
+Authors: Jack Feser <jack.feser@gmail.com>
+License: GPL-3
+LicenseFile: LICENSE
+
+Description: A tool for synthesizing functional programs from input-output examples.
+Homepage: http://sisyphus.cs.rice.edu/pliny-web/lambda2/
+
+OASISFormat: 0.4
+BuildTools: ocamlbuild
+Plugins: META (0.4), DevFiles (0.4)
+
+Executable l2
+  Path: src/l2
+  MainIs: l2.ml
+  CompiledObject: best
+  BuildTools:
+    menhir,
+    ocamllex
+  BuildDepends:
+    core,
+    bolt,
+    yojson,
+    hashcons,
+    sexplib.syntax,
+    comparelib.syntax,
+    faillib
+  ByteOpt: -thread
+  NativeOpt: -thread
+
+Executable timeout
+  Build$: system(macosx)
+  Path: src/timeout
+  MainIs: timeout.ml
+  CompiledObject: best
+  BuildDepends:
+    core,
+    core_extended,
+    ctypes,
+    ctypes.foreign,
+    sexplib.syntax
+  CCLib: -lproc
+  ByteOpt: -thread
+  NativeOpt: -thread
+
+Executable test_l2
+  Path: src/l2
+  MainIs: tests.ml
+  CompiledObject: best
+  Install: false
+  ByteOpt: -thread
+  NativeOpt: -thread
+  BuildDepends:
+    oUnit,
+    core,
+    bolt,
+    yojson,
+    hashcons,
+    sexplib.syntax,
+    comparelib.syntax,
+    faillib    
+
+Test test_l2
+  Command: $test_l2
