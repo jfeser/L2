@@ -3,13 +3,7 @@ open OUnit2
 
 let mk_equality_tests ?printer ?cmp name f cases =
   name >::: List.map cases ~f:(fun (input, output) ->
-      test_case (fun ctxt -> match printer with
-          | Some printer -> (match cmp with
-              | Some cmp -> assert_equal ~ctxt ~printer ~cmp (f input) output
-              | None -> assert_equal ~ctxt ~printer (f input) output)
-          | None -> (match cmp with
-              | Some cmp -> assert_equal ~ctxt ~cmp (f input) output
-              | None -> assert_equal ~ctxt (f input) output)))
+      test_case (fun ctxt -> assert_equal ?printer ?cmp ~ctxt output (f input)))
 
 let assert_equivalent ~sexp expected real =
   let to_count_map l =
