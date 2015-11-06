@@ -1,3 +1,6 @@
-PKG core
+REC
+
+B ../../_build/src/timeout
+
 PKG core_extended
 PKG ctypes

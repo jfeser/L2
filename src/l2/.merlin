@@ -1,3 +1,13 @@
-S .
-B _build
 REC
+
+B ../../_build/src/l2
+S .
+
+PKG core
+PKG Z3
+PKG hashcons
+PKG yojson
+PKG ounit
+
+EXT here
+EXT ounit
