@@ -29,6 +29,8 @@ module type Deduction_intf = sig
   val push_specifications_unification : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
 end
 
+module L2_Deduction : Deduction_intf
+
 module Memoizer : sig
   module type S = sig
     type t

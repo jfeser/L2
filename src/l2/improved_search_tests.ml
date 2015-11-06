@@ -16,8 +16,8 @@ module Symbols = struct
   let base_case = Symbol.create "BaseCase"
 end
 
-module Gen = L2_Generalizer.Make(Symbols)
-module Mem = L2_Memoizer
+module Gen = L2_Generalizer.Make (Symbols)
+module Mem = Memoizer.Make (Gen) (L2_Deduction)
 
 let memoizer_tests = "memoizer" >::: [
     "get" >::: [
