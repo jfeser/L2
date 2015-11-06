@@ -15,7 +15,7 @@ Plugins: META (0.4), DevFiles (0.4)
 Executable l2
   Path: src/l2
   MainIs: l2.ml
-  CompiledObject: best
+  CompiledObject: native
   BuildTools:
     menhir,
     ocamllex
@@ -26,7 +26,8 @@ Executable l2
     hashcons,
     sexplib.syntax,
     comparelib.syntax,
-    faillib
+    faillib,
+    Z3
   ByteOpt: -thread
   NativeOpt: -thread
 
@@ -48,7 +49,7 @@ Executable timeout
 Executable test_l2
   Path: src/l2
   MainIs: tests.ml
-  CompiledObject: best
+  CompiledObject: native
   Install: false
   ByteOpt: -thread
   NativeOpt: -thread
@@ -60,7 +61,8 @@ Executable test_l2
     hashcons,
     sexplib.syntax,
     comparelib.syntax,
-    faillib    
+    faillib,
+    Z3
 
 Test test_l2
   Command: $test_l2
