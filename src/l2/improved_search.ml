@@ -44,29 +44,6 @@ end
 
 module L2_Hypothesis = Hypothesis.Make(L2_CostModel)
 
-module type Generalizer_intf = sig
-  type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
-  val generalize : t
-  val generalize_all : generalize:t -> Hypothesis.t -> Hypothesis.t list
-end
-
-module Generalizer_impl = struct
-  type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
-
-  let generalize_all ~generalize:gen hypo =
-    let open Hypothesis in
-    List.fold_left
-      (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
-      ~init:[ hypo ]
-      ~f:(fun hypos (hole, spec) ->
-          let children = List.filter (gen hole spec) ~f:(fun (c, _) ->
-              kind c = Abstract || Specification.verify spec (skeleton c))
-          in
-          List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
-              apply_unifier (fill_hole hole ~parent:p ~child:c) u))
-          |> List.concat)
-end
-
 module type Deduction_intf = sig
   val push_specifications : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
   val push_specifications_unification : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
@@ -453,6 +430,29 @@ module L2_Deduction : Deduction_intf = struct
     else Some s
 end
 
+module type Generalizer_intf = sig
+  type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
+  val generalize : t
+  val generalize_all : generalize:t -> Hypothesis.t -> Hypothesis.t list
+end
+
+module Generalizer_impl = struct
+  type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
+
+  let generalize_all ~generalize:gen hypo =
+    let open Hypothesis in
+    List.fold_left
+      (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
+      ~init:[ hypo ]
+      ~f:(fun hypos (hole, spec) ->
+          let children = List.filter (gen hole spec) ~f:(fun (c, _) ->
+              kind c = Abstract || Specification.verify spec (skeleton c))
+          in
+          List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
+              apply_unifier (fill_hole hole ~parent:p ~child:c) u))
+          |> List.concat)
+end
+
 module L2_Generalizer = struct
   (* This generalizer generates programs of the following form. Each
      hole in the hypotheses that it returns is tagged with a symbol
@@ -481,18 +481,16 @@ module L2_Generalizer = struct
      I := <identifier in current scope>
   *)
 
-  module type Symbols_intf = sig
+  module type S = sig
+    include Generalizer_intf
+
     val lambda : Symbol.t
     val combinator : Symbol.t
     val expression : Symbol.t
     val constant : Symbol.t
     val identifier : Symbol.t
     val base_case : Symbol.t
-  end
 
-  module type S = sig
-    include Generalizer_intf
-    include Symbols_intf
     val generate_constants : t
     val generate_identifiers : t
     val generate_expressions : t
@@ -501,13 +499,16 @@ module L2_Generalizer = struct
     val select_generators : Symbol.t -> t list
   end
 
-  module Make (Symbols : Symbols_intf) : S = struct
-    include Generalizer_impl
-
+  module Shared = struct
     module Sp = Specification
     module H = L2_Hypothesis
 
-    include Symbols
+    let lambda = Symbol.create "Lambda"
+    let combinator = Symbol.create "Combinator"
+    let expression = Symbol.create "Expression"
+    let constant = Symbol.create "Constant"
+    let identifier = Symbol.create "Identifier"
+    let base_case = Symbol.create "BaseCase"
 
     let combinators = [
       "map"; "mapt"; "filter"; "foldl"; "foldr"; "foldt"; "rec"
@@ -618,6 +619,11 @@ module L2_Generalizer = struct
                   H.apply (H.id_name func Sp.Top, arg_holes) spec, u)
             | _ -> None
           else None)
+  end
+
+  module With_components : S = struct
+    include Shared
+    include Generalizer_impl
 
     let select_generators symbol =
       if symbol = constant then
@@ -640,14 +646,54 @@ module L2_Generalizer = struct
       List.concat (List.map generators ~f:(fun g -> g hole spec))
   end
 
-  include Make (struct
-      let lambda = Symbol.create "Lambda"
-      let combinator = Symbol.create "Combinator"
-      let expression = Symbol.create "Expression"
-      let constant = Symbol.create "Constant"
-      let identifier = Symbol.create "Identifier"
-      let base_case = Symbol.create "BaseCase"
-    end)
+
+  module No_components : S = struct
+    include Shared
+    include Generalizer_impl
+
+    let select_generators symbol =
+      if symbol = constant then
+        [ generate_constants ]
+      else if symbol = base_case then
+        [ generate_identifiers; generate_constants; ]
+      else if symbol = identifier then
+        [ generate_identifiers ]
+      else if symbol = lambda then
+        [ generate_lambdas ]
+      else if symbol = expression then
+        [ ]
+      else if symbol = combinator then
+        [ generate_combinators; ]
+      else
+        failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
+
+    let generalize hole spec =
+      let generators = select_generators hole.Hole.symbol in
+      List.concat (List.map generators ~f:(fun g -> g hole spec))
+  end
+
+  module No_lambdas : S = struct
+    include Shared
+    include Generalizer_impl
+
+    let select_generators symbol =
+      if symbol = constant then
+        [ generate_constants ]
+      else if symbol = identifier then
+        [ generate_identifiers ]
+      else if symbol = lambda then
+        [ ]
+      else if symbol = expression then
+        [ generate_expressions; generate_identifiers; generate_constants ]
+      else if symbol = combinator then
+        [ generate_expressions; generate_identifiers; generate_constants ]
+      else
+        failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
+
+    let generalize hole spec =
+      let generators = select_generators hole.Hole.symbol in
+      List.concat (List.map generators ~f:(fun g -> g hole spec))
+  end
 end
 
 module type Synthesizer_intf = sig
@@ -686,8 +732,6 @@ module Make_BFS_Synthesizer (G: Generalizer_intf) : Synthesizer_intf = struct
       done; None
     with SynthesisException h -> h
 end
-
-module L2_BFS_Synthesizer = Make_BFS_Synthesizer(L2_Generalizer)
 
 module type Prune_intf = sig
   val should_prune : Hypothesis.t -> bool
@@ -829,55 +873,11 @@ module Memoizer = struct
   end
 end
 
-module L2_Memoizer = Memoizer.Make
-    (struct
-      include Generalizer_impl
-
-      let generalize hole spec =
-        let symbol = hole.Hole.symbol in
-        let generators =
-          let open L2_Generalizer in
-          if symbol = constant then
-            [ generate_constants ]
-          else if symbol = identifier then
-            [ generate_identifiers ]
-          else if symbol = lambda then
-            [ ]
-          else if symbol = expression then
-            [ generate_expressions; generate_identifiers; generate_constants ]
-          else if symbol = combinator then
-            [ generate_expressions; generate_identifiers; generate_constants ]
-          else
-            failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
-        in
-        List.concat_map generators ~f:(fun g -> g hole spec)
-    end)
-    (L2_Deduction)
+module L2_Memoizer = Memoizer.Make (L2_Generalizer.No_lambdas) (L2_Deduction)
 
 module L2_Synthesizer = struct
   exception SynthesisException of Hypothesis.t
 
-  let generalize_combinator hole spec =
-    let symbol = hole.Hole.symbol in
-    let generators =
-      let open L2_Generalizer in
-      if symbol = constant then
-        [ generate_constants ]
-      else if symbol = base_case then
-        [ generate_identifiers; generate_constants; ]
-      else if symbol = identifier then
-        [ generate_identifiers ]
-      else if symbol = lambda then
-        [ generate_lambdas ]
-      else if symbol = expression then
-        [ ]
-      else if symbol = combinator then
-        [ generate_combinators; ]
-      else
-        failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
-    in
-    List.concat_map generators ~f:(fun g -> g hole spec)
-    
   let memoizer = L2_Memoizer.create ()
 
   let total_cost (hypo_cost: int) (enum_cost: int) : int =
@@ -959,7 +959,7 @@ module L2_Synthesizer = struct
         in
         let children = List.concat_map generalizable ~f:(fun h ->
             (* let () = Debug.eprintf "Generalizing %s" (H.to_string h.AH.hypothesis) in *)
-            generalize_all ~generalize:generalize_combinator h.AH.hypothesis
+            generalize_all ~generalize:L2_Generalizer.No_components.generalize h.AH.hypothesis
             |> List.map ~f:AH.of_hypothesis)
         in
         fresh_hypos := remaining @ children;
@@ -979,6 +979,6 @@ module L2_Synthesizer = struct
     in
     let t = Infer.Type.normalize (Example.signature examples) in
     L2_Hypothesis.hole
-      (Hole.create StaticDistance.Map.empty t L2_Generalizer.lambda)
+      (Hole.create StaticDistance.Map.empty t L2_Generalizer.Shared.lambda)
       (Specification.FunctionExamples exs)
 end

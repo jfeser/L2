@@ -7,23 +7,14 @@ open Infer
 open Hypothesis
 open Improved_search
 
-module Symbols = struct
-  let lambda = Symbol.create "Lambda"
-  let combinator = Symbol.create "Combinator"
-  let expression = Symbol.create "Expression"
-  let constant = Symbol.create "Constant"
-  let identifier = Symbol.create "Identifier"
-  let base_case = Symbol.create "BaseCase"
-end
-
-module Gen = L2_Generalizer.Make (Symbols)
+module Gen = L2_Generalizer.With_components
 module Mem = Memoizer.Make (Gen) (L2_Deduction)
 
 let memoizer_tests = "memoizer" >::: [
     "get" >::: [
       test_case (fun _ ->
           let m = Mem.create () in
-          let hole = Hole.create StaticDistance.Map.empty Type.num Symbols.constant in
+          let hole = Hole.create StaticDistance.Map.empty Type.num Gen.constant in
           assert_raises ~msg:"Out of bounds cost should raise Invalid_argument."
             (Invalid_argument "Argument out of range.") (fun () ->
                 Mem.get m hole Specification.Top (-1))
@@ -31,13 +22,13 @@ let memoizer_tests = "memoizer" >::: [
 
       test_case (fun _ ->
           let m = Mem.create () in
-          let hole = Hole.create StaticDistance.Map.empty Type.num Symbols.constant in
+          let hole = Hole.create StaticDistance.Map.empty Type.num Gen.constant in
           assert_equal [] (Mem.get m hole Specification.Top 0)
         );
 
       test_case (fun _ ->
           let m = Mem.create () in
-          let hole = Hole.create StaticDistance.Map.empty Type.num Symbols.constant in
+          let hole = Hole.create StaticDistance.Map.empty Type.num Gen.constant in
           let spec = Specification.Top in
           assert_equivalent ~sexp:(Tuple.T2.sexp_of_t Hypothesis.sexp_of_t Unifier.sexp_of_t)
             (Gen.generate_constants hole spec)
@@ -46,18 +37,18 @@ let memoizer_tests = "memoizer" >::: [
 
       test_case (fun ctxt ->
           let m = Mem.create () in
-          let hole = Hole.create StaticDistance.Map.empty Type.num Symbols.expression in
+          let hole = Hole.create StaticDistance.Map.empty Type.num Gen.expression in
           let spec = Specification.Top in
           assert_equal ~ctxt ~cmp:Int.equal ~printer:Int.to_string
-             48 (List.length (Mem.get m hole spec 3))
+             97 (List.length (Mem.get m hole spec 3))
         );
 
       test_case (fun ctxt ->
           let m = Mem.create () in
-          let hole = Hole.create StaticDistance.Map.empty (Type.list (Type.free 0 0)) Symbols.expression in
+          let hole = Hole.create StaticDistance.Map.empty (Type.list (Type.free 0 0)) Gen.expression in
           let spec = Specification.Top in
           assert_equal ~ctxt ~cmp:Int.equal ~printer:Int.to_string
-             22 (List.length (Mem.get m hole spec 3))
+             90 (List.length (Mem.get m hole spec 3))
         );
     ]
   ]

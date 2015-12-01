@@ -42,19 +42,16 @@ module Memoizer : sig
 end  
 
 module L2_Generalizer : sig
-  module type Symbols_intf =
-    sig
-      val lambda : Symbol.t
-      val combinator : Symbol.t
-      val expression : Symbol.t
-      val constant : Symbol.t
-      val identifier : Symbol.t
-      val base_case : Symbol.t
-    end
-
   module type S = sig
     include Generalizer_intf
-    include Symbols_intf
+        
+    val lambda : Symbol.t
+    val combinator : Symbol.t
+    val expression : Symbol.t
+    val constant : Symbol.t
+    val identifier : Symbol.t
+    val base_case : Symbol.t
+                      
     val generate_constants : t
     val generate_identifiers : t
     val generate_expressions : t
@@ -62,9 +59,10 @@ module L2_Generalizer : sig
     val generate_combinators : t
     val select_generators : Symbol.t -> t list
   end
-    
-  module Make : functor (Symbols : Symbols_intf) -> S
-  include Generalizer_intf
+
+  module With_components : S
+  module No_components : S
+  module No_lambdas : S
 end
 
 module L2_Memoizer : Memoizer.S
