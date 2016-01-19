@@ -430,29 +430,6 @@ module L2_Deduction : Deduction_intf = struct
     else Some s
 end
 
-module type Generalizer_intf = sig
-  type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
-  val generalize : t
-  val generalize_all : generalize:t -> Hypothesis.t -> Hypothesis.t list
-end
-
-module Generalizer_impl = struct
-  type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
-
-  let generalize_all ~generalize:gen hypo =
-    let open Hypothesis in
-    List.fold_left
-      (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
-      ~init:[ hypo ]
-      ~f:(fun hypos (hole, spec) ->
-          let children = List.filter (gen hole spec) ~f:(fun (c, _) ->
-              kind c = Abstract || Specification.verify spec (skeleton c))
-          in
-          List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
-              apply_unifier (fill_hole hole ~parent:p ~child:c) u))
-          |> List.concat)
-end
-
 module L2_Generalizer = struct
   (* This generalizer generates programs of the following form. Each
      hole in the hypotheses that it returns is tagged with a symbol
@@ -481,8 +458,22 @@ module L2_Generalizer = struct
      I := <identifier in current scope>
   *)
 
+  type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
+  
+  module type Selector = sig
+    val select : Symbol.t -> t list
+  end
+
   module type S = sig
-    include Generalizer_intf
+    type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
+    val generalize : t
+    val generalize_all : Hypothesis.t -> Hypothesis.t list
+
+    val generate_constants : t
+    val generate_identifiers : t
+    val generate_expressions : t
+    val generate_lambdas : t
+    val generate_combinators : t
 
     val lambda : Symbol.t
     val combinator : Symbol.t
@@ -490,25 +481,24 @@ module L2_Generalizer = struct
     val constant : Symbol.t
     val identifier : Symbol.t
     val base_case : Symbol.t
-
-    val generate_constants : t
-    val generate_identifiers : t
-    val generate_expressions : t
-    val generate_lambdas : t
-    val generate_combinators : t
-    val select_generators : Symbol.t -> t list
   end
 
-  module Shared = struct
-    module Sp = Specification
-    module H = L2_Hypothesis
-
+  module Symbols = struct
     let lambda = Symbol.create "Lambda"
     let combinator = Symbol.create "Combinator"
     let expression = Symbol.create "Expression"
     let constant = Symbol.create "Constant"
     let identifier = Symbol.create "Identifier"
-    let base_case = Symbol.create "BaseCase"
+    let base_case = Symbol.create "BaseCase"    
+  end
+  
+  module Shared = struct
+    include Symbols
+        
+    module Sp = Specification
+    module H = L2_Hypothesis
+
+    type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
 
     let combinators = [
       "map"; "mapt"; "filter"; "foldl"; "foldr"; "foldt"; "rec"
@@ -621,116 +611,154 @@ module L2_Generalizer = struct
           else None)
   end
 
-  module With_components : S = struct
+  module Make (Select : Selector) : S = struct
     include Shared
-    include Generalizer_impl
-
-    let select_generators symbol =
-      if symbol = constant then
-        [ generate_constants ]
-      else if symbol = base_case then
-        [ generate_constants; generate_identifiers ]
-      else if symbol = identifier then
-        [ generate_identifiers ]
-      else if symbol = lambda then
-        [ generate_lambdas ]
-      else if symbol = expression then
-        [ generate_expressions; generate_identifiers; generate_constants ]
-      else if symbol = combinator then
-        [ generate_combinators; generate_expressions; generate_constants ]
-      else
-        failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
-
+        
     let generalize hole spec =
-      let generators = select_generators hole.Hole.symbol in
+      let generators = Select.select hole.Hole.symbol in
       List.concat (List.map generators ~f:(fun g -> g hole spec))
+
+    let generalize_all hypo =
+      let open Hypothesis in
+      List.fold_left
+        (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
+        ~init:[ hypo ]
+        ~f:(fun hypos (hole, spec) ->
+            let children = List.filter (generalize hole spec) ~f:(fun (c, _) ->
+                kind c = Abstract || Specification.verify spec (skeleton c))
+            in
+            List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
+                apply_unifier (fill_hole hole ~parent:p ~child:c) u))
+            |> List.concat)
   end
 
+  module With_components = Make (struct
+      open Shared
+          
+      let select symbol =
+        if symbol = constant then
+          [ generate_constants ]
+        else if symbol = base_case then
+          [ generate_constants; generate_identifiers ]
+        else if symbol = identifier then
+          [ generate_identifiers ]
+        else if symbol = lambda then
+          [ generate_lambdas ]
+        else if symbol = expression then
+          [ generate_expressions; generate_identifiers; generate_constants ]
+        else if symbol = combinator then
+          [ generate_combinators; generate_expressions; generate_constants ]
+        else
+          failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
+    end)
 
-  module No_components : S = struct
-    include Shared
-    include Generalizer_impl
+  module No_components = Make (struct
+      open Shared
 
-    let select_generators symbol =
-      if symbol = constant then
-        [ generate_constants ]
-      else if symbol = base_case then
-        [ generate_identifiers; generate_constants; ]
-      else if symbol = identifier then
-        [ generate_identifiers ]
-      else if symbol = lambda then
-        [ generate_lambdas ]
-      else if symbol = expression then
-        [ ]
-      else if symbol = combinator then
-        [ generate_combinators; ]
-      else
-        failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
+      let select symbol =
+        if symbol = constant then
+          [ generate_constants ]
+        else if symbol = base_case then
+          [ generate_identifiers; generate_constants; ]
+        else if symbol = identifier then
+          [ generate_identifiers ]
+        else if symbol = lambda then
+          [ generate_lambdas ]
+        else if symbol = expression then
+          [ ]
+        else if symbol = combinator then
+          [ generate_combinators; ]
+        else
+          failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
+    end)
 
-    let generalize hole spec =
-      let generators = select_generators hole.Hole.symbol in
-      List.concat (List.map generators ~f:(fun g -> g hole spec))
-  end
+  module No_lambdas = Make (struct
+      open Shared
 
-  module No_lambdas : S = struct
-    include Shared
-    include Generalizer_impl
+      let select symbol =
+        if symbol = constant then
+          [ generate_constants ]
+        else if symbol = identifier then
+          [ generate_identifiers ]
+        else if symbol = lambda then
+          [ ]
+        else if symbol = expression then
+          [ generate_expressions; generate_identifiers; generate_constants ]
+        else if symbol = combinator then
+          [ generate_expressions; generate_identifiers; generate_constants ]
+        else
+          failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
+    end)
 
-    let select_generators symbol =
-      if symbol = constant then
-        [ generate_constants ]
-      else if symbol = identifier then
-        [ generate_identifiers ]
-      else if symbol = lambda then
-        [ ]
-      else if symbol = expression then
-        [ generate_expressions; generate_identifiers; generate_constants ]
-      else if symbol = combinator then
-        [ generate_expressions; generate_identifiers; generate_constants ]
-      else
-        failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
+  (* module Make_memoized (Generalizer : S) : S = struct *)
+  (*   module Key = struct *)
+  (*     module Hole_without_id = struct *)
+  (*       type t = { *)
+  (*         ctx : Type.t StaticDistance.Map.t; *)
+  (*         type_ : Type.t; *)
+  (*         symbol : Symbol.t; *)
+  (*       } with compare, sexp *)
 
-    let generalize hole spec =
-      let generators = select_generators hole.Hole.symbol in
-      List.concat (List.map generators ~f:(fun g -> g hole spec))
-  end
-end
+  (*       let normalize_free ctx t = *)
+  (*         let fresh_int = Util.Fresh.mk_fresh_int_fun () in *)
+  (*         let rec norm t = match t with *)
+  (*           | Var_t { contents = Quant _ } *)
+  (*           | Const_t _ -> t *)
+  (*           | App_t (name, args) -> App_t (name, List.map args ~f:norm) *)
+  (*           | Arrow_t (args, ret) -> Arrow_t (List.map args ~f:norm, norm ret) *)
+  (*           | Var_t { contents = Free (id, level) } -> *)
+  (*             (match IntMap.find !ctx id with *)
+  (*              | Some id -> Type.free id level *)
+  (*              | None -> *)
+  (*                let new_id = fresh_int () in *)
+  (*                ctx := IntMap.add !ctx ~key:new_id ~data:id; *)
+  (*                Type.free new_id level) *)
+  (*           | Var_t { contents = Link t } -> norm t *)
+  (*         in *)
+  (*         norm t *)
 
-module type Synthesizer_intf = sig
-  val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t
-end
+  (*       let of_hole h = *)
+  (*         let free_ctx = ref IntMap.empty in *)
+  (*         let type_ = normalize_free free_ctx h.Hole.type_ in *)
+  (*         let type_ctx = StaticDistance.Map.map h.Hole.ctx ~f:(normalize_free free_ctx) in *)
+  (*         ({ ctx = type_ctx; symbol = h.Hole.symbol; type_; }, !free_ctx) *)
+  (*     end *)
 
-module Make_BFS_Synthesizer (G: Generalizer_intf) : Synthesizer_intf = struct
-  exception SynthesisException of Hypothesis.t Option.t
+  (*     type t = { *)
+  (*       hole : Hole_without_id.t; *)
+  (*       spec : Specification.t; *)
+  (*     } with compare, sexp *)
 
-  let synthesize hypo ~cost:max_cost =
-    let open Hypothesis in
-    let heap = Heap.create ~cmp:compare_cost () in
-    try
-      Heap.add heap hypo;
-      while true do
-        match Heap.pop heap with
-        | Some h ->
-          (* Take the hole with the smallest id. *)
-          let m_hole =
-            List.min_elt (holes h) ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2)
-          in
-          (match m_hole with
-           | Some (hole, spec) ->
-             List.iter (G.generalize hole spec) ~f:(fun (c, u) ->
-                 if (kind c) = Abstract || Hypothesis.verify c then
-                   let h = apply_unifier (fill_hole hole ~parent:h ~child:c) u in
+  (*     let hash = Hashtbl.hash *)
 
-                   match kind c with
-                   | Concrete ->
-                     let () = printf "%s\n" (Skeleton.to_string_hum (skeleton h)) in
-                     if Hypothesis.verify h then raise (SynthesisException (Some h))
-                   | Abstract -> Heap.add heap h)
-           | None -> failwiths "BUG: Abstract hypothesis has no holes."
-                       h Hypothesis.sexp_of_t)
-        | None -> raise (SynthesisException None)
-      done; None
-    with SynthesisException h -> h
+  (*     let of_hole_spec hole spec = *)
+  (*       let (hole, map) = Hole_without_id.of_hole hole in *)
+  (*       ({ hole; spec; }, map) *)
+  (*   end *)
+
+  (*   module HoleTable = Hashtbl.Make(Key) *)
+
+  (*   include Generalizer *)
+
+  (*   let table = HoleTable.create () *)
+
+  (*   let denormalize_unifier u map = *)
+  (*     Unifier.to_alist u *)
+  (*     |> List.filter_map ~f:(fun (k, v) -> Option.map (IntMap.find map k) ~f:(fun k' -> k', v)) *)
+  (*     |> Unifier.of_alist_exn *)
+
+  (*   let generalize hole spec = *)
+  (*     let (key, map) = Key.of_hole_spec hole spec in *)
+  (*     let hs = match HoleTable.find table key with *)
+  (*       | Some hs -> hs *)
+  (*       | None -> *)
+  (*         let generators = select_generators hole.Hole.symbol in *)
+  (*         let hs = List.concat (List.map generators ~f:(fun g -> g hole spec)) in *)
+  (*         HoleTable.add_exn table ~key ~data:hs; *)
+  (*         hs *)
+  (*     in *)
+  (*     List.map hs ~f:(fun (h, u) -> (h, denormalize_unifier u map)) *)
+  (* end *)
 end
 
 module type Prune_intf = sig
@@ -758,8 +786,7 @@ module Memoizer = struct
 
   let denormalize_unifier u map =
     Unifier.to_alist u
-    |> List.filter_map ~f:(fun (k, v) ->
-        Option.map (IntMap.find map k) ~f:(fun k' -> k', v))
+    |> List.filter_map ~f:(fun (k, v) -> Option.map (IntMap.find map k) ~f:(fun k' -> k', v))
     |> Unifier.of_alist_exn
 
   module Key = struct
@@ -817,7 +844,7 @@ module Memoizer = struct
     } with sexp
   end
 
-  module Make (G: Generalizer_intf) (D: Deduction_intf) : S = struct
+  module Make (G: L2_Generalizer.S) (D: Deduction_intf) : S = struct
     type t = HoleState.t HoleTable.t
 
     let create () = HoleTable.create ()
@@ -838,10 +865,13 @@ module Memoizer = struct
           match CostTable.find state.S.hypotheses cost with
           | Some hs -> hs
           | None ->
+            (* For each expansion of the grammar symbol for this hole,
+               fill in the holes in the hypothesis and return if it it
+               matches the spec. *)
             let hs = List.concat_map (Lazy.force state.S.generalizations) ~f:(fun (p, p_u) ->
                 match H.kind p with
                 | H.Concrete -> if H.cost p = cost then [ (p, p_u) ] else []
-                | H.Abstract -> if H.cost p  >= cost then [] else
+                | H.Abstract -> if H.cost p >= cost then [] else
                     let num_holes = List.length (H.holes p) in
                     let all_hole_costs =
                       Util.m_partition (cost - H.cost p) num_holes
@@ -850,11 +880,6 @@ module Memoizer = struct
                     List.concat_map all_hole_costs ~f:(fun hole_costs ->
                         List.fold2_exn (H.holes p) hole_costs ~init:[ (p, p_u) ]
                           ~f:(fun hs (hole, spec) hole_cost ->
-                              let hs =
-                                List.filter_map hs ~f:(fun (h, u) ->
-                                  Option.map (D.push_specifications_unification (H.skeleton h))
-                                    ~f:(fun s -> L2_Hypothesis.of_skeleton s, u))
-                              in
                               List.concat_map hs ~f:(fun (p, p_u) ->
                                   let children = get m hole spec hole_cost in
                                   List.map children ~f:(fun (c, c_u) ->
@@ -875,35 +900,59 @@ end
 
 module L2_Memoizer = Memoizer.Make (L2_Generalizer.No_lambdas) (L2_Deduction)
 
-module L2_Synthesizer = struct
-  exception SynthesisException of Hypothesis.t
+module type Synthesizer_intf = sig
+  val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t
+end
 
+module Make_BFS_Synthesizer (G: L2_Generalizer.S) : Synthesizer_intf = struct
+  exception SynthesisException of Hypothesis.t Option.t
+
+  let synthesize hypo ~cost:max_cost =
+    let open Hypothesis in
+    let heap = Heap.create ~cmp:compare_cost () in
+    try
+      Heap.add heap hypo;
+      while true do
+        match Heap.pop heap with
+        | Some h ->
+          (* Take the hole with the smallest id. *)
+          let m_hole =
+            List.min_elt (holes h) ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2)
+          in
+          (match m_hole with
+           | Some (hole, spec) ->
+             List.iter (G.generalize hole spec) ~f:(fun (c, u) ->
+                 if (kind c) = Abstract || Hypothesis.verify c then
+                   let h = apply_unifier (fill_hole hole ~parent:h ~child:c) u in
+
+                   match kind c with
+                   | Concrete ->
+                     let () = printf "%s\n" (Skeleton.to_string_hum (skeleton h)) in
+                     if Hypothesis.verify h then raise (SynthesisException (Some h))
+                   | Abstract -> Heap.add heap h)
+           | None -> failwiths "BUG: Abstract hypothesis has no holes."
+                       h Hypothesis.sexp_of_t)
+        | None -> raise (SynthesisException None)
+      done; None
+    with SynthesisException h -> h
+end
+
+module type Search_intf = sig
+  val search : check_cost:(int -> bool) -> found:(Hypothesis.t -> never_returns) -> Hypothesis.t -> int -> int
+end
+
+module Memoized_search : Search_intf = struct
   let memoizer = L2_Memoizer.create ()
 
-  let total_cost (hypo_cost: int) (enum_cost: int) : int =
-    hypo_cost + (Int.of_float (1.5 ** (Float.of_int enum_cost)))
-
-  module AnnotatedH = struct
-    type t = {
-      hypothesis : Hypothesis.t;
-      max_search_cost : int ref;
-    }
-
-    let of_hypothesis h = {
-      hypothesis = h;
-      max_search_cost = ref 0;
-    }
-  end
-
-  let search hypo start_exh_cost end_cost : int =
+  let search ~check_cost ~found hypo initial_cost =
     let module H = Hypothesis in
-    let rec search (exh_cost: int) =
+    let rec search (cost: int) =
       (* If the cost of searching this level exceeds the max cost, end the search. *)
-      if (total_cost (H.cost hypo) exh_cost) >= end_cost then exh_cost else
+      if check_cost cost then cost else
         (* Otherwise, examine the next row in the search tree. *)
         begin
           let num_holes = List.length (H.holes hypo) in
-          List.concat_map (Util.m_partition exh_cost num_holes) ~f:(fun hole_costs ->
+          List.concat_map (Util.m_partition cost num_holes) ~f:(fun hole_costs ->
               List.fold2_exn (H.holes hypo) hole_costs ~init:[ (hypo, Unifier.empty) ]
                 ~f:(fun hs (hole, spec) hole_cost -> List.concat_map hs ~f:(fun (p, p_u) ->
                     let children = L2_Memoizer.get memoizer hole spec hole_cost in
@@ -913,54 +962,134 @@ module L2_Synthesizer = struct
                         h, u))))
           |> List.iter ~f:(fun (h, _) ->
               match H.kind h with
-              | H.Concrete -> if H.verify h then raise (SynthesisException h)
+              | H.Concrete -> if H.verify h then never_returns (found h)
               | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t);
-          search (exh_cost + 1)
+          search (cost + 1)
         end
     in
-    search start_exh_cost
+    search initial_cost
+end  
 
-  let generalize_all ~generalize:gen hypo =
-    let open Hypothesis in
-    List.fold_left
-      (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
-      ~init:[ hypo ]
-      ~f:(fun hypos (hole, spec) ->
-          let children = List.filter (gen hole spec) ~f:(fun (c, _) ->
-              kind c = Abstract || Specification.verify spec (skeleton c))
-          in
-          List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
-              apply_unifier (fill_hole hole ~parent:p ~child:c) u))
-          |> List.concat
+module Conflict_search = struct
+  module H = Hypothesis
+    
+  let rec get parent hole spec cost =
+    List.concat_map (L2_Generalizer.No_lambdas.generalize hole spec) ~f:(fun (p, p_u) ->
+        match H.kind p with
+        | H.Concrete -> if H.cost p = cost then [ (p, p_u) ] else []
+        | H.Abstract -> if H.cost p >= cost then [] else
+            let num_holes = List.length (H.holes p) in
+            let all_hole_costs =
+              Util.m_partition (cost - H.cost p) num_holes
+              |> List.concat_map ~f:Util.permutations
+            in
+            let parent_hole = hole in
+            List.concat_map all_hole_costs ~f:(fun hole_costs ->
+                List.fold2_exn (H.holes p) hole_costs ~init:[ (p, p_u) ]
+                  ~f:(fun hs (hole, spec) hole_cost ->
+                      List.iter hs ~f:(fun (h, u) ->
+                          let full_hypo = H.fill_hole parent_hole ~parent ~child:h in
+                          begin
+                            match Conflict.of_hypothesis full_hypo with
+                            | Ok (`Conflict c) ->
+                              printf "Found conflict!\n%s\n%s\n%!" (H.to_string_hum full_hypo)
+                                (Sexp.to_string_hum (Conflict.sexp_of_t c))
+                            | Ok `NoConflict -> printf "No conflict.\n%s\n%!" (H.to_string_hum full_hypo)
+                            | Error err -> ()
+                              (* printf "Error.\n%s\n%s\n%!" (H.to_string_hum h) (Error.to_string_hum err) *)
+                          end;
 
-          (* After generalizing, try to push specifications down the
-               skeleton. Filter out any hypothesis with a Bottom spec. *)
-          |> List.filter_map ~f:(fun h ->
-              Option.map (L2_Deduction.push_specifications (skeleton h))
-                L2_Hypothesis.of_skeleton))
-      
+                        );
+                      
+                      (* let hs = List.filter_map hs ~f:(fun (h, u) -> *)
+                      (*     begin *)
+                      (*       match Conflict.of_hypothesis (H.fill_hole parent_hole ~parent ~child:h) with *)
+                      (*       | Ok (`Conflict c) -> *)
+                      (*         printf "Found conflict!\n%s\n%s\n%!" (H.to_string_hum h) *)
+                      (*           (Sexp.to_string_hum (Conflict.sexp_of_t c)) *)
+                      (*       | Ok `NoConflict -> printf "No conflict.\n%s\n%!" (H.to_string_hum h) *)
+                      (*       | Error err -> *)
+                      (*         printf "Error.\n%s\n%s\n%!" (H.to_string_hum h) (Error.to_string_hum err) *)
+                      (*     end; *)
+
+                      (*     Option.map (L2_Deduction.push_specifications (H.skeleton h)) ~f:(fun s -> *)
+                      (*         L2_Hypothesis.of_skeleton s, u)) *)
+                      (* in *)
+                      List.concat_map hs ~f:(fun (p, p_u) ->
+                          let children = get p hole spec hole_cost in
+                          List.map children ~f:(fun (c, c_u) ->
+                              let u = Unifier.compose c_u p_u in
+                              let h = H.fill_hole hole ~parent:p ~child:c in
+                              h, u))))
+            |> List.filter ~f:(fun (h, _) ->
+                (* let () = Debug.eprintf "Verifying %d %s" h.H.cost (H.to_string_hum h) in *)
+                match H.kind h with
+                | H.Concrete -> H.verify h
+                | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t))  
+
+  let search ~check_cost ~found hypo initial_cost =
+    let rec search (cost: int) =
+      (* If the cost of searching this level exceeds the max cost, end the search. *)
+      if check_cost cost then cost else
+        (* Otherwise, examine the next row in the search tree. *)
+        begin
+          let num_holes = List.length (H.holes hypo) in
+          List.concat_map (Util.m_partition cost num_holes) ~f:(fun hole_costs ->
+              List.fold2_exn (H.holes hypo) hole_costs ~init:[ (hypo, Unifier.empty) ]
+                ~f:(fun hs (hole, spec) hole_cost -> List.concat_map hs ~f:(fun (p, p_u) ->
+                    let children = get (L2_Hypothesis.hole hole spec) hole spec hole_cost in
+                    List.map children ~f:(fun (c, c_u) ->
+                        let u = Unifier.compose c_u p_u in
+                        let h = H.fill_hole hole ~parent:p ~child:c in
+                        h, u))))
+          |> List.iter ~f:(fun (h, _) ->
+              match H.kind h with
+              | H.Concrete -> if H.verify h then never_returns (found h)
+              | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t);
+          search (cost + 1)
+        end
+    in
+    search initial_cost
+end
+
+module Make_L2_synthesizer (Search: Search_intf) = struct
+  exception SynthesisException of Hypothesis.t
+
+  let total_cost (hypo_cost: int) (enum_cost: int) : int =
+    hypo_cost + (Int.of_float (1.5 ** (Float.of_int enum_cost)))
+
   let synthesize hypo ~cost:max_cost =
     let module H = Hypothesis in
-    let module AH = AnnotatedH in
-    let fresh_hypos = ref [ AH.of_hypothesis hypo ] in
+    let fresh_hypos = ref [ (hypo, ref 0) ] in
     let stale_hypos = ref [] in
 
     try
       for cost = 1 to max_cost do
         (* Search each hypothesis that can be searched at this cost. If
            the search succeeds it will throw an exception. *)
-        List.iter (!fresh_hypos @ !stale_hypos) ~f:(fun h ->
-            if total_cost (H.cost h.AH.hypothesis) (!(h.AH.max_search_cost) + 1) <= cost then
-              h.AH.max_search_cost := search h.AH.hypothesis !(h.AH.max_search_cost) cost);
+        List.iter (!fresh_hypos @ !stale_hypos) ~f:(fun (hypo, max_search_cost) ->
+            if total_cost (H.cost hypo) (!max_search_cost + 1) <= cost then
+              let hypo_cost = H.cost hypo in
+              max_search_cost :=
+                Search.search hypo !max_search_cost
+                  ~check_cost:(fun exh_cost -> total_cost hypo_cost exh_cost >= cost)
+                  ~found:(fun h -> raise (SynthesisException h)));
 
         (* Generalize each hypothesis that is cheap enough to generalize. *)
-        let (generalizable, remaining) = List.partition_tf !fresh_hypos ~f:(fun h ->
-            (H.cost h.AH.hypothesis) < cost)
+        let (generalizable, remaining) =
+          List.partition_tf !fresh_hypos ~f:(fun (h, _) -> H.cost h < cost)
         in
-        let children = List.concat_map generalizable ~f:(fun h ->
-            (* let () = Debug.eprintf "Generalizing %s" (H.to_string h.AH.hypothesis) in *)
-            generalize_all ~generalize:L2_Generalizer.No_components.generalize h.AH.hypothesis
-            |> List.map ~f:AH.of_hypothesis)
+        let children = List.concat_map generalizable ~f:(fun (h, _) ->
+            L2_Generalizer.No_components.generalize_all h
+
+            (* After generalizing, push specifications down the
+               skeleton and filter skeletons with Bottom
+               specifications. *)
+            |> List.filter_map ~f:(fun h ->
+                Option.map (L2_Deduction.push_specifications (H.skeleton h))
+                  L2_Hypothesis.of_skeleton)
+              
+            |> List.map ~f:(fun h -> (h, ref 0)))
         in
         fresh_hypos := remaining @ children;
         stale_hypos := !stale_hypos @ generalizable;
@@ -979,6 +1108,8 @@ module L2_Synthesizer = struct
     in
     let t = Infer.Type.normalize (Example.signature examples) in
     L2_Hypothesis.hole
-      (Hole.create StaticDistance.Map.empty t L2_Generalizer.Shared.lambda)
+      (Hole.create StaticDistance.Map.empty t L2_Generalizer.Symbols.lambda)
       (Specification.FunctionExamples exs)
 end
+
+module L2_Synthesizer = Make_L2_synthesizer(Conflict_search)

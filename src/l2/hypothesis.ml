@@ -47,22 +47,9 @@ module Symbol = struct
   let sexp_of_t (s: t) : Sexp.t =
     let open Sexp in
     match Int.Table.find names s with
-    | Some name -> List [
-        List [ Atom "id"; Atom (Int.to_string s) ];
-        List [ Atom "name"; Atom name ];
-      ]
+    | Some name -> Atom name
     | None -> failwiths (sprintf "BUG: Looking up symbol name of '%d' failed." s)
                 names <:sexp_of<string Int.Table.t>>
-
-  let t_of_sexp (s: Sexp.t) : t =
-    let open Sexp in
-    match s with
-    | List [ List [ Atom "id"; Atom id_s ]; List [ Atom "name"; Atom name ]; ] ->
-      let id = Int.of_string id_s in
-      (match Int.Table.add names ~key:id ~data:name with
-       | `Ok -> id
-       | `Duplicate -> raise (Sexp.Of_sexp_error (Failure "Symbol already loaded.", s)))
-    | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
 
   let (compare: t -> t -> int) = Int.compare
   let (equal: t -> t -> bool) = Int.equal
@@ -73,6 +60,21 @@ module Symbol = struct
     | `Ok -> id
     | `Duplicate -> failwiths "Symbol already created." name String.sexp_of_t
   end
+
+  let t_of_sexp (s: Sexp.t) : t =
+    let open Sexp in
+    match s with
+    | Atom name ->
+      let m_id =
+        Int.Table.to_alist names
+        |> List.find_map ~f:(fun (id, name') -> if String.equal name name' then Some id else None)
+      in
+      begin match m_id with
+        | Some id -> id
+        | None -> create name
+      end
+    | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
+
 end
 
 module Hole = struct
@@ -316,6 +318,10 @@ module Specification = struct
     let of_list_exn exs = of_list exs |> Or_error.ok_exn
 
     let to_list t = t
+
+    let context = function
+      | [] -> []
+      | (inp, out)::_ -> StaticDistance.Map.keys inp
   end
 
   module FunctionExamples = struct
@@ -563,7 +569,6 @@ module Hypothesis = struct
         cost = compute_cost s;
         holes;
       }
-
         
     let num x s : t = {
       skeleton = Table.hashcons table (Sk.Num_h (x, s));

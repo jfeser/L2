@@ -1,4 +1,6 @@
-%{ open Component0 %}
+%{
+open Component0
+%}
 
 %token <int> INPUT_VAR
 %token <string> FREE_VAR
@@ -6,14 +8,15 @@
 %token <string> FUNC
 %token <int> NUM
 %token <bool> BOOL
+%token COLON
 %token LPAREN
 %token RPAREN
 %token LBRACKET
 %token RBRACKET
 %token AND
-%token OR
 %token COMMA
 %token BOTTOM
+%token WHERE
 %token EOF
 
 %token EQUALS
@@ -27,25 +30,29 @@
 %token NOT_SUBSET
 %token NOT_SUPERSET
 
-%start <Component0.conjunct> conjunct_eof
+%token INT_SORT
+%token BOOL_SORT
+%token LIST_SORT
+%token STRING_SORT
+
+%start <Component0.conjunct> conjunction_eof
 %start <Component0.predicate> predicate_eof
-%start <Component0.specification> specification_eof
+%start <Component0.parsed_specification> specification_eof
 %%
 
 specification_eof:
- | x1 = delimited(LPAREN, separated_list(OR, delimited(LPAREN, conjunct, RPAREN)), RPAREN);
-   AND;
-   x2 = conjunct;
-   EOF
-   { { phi = x1; constraints = x2 } }
+ | x = specification; EOF { x }
 
-conjunct_eof:
- | x = conjunct; EOF { x }
+conjunction_eof:
+ | x = conjunction; EOF { x }
 
 predicate_eof:
  | x = predicate; EOF { x }
 
-conjunct:
+specification:
+ | c = conjunction; WHERE; s = sort_defs { (c, s) }
+
+conjunction:
  | x = separated_list(AND, predicate) { x }
 
 predicate:
@@ -55,7 +62,22 @@ predicate:
 term:
  | x = variable { Variable x }
  | x = constant { Constant x }
+ | x = delimited(LBRACKET, separated_list(COMMA, term), RBRACKET) {
+       List.fold_right (fun e a -> Apply ("Cons", [e; a])) x (Constant Nil)
+   }
  | f = FUNC; args = delimited(LPAREN, separated_list(COMMA, term), RPAREN) { Apply (f, args) }
+
+sort_defs:
+ | x = separated_list(COMMA, sort_def) { x }
+
+sort_def:
+ | v = variable; COLON; s = sort { (v, s) }
+
+sort:
+ | INT_SORT { Int }
+ | BOOL_SORT { Bool }
+ | LIST_SORT { List }
+ | STRING_SORT { String }
 
 operator:
  | EQUALS { Eq }
@@ -77,5 +99,4 @@ variable:
 constant:
  | x = BOOL { Bool x }
  | x = NUM { Int x }
- | LBRACKET; RBRACKET { Nil }
  | BOTTOM { Bottom }

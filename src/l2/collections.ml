@@ -18,6 +18,17 @@ module ListExt = struct
   let max = List.fold_left ~f:(fun a e -> if e > a then e else a) ~init:Int.min_value
 
   let int_sum : int list -> int = List.fold_left ~f:(fun x y -> x + y) ~init:0
+
+  let rec all_equal ?(eq = (=)) (l: 'a list) = match l with
+    | [] | [_] -> true
+    | x::y::xs -> eq x y && all_equal (y::xs) ~eq
+
+  let rec unzip3 l =
+    match l with
+    | (a1, b1, c1)::xs ->
+      let a, b, c = unzip3 xs in
+      (a1::a), (b1::b), (c1::c)
+    | [] -> [], [], []
 end
 module List = ListExt
 

@@ -386,6 +386,7 @@ let () = run_test_tt_main
        Improved_search_tests.tests;
        Hypothesis_tests.tests;
        Component_tests.tests;
+       Conflict_tests.tests;
        
        test_parse_expr;
        test_parse_typ;

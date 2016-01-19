@@ -98,6 +98,8 @@ module Specification : sig
     val of_list : (Ast.value StaticDistance.Map.t * Ast.value) list -> t Or_error.t
     val of_list_exn : (Ast.value StaticDistance.Map.t * Ast.value) list -> t
     val to_list : t -> (Ast.value StaticDistance.Map.t * Ast.value) list
+
+    val context : t -> StaticDistance.t list
   end
 
   module FunctionExamples : sig

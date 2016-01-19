@@ -14,13 +14,18 @@ let func = ['A' - 'Z'] ['a' - 'z']*
 
 rule token = parse
        | white                 { token lexbuf } (* Eat whitespace. *)
+       | "int"                 { INT_SORT }
+       | "bool"                { BOOL_SORT }
+       | "list"                { LIST_SORT }
+       | "string"              { STRING_SORT }
+       | "where"               { WHERE }
        | "#t"                  { BOOL true }
        | "#f"                  { BOOL false }
+       | ':'                   { COLON }
        | '('                   { LPAREN }
        | ')'                   { RPAREN }
        | '['                   { LBRACKET }
        | ']'                   { RBRACKET }
-       | 'v'                   { OR }
        | '^'                   { AND }
        | '='                   { EQUALS }
        | "!="                  { NOT_EQUALS }

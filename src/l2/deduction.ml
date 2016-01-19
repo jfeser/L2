@@ -41,6 +41,7 @@ let (formula_memoizer: FormulaII.t) = FormulaII.create ()
 let int_sort ctx = Z3.Arithmetic.Integer.mk_sort ctx
 let list_sort ctx = Z3.Sort.mk_uninterpreted_s ctx "Lst"
 let tree_sort ctx = Z3.Sort.mk_uninterpreted_s ctx "Tree"
+    
 let len_fun ctx =
   Z3.FuncDecl.mk_func_decl_s ctx "len" [list_sort ctx] (int_sort ctx)
 let height_fun ctx =

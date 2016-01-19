@@ -8,7 +8,11 @@ exception TypeError of Error.t
 val total_infer_time : Time.Span.t ref
 
 module Type : sig
-  type t = typ
+  type t = typ =
+    | Const_t of const_typ
+    | App_t of id * typ list
+    | Arrow_t of typ list * typ
+    | Var_t of var_typ ref
 
   val t_of_sexp : Sexp.t -> t
   val sexp_of_t : t -> Sexp.t

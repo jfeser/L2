@@ -393,6 +393,14 @@ let testcases =
       "(intersect [2 3 8] [3 5 8]) -> [3 8]";
       "(intersect [1 2 3 0] [3 1 0 9]) -> [0 1 3]";
     ], "";
+
+    "insertn", [],
+    [
+      "(insertn [] 0 1) -> [1]";
+      "(insertn [3 4] 0 2) -> [2 3 4]";
+      "(insertn [3 4] 1 2) -> [3 2 4]";
+      "(insertn [3 4] 2 2) -> [3 4 2]";
+    ], "";
   ]
 
 (** Get a JSON object containing all captured information from a single run. *)
@@ -431,7 +439,7 @@ let time_solve (_, bk_strs, example_strs, _) : (Expr.t list * Time.Span.t) =
     let open Hypothesis in
     Util.with_runtime (fun () ->
         let hypo = L2_Synthesizer.initial_hypothesis examples in
-        match L2_Synthesizer.synthesize hypo ~cost:20 with
+        match L2_Synthesizer.synthesize hypo ~cost:50 with
         | Some s -> printf "%s\n" (Hypothesis.to_string s); []
         | None -> printf "No solution\n"; [])
   else
