@@ -1,0 +1,13 @@
+{
+  "name": "count_nodes",
+  "description": "",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(count_nodes {}) -> 0", "(count_nodes {2}) -> 1",
+      "(count_nodes {2 {3} {4}}) -> 3",
+      "(count_nodes {2 {3 {0}} {4 {9} {8}}}) -> 6"
+    ],
+    "background": []
+  }
+}

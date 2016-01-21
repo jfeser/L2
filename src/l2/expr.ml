@@ -157,12 +157,16 @@ let rec of_value = function
   | `Closure _ -> failwith "Tried to convert closure to expression."
 
 (** Parse an expression from a string. *)
-let of_string (s: string) : t =
+let of_string_exn (s: string) : t =
   let lexbuf = Lexing.from_string s in
   try Parser.expr_eof Lexer.token lexbuf with
   | Parser.Error -> raise (ParseError s)
   | Lexer.SyntaxError _ -> raise (ParseError s)
   | Parsing.Parse_error -> raise (ParseError s)
+
+let of_string (s: string) : t Or_error.t =
+  try Ok (of_string_exn s) with
+  | ParseError s -> error "Parsing Expr.t failed." s <:sexp_of<string>>
 
 (** Convert an expression to a string. *)
 let rec to_string (expr: t) : string =

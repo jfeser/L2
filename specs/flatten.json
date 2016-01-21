@@ -1,0 +1,18 @@
+{
+  "name": "flatten",
+  "description":
+    "Flattens a tree into a list. Requires the specification of $join$.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(flatten {}) -> []", "(flatten {1}) -> [1]",
+      "(flatten {1 {2} {3}}) -> [1 2 3]"
+    ],
+    "background": [
+      [
+        "join",
+        "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))"
+      ]
+    ]
+  }
+}

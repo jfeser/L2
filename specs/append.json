@@ -1,0 +1,12 @@
+{
+  "name": "append",
+  "description": "Appends an item to a list.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(append [] 1) -> [1]", "(append [] 2) -> [2]",
+      "(append [1 0] 2) -> [1 0 2]"
+    ],
+    "background": []
+  }
+}

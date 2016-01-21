@@ -1,7 +1,0 @@
-join (lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))
-pred (lambda (a) (= 0 (% a 2)))
-
-(selectnodes {}) -> []
-(selectnodes {1 {10} {25}}) -> [10]
-(selectnodes {1 {10} {20}}) -> [10 20]
-(selectnodes {30 {15} {25}}) -> [30]

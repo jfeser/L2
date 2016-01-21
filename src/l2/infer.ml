@@ -467,7 +467,7 @@ let infer ctx (expr: expr) : TypedExpr.t =
 
 (** Parse a string and return a typed expression. *)
 let typed_expr_of_string (s: string) : TypedExpr.t =
-  let expr = Expr.of_string s in
+  let expr = Expr.of_string_exn s in
   infer (Ctx.empty ()) expr
 
 (** Return a list of names that are free in the given expression,

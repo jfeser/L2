@@ -1,0 +1,11 @@
+{
+  "name": "incrt",
+  "description": "Increments the value of each node in a tree by one.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(incrt {}) -> {}", "(incrt {1}) -> {2}", "(incrt {1 {2}}) -> {2 {3}}"
+    ],
+    "background": []
+  }
+}

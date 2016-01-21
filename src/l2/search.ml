@@ -14,13 +14,13 @@ module SimpleMemoizer =
 
 let default_init =
   ["0"; "1"; "inf"; "[]"; "#f"]
-  |> List.map ~f:(fun str -> Expr.of_string str |> infer (Ctx.empty ()))
+  |> List.map ~f:(fun str -> Expr.of_string_exn str |> infer (Ctx.empty ()))
 
 let extended_init =
   default_init @
   (["sort"; "merge"; "dedup"; "take"; "drop"; "append"; "reverse";
     "intersperse"; "concat"; "zip"]
-   |> List.map ~f:(fun str -> Expr.of_string str |> infer stdlib_tctx))
+   |> List.map ~f:(fun str -> Expr.of_string_exn str |> infer stdlib_tctx))
 
 let default_operators = List.filter ~f:((<>) Cons) Expr.Op.all
 

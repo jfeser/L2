@@ -91,7 +91,7 @@ let stdlib = ["inf", `Num Int.max_value] @ ([
              (let x1 (car sl)
                   (let x2 (car (cdr sl))
                        (if (= x1 x2) (dedup (cdr sl)) (cons x1 (dedup (cdr sl))))))))))"
-  ] |> List.map ~f:(fun (name, str) -> name, Expr.of_string str))
+  ] |> List.map ~f:(fun (name, str) -> name, Expr.of_string_exn str))
 
 let eval_ctx_of_alist =
   List.fold_left ~init:(Ctx.empty ())

@@ -8,12 +8,16 @@ open Util
 type t = example
 
 (** Parse an example from a string. *)
-let of_string (s: string) : t =
+let of_string_exn (s: string) : t =
   let lexbuf = Lexing.from_string s in
   try Parser.example_eof Lexer.token lexbuf with
   | Parser.Error -> raise (ParseError s)
   | Lexer.SyntaxError _ -> raise (ParseError s)
   | Parsing.Parse_error -> raise (ParseError s)
+
+let of_string (s: string) : t Or_error.t =
+  try Ok (of_string_exn s) with
+  | ParseError s -> error "Parsing Example.t failed." s <:sexp_of<string>>
 
 (** Convert an example to a string. *)
 let to_string (ex: t) : string =

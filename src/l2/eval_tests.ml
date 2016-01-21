@@ -4,8 +4,8 @@ open Collections
 
 (** Test a function in the standard evaluation context. *)
 let test_l2_function_single fun_name input_strs result_str =
-  let inputs = List.map ~f:Expr.of_string input_strs in
-  let result = Expr.of_string result_str in
+  let inputs = List.map ~f:Expr.of_string_exn input_strs in
+  let result = Expr.of_string_exn result_str in
   let ctx = Eval.stdlib_vctx in
   assert_equal
     ~printer:Eval.value_to_string

@@ -1,0 +1,12 @@
+{
+  "name": "length",
+  "description": "Returns the length of a list.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(length []) -> 0", "(length [0]) -> 1", "(length [0 0]) -> 2",
+      "(length [0 0 0]) -> 3"
+    ],
+    "background": []
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "sums",
+  "description": "For list in a list of lists, sums the list.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(sums []) -> []", "(sums [[]]) -> [0]", "(sums [[1] []]) -> [1 0]",
+      "(sums [[1 2] [3 4]]) -> [3 7]"
+    ],
+    "background": []
+  }
+}

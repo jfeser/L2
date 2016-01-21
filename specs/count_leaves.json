@@ -1,0 +1,18 @@
+{
+  "name": "count_leaves",
+  "description": "Counts the number of leaves in a tree.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(count_leaves {}) -> 0", "(count_leaves {5}) -> 1",
+      "(count_leaves {3 {2}}) -> 1", "(count_leaves {3 {2} {5}}) -> 2",
+      "(count_leaves {3 {2 {3}} {5}}) -> 2",
+      "(count_leaves {3 {2 {3} {5}} {5 {5}}}) -> 3",
+      "(count_leaves {3 {2 {3} {5}} {5 {5} {4}}}) -> 4",
+      "(count_leaves {5 {5 {5 {5 {5 {5 {5 {5}}}}}}}}) -> 1"
+    ],
+    "background": [
+      [ "sum", "(lambda (a) (foldl a (lambda (c b) (+ c b)) 0))" ]
+    ]
+  }
+}

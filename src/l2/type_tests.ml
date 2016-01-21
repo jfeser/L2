@@ -74,7 +74,7 @@ let infer_typeof_tests =
       "(value {1})", "num";
       "(children {1 {2} {3}})", "list[tree[num]]";
   ] |> List.map ~f:(fun (input_s, output_s) ->
-      (Expr.of_string input_s, Type.normalize (Type.of_string output_s)))
+      (Expr.of_string_exn input_s, Type.normalize (Type.of_string output_s)))
   in
   mk_equality_tests
     ~printer:(fun t -> Sexp.to_string (Type.sexp_of_t t))

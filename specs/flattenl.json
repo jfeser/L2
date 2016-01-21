@@ -1,0 +1,20 @@
+{
+  "name": "flattenl",
+  "description":
+    "Flattens a tree of lists into a list. Requires the specification of $join$.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(flattenl {}) -> []", "(flattenl {[1]}) -> [1]",
+      "(flattenl {[1] {[2]} {[3]}}) -> [1 2 3]",
+      "(flattenl {[1 1 1] {[2]} {[3]}}) -> [1 1 1 2 3]",
+      "(flattenl {[1 1 1] {[2 5 7]} {[3]}}) -> [1 1 1 2 5 7 3]"
+    ],
+    "background": [
+      [
+        "join",
+        "(lambda (a) (foldl a (lambda (c b) (foldr c (lambda (e d) (cons d e)) b)) []))"
+      ]
+    ]
+  }
+}

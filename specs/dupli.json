@@ -1,0 +1,12 @@
+{
+  "name": "dupli",
+  "description": "Duplicates each element in a list.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(dupli []) -> []", "(dupli [1]) -> [1 1]",
+      "(dupli [1 2 3]) -> [1 1 2 2 3 3]"
+    ],
+    "background": []
+  }
+}
