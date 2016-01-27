@@ -80,7 +80,7 @@ let infer_typeof_tests =
     ~printer:(fun t -> Sexp.to_string (Type.sexp_of_t t))
     ~cmp:Type.equal
     "infer-typeof-tests"
-    (fun input -> infer (Ctx.empty ()) input |> TypedExpr.to_type |> Type.normalize)
+    (fun input -> infer_exn (Ctx.empty ()) input |> TypedExpr.to_type |> Type.normalize)
     cases
 
 let infer_tests = "infer-tests" >::: [

@@ -454,7 +454,7 @@ let stdlib_tctx = [
 
 (** Infer the type of an expression in context. Returns an expression
 tree annotated with types. *)
-let infer ctx (expr: expr) : TypedExpr.t =
+let infer_exn ctx (expr: expr) : TypedExpr.t =
   let (x, runtime) = with_runtime (fun () ->
       let ctx' = Ctx.merge stdlib_tctx ctx
           ~f:(fun ~key:_ value ->
@@ -465,10 +465,13 @@ let infer ctx (expr: expr) : TypedExpr.t =
   in
   add_time total_infer_time runtime; x
 
+let infer ctx expr =
+  try Ok (infer_exn ctx expr) with TypeError err -> Error err
+
 (** Parse a string and return a typed expression. *)
 let typed_expr_of_string (s: string) : TypedExpr.t =
   let expr = Expr.of_string_exn s in
-  infer (Ctx.empty ()) expr
+  infer_exn (Ctx.empty ()) expr
 
 (** Return a list of names that are free in the given expression,
     along with their types. *)

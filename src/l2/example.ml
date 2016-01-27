@@ -52,7 +52,7 @@ let split (exs: t list) : (string * t list) list =
 let signature ?(ctx=Ctx.empty ()) (examples: t list) : Type.t =
   let _, inputs, results = List.map examples ~f:to_triple |> unzip3 in
   let res_typ =
-    match TypedExpr.to_type (infer ctx (`List results)) with
+    match TypedExpr.to_type (infer_exn ctx (`List results)) with
     | App_t ("list", [t]) -> t
     | t -> failwith (sprintf "Unexpected result type: %s" (Type.to_string t))
   in

@@ -102,7 +102,8 @@ val unify : Type.t -> Type.t -> Type.t option
 val is_unifiable : Type.t -> Type.t -> bool
 val typeof : Type.t Ctx.t -> int -> Expr.t -> TypedExpr.t
 val stdlib_tctx : Type.t Ctx.t
-val infer : Type.t Ctx.t -> Expr.t -> TypedExpr.t
+val infer_exn : Type.t Ctx.t -> Expr.t -> TypedExpr.t
+val infer : Type.t Ctx.t -> Expr.t -> TypedExpr.t Or_error.t
 val typed_expr_of_string : string -> TypedExpr.t
 val stdlib_names : String.Set.t
 val free : ?bound:String.Set.t -> TypedExpr.t -> (string * Type.t) list

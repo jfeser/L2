@@ -14,13 +14,13 @@ module SimpleMemoizer =
 
 let default_init =
   ["0"; "1"; "inf"; "[]"; "#f"]
-  |> List.map ~f:(fun str -> Expr.of_string_exn str |> infer (Ctx.empty ()))
+  |> List.map ~f:(fun str -> Expr.of_string_exn str |> infer_exn (Ctx.empty ()))
 
 let extended_init =
   default_init @
   (["sort"; "merge"; "dedup"; "take"; "drop"; "append"; "reverse";
     "intersperse"; "concat"; "zip"]
-   |> List.map ~f:(fun str -> Expr.of_string_exn str |> infer stdlib_tctx))
+   |> List.map ~f:(fun str -> Expr.of_string_exn str |> infer_exn stdlib_tctx))
 
 let default_operators = List.filter ~f:((<>) Cons) Expr.Op.all
 
@@ -626,7 +626,7 @@ let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
 
   let tctx =
     List.fold_left bk ~init:(Ctx.empty ()) ~f:(fun ctx (name, impl) ->
-        Ctx.bind ctx name (TypedExpr.to_type (infer ctx impl)))
+        Ctx.bind ctx name (TypedExpr.to_type (infer_exn ctx impl)))
   in
   let vctx =
     List.fold_left bk ~init:Eval.stdlib_vctx
@@ -644,7 +644,7 @@ let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
     try
       match target (`Id "_") with
       | `Let (name, body, _) ->
-        let _ = infer (Ctx.bind tctx name (fresh_free 0)) body in
+        let _ = infer_exn (Ctx.bind tctx name (fresh_free 0)) body in
         Verify.verify_examples ~limit ~ctx:vctx target examples
       | _ -> failwith "Bad result from solve_single."
     with
