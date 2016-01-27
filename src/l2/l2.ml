@@ -45,7 +45,7 @@ let time_solve testcase : (Expr.t list * Time.Span.t) =
           |> List.map ~f:(fun (name, lambda) ->
               `Let (name, lambda, `Id "_")))
 
-let command =
+let synth_command =
   let spec =
     let open Command.Spec in
     empty
@@ -58,56 +58,84 @@ let command =
     +> anon (maybe ("testcase" %: string))
   in
 
-  Command.basic
-    ~summary:"Run test cases and print timing results"
-    spec
-    (fun config_file json_file use_improved_search verbose very_verbose use_solver m_testcase_name () ->
-       let () = Config.config :=
-         let open Config in
-         (* Either load the initial config from a file or use the default config. *)
-         let initial_config = 
-           match config_file with
-           | Some file -> In_channel.read_all file |> of_string
-           | None -> default
-         in
-         (* Apply any changes from command line flags. *)
-         {
-           initial_config with
-           verbosity =
-             if verbose || very_verbose then
-               if very_verbose then 2 else 1
-             else 0;
-           use_solver;
-           improved_search = use_improved_search;
-         }in
+  let run config_file json_file use_improved_search verbose very_verbose use_solver m_testcase_name () =
+    let () = Config.config :=
+        let open Config in
+        (* Either load the initial config from a file or use the default config. *)
+        let initial_config = 
+          match config_file with
+          | Some file -> In_channel.read_all file |> of_string
+          | None -> default
+        in
+        (* Apply any changes from command line flags. *)
+        {
+          initial_config with
+          verbosity =
+            if verbose || very_verbose then
+              if very_verbose then 2 else 1
+            else 0;
+          use_solver;
+          improved_search = use_improved_search;
+        }in
 
-       let m_testcase = match m_testcase_name with
-         | Some testcase_name -> Testcase.from_file testcase_name
-         | None -> Testcase.from_channel In_channel.stdin
-       in
+    let m_testcase = match m_testcase_name with
+      | Some testcase_name -> Testcase.from_file testcase_name
+      | None -> Testcase.from_channel In_channel.stdin
+    in
 
-       match m_testcase with
-       | Ok testcase -> begin
-         let (solutions, solve_time) = time_solve testcase in
-         let solutions_str = List.map solutions ~f:Expr.to_string |> String.concat ~sep:"\n" in
-         let solve_time_str = Time.Span.to_short_string solve_time in
+    match m_testcase with
+    | Ok testcase -> begin
+        let (solutions, solve_time) = time_solve testcase in
+        let solutions_str = List.map solutions ~f:Expr.to_string |> String.concat ~sep:"\n" in
+        let solve_time_str = Time.Span.to_short_string solve_time in
 
-         (* Print out results summary. *)
-         printf "Solved %s in %s. Solutions:\n%s\n" testcase.Testcase.name solve_time_str solutions_str;
+        (* Print out results summary. *)
+        printf "Solved %s in %s. Solutions:\n%s\n" testcase.Testcase.name solve_time_str solutions_str;
 
-         (* Write debug information to a file, if requested. *)
-         match json_file with
-         | Some file ->
-           Json.to_file ~std:true file
-             (get_json
-                testcase
-                (Time.Span.to_sec solve_time)
-                solutions_str
-                !Config.config)
-         | None -> ()
-         end
-       | Error err ->
-         print_string "Error: Loading testcase failed.\n";
-         print_string (Error.to_string_hum err))
+        (* Write debug information to a file, if requested. *)
+        match json_file with
+        | Some file ->
+          Json.to_file ~std:true file
+            (get_json
+               testcase
+               (Time.Span.to_sec solve_time)
+               solutions_str
+               !Config.config)
+        | None -> ()
+      end
+    | Error err ->
+      print_string "Error: Loading testcase failed.\n";
+      print_string (Error.to_string_hum err)
+  in
 
-let () = Command.run command
+  Command.basic ~summary:"Synthesize programs from specifications." spec run
+
+let eval_command =
+  let spec =
+    let open Command.Spec in
+    empty
+    +> anon (maybe ("source" %: string))
+  in
+
+  let run m_source_fn () =
+    let source = match m_source_fn with
+      | Some fn -> In_channel.read_all fn
+      | None -> In_channel.input_all In_channel.stdin
+    in
+    match Expr.of_string source with
+    | Ok expr ->
+      Eval.eval (Ctx.empty ()) expr |> Eval.value_to_string |> print_string
+    | Error err ->
+      print_string "Error loading source code:\n";
+      print_string (Error.to_string_hum err)
+  in
+  
+  Command.basic ~summary:"Run L2 source code." spec run
+
+let commands =
+  Command.group ~summary:"A suite of tools for synthesizing and running L2 programs." [
+    "synth", synth_command;
+    "eval", eval_command;
+  ]
+
+let () = Command.run commands
