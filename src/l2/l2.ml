@@ -114,20 +114,29 @@ let eval_command =
   let spec =
     let open Command.Spec in
     empty
+    +> flag "--untyped" no_arg ~doc:" disable type-checking before evaluation"
     +> anon (maybe ("source" %: string))
   in
 
-  let run m_source_fn () =
+  let run untyped m_source_fn () =
     let source = match m_source_fn with
       | Some fn -> In_channel.read_all fn
       | None -> In_channel.input_all In_channel.stdin
     in
-    match Expr.of_string source with
-    | Ok expr ->
-      Eval.eval (Ctx.empty ()) expr |> Eval.value_to_string |> print_string
-    | Error err ->
-      print_string "Error loading source code:\n";
-      print_string (Error.to_string_hum err)
+
+    let open Or_error.Monad_infix in
+
+    let m_output = 
+      Expr.of_string source
+      >>= (fun expr -> (* Perform type inference and report type errors, unless disabled. *)
+          if untyped then Ok expr else
+            Infer.infer (Ctx.empty ()) expr |> Or_error.map ~f:(fun _ -> expr))
+      >>| fun expr -> Eval.eval (Ctx.empty ()) expr |> Eval.value_to_string
+    in
+
+    match m_output with
+    | Ok value_str -> print_string value_str
+    | Error err -> print_string ("Error: " ^ (Error.to_string_hum err) ^ "\n")
   in
   
   Command.basic ~summary:"Run L2 source code." spec run
