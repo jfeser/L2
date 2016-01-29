@@ -1,6 +1,7 @@
 open Core.Std
 
-open Collections
+open Synthesis_common
+
 open Hypothesis
 open Infer
 
@@ -18,15 +19,13 @@ module L2_Deduction : Deduction_intf
 
 module L2_Generalizer : sig
   module type S = sig
-    type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
-    val generalize : t
-    val generalize_all : Hypothesis.t -> Hypothesis.t list
-
-    val generate_constants : t
-    val generate_identifiers : t
-    val generate_expressions : t
-    val generate_lambdas : t
-    val generate_combinators : t
+    include Generalizer.S
+              
+    val generate_constants : Generalizer.t
+    val generate_identifiers : Generalizer.t
+    val generate_expressions : Generalizer.t
+    val generate_lambdas : Generalizer.t
+    val generate_combinators : Generalizer.t
 
     val lambda : Symbol.t
     val combinator : Symbol.t
@@ -48,16 +47,6 @@ module L2_Generalizer : sig
   module With_components : S
   module No_components : S
   module No_lambdas : S
-end
-
-module Memoizer : sig
-  module type S = sig
-    type t
-    val create : unit -> t
-    val get : t -> Hole.t -> Specification.t -> int -> (Hypothesis.t * Unifier.t) list
-  end
-
-  module Make : functor (G: L2_Generalizer.S) -> functor (D: Deduction_intf) -> S
 end
 
 module L2_Memoizer : Memoizer.S

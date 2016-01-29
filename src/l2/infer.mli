@@ -8,12 +8,23 @@ exception TypeError of Error.t
 val total_infer_time : Time.Span.t ref
 
 module Type : sig
+  type const = const_typ =
+    | Num_t
+    | Bool_t
+
+  type level = int
+
   type t = typ =
     | Const_t of const_typ
     | App_t of id * typ list
     | Arrow_t of typ list * typ
     | Var_t of var_typ ref
 
+  and var = var_typ =
+    | Free of int * level
+    | Link of typ
+    | Quant of string
+  
   val t_of_sexp : Sexp.t -> t
   val sexp_of_t : t -> Sexp.t
   val compare : t -> t -> int

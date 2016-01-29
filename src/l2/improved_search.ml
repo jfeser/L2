@@ -1,5 +1,7 @@
 open Core.Std
 
+open Synthesis_common
+
 open Ast
 open Collections
 open Hypothesis
@@ -465,10 +467,10 @@ module L2_Generalizer = struct
   end
 
   module type S = sig
-    type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
-    val generalize : t
-    val generalize_all : Hypothesis.t -> Hypothesis.t list
+    include Generalizer.S
 
+    (* The following are implementation details of the
+       generalizer. They are exposed for testing purposes. *)
     val generate_constants : t
     val generate_identifiers : t
     val generate_expressions : t
@@ -611,294 +613,88 @@ module L2_Generalizer = struct
           else None)
   end
 
-  module Make (Select : Selector) : S = struct
+  module With_components = struct
     include Shared
-        
-    let generalize hole spec =
-      let generators = Select.select hole.Hole.symbol in
-      List.concat (List.map generators ~f:(fun g -> g hole spec))
 
-    let generalize_all hypo =
-      let open Hypothesis in
-      List.fold_left
-        (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
-        ~init:[ hypo ]
-        ~f:(fun hypos (hole, spec) ->
-            let children = List.filter (generalize hole spec) ~f:(fun (c, _) ->
-                kind c = Abstract || Specification.verify spec (skeleton c))
-            in
-            List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
-                apply_unifier (fill_hole hole ~parent:p ~child:c) u))
-            |> List.concat)
+    let select symbol =
+      if symbol = constant then
+        [ generate_constants ]
+      else if symbol = base_case then
+        [ generate_constants; generate_identifiers ]
+      else if symbol = identifier then
+        [ generate_identifiers ]
+      else if symbol = lambda then
+        [ generate_lambdas ]
+      else if symbol = expression then
+        [ generate_expressions; generate_identifiers; generate_constants ]
+      else if symbol = combinator then
+        [ generate_combinators; generate_expressions; generate_constants ]
+      else
+        failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
+
+    include Generalizer.Make (struct
+        let generalize hole spec =
+          let generators = select hole.Hole.symbol in
+          List.concat (List.map generators ~f:(fun g -> g hole spec))
+      end)
   end
 
-  module With_components = Make (struct
-      open Shared
-          
-      let select symbol =
-        if symbol = constant then
-          [ generate_constants ]
-        else if symbol = base_case then
-          [ generate_constants; generate_identifiers ]
-        else if symbol = identifier then
-          [ generate_identifiers ]
-        else if symbol = lambda then
-          [ generate_lambdas ]
-        else if symbol = expression then
-          [ generate_expressions; generate_identifiers; generate_constants ]
-        else if symbol = combinator then
-          [ generate_combinators; generate_expressions; generate_constants ]
-        else
-          failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
-    end)
+  module No_components = struct
+    include Shared
 
-  module No_components = Make (struct
-      open Shared
+    let select symbol =
+      if symbol = constant then
+        [ generate_constants ]
+      else if symbol = base_case then
+        [ generate_identifiers; generate_constants; ]
+      else if symbol = identifier then
+        [ generate_identifiers ]
+      else if symbol = lambda then
+        [ generate_lambdas ]
+      else if symbol = expression then
+        [ ]
+      else if symbol = combinator then
+        [ generate_combinators; ]
+      else
+        failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
 
-      let select symbol =
-        if symbol = constant then
-          [ generate_constants ]
-        else if symbol = base_case then
-          [ generate_identifiers; generate_constants; ]
-        else if symbol = identifier then
-          [ generate_identifiers ]
-        else if symbol = lambda then
-          [ generate_lambdas ]
-        else if symbol = expression then
-          [ ]
-        else if symbol = combinator then
-          [ generate_combinators; ]
-        else
-          failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
-    end)
+    include Generalizer.Make (struct
+        let generalize hole spec =
+          let generators = select hole.Hole.symbol in
+          List.concat (List.map generators ~f:(fun g -> g hole spec))
+      end)
+  end
 
-  module No_lambdas = Make (struct
-      open Shared
+  module No_lambdas = struct
+    include Shared
 
-      let select symbol =
-        if symbol = constant then
-          [ generate_constants ]
-        else if symbol = identifier then
-          [ generate_identifiers ]
-        else if symbol = lambda then
-          [ ]
-        else if symbol = expression then
-          [ generate_expressions; generate_identifiers; generate_constants ]
-        else if symbol = combinator then
-          [ generate_expressions; generate_identifiers; generate_constants ]
-        else
-          failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
-    end)
+    let select symbol =
+      if symbol = constant then
+        [ generate_constants ]
+      else if symbol = identifier then
+        [ generate_identifiers ]
+      else if symbol = lambda then
+        [ ]
+      else if symbol = expression then
+        [ generate_expressions; generate_identifiers; generate_constants ]
+      else if symbol = combinator then
+        [ generate_expressions; generate_identifiers; generate_constants ]
+      else
+        failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
 
-  (* module Make_memoized (Generalizer : S) : S = struct *)
-  (*   module Key = struct *)
-  (*     module Hole_without_id = struct *)
-  (*       type t = { *)
-  (*         ctx : Type.t StaticDistance.Map.t; *)
-  (*         type_ : Type.t; *)
-  (*         symbol : Symbol.t; *)
-  (*       } with compare, sexp *)
-
-  (*       let normalize_free ctx t = *)
-  (*         let fresh_int = Util.Fresh.mk_fresh_int_fun () in *)
-  (*         let rec norm t = match t with *)
-  (*           | Var_t { contents = Quant _ } *)
-  (*           | Const_t _ -> t *)
-  (*           | App_t (name, args) -> App_t (name, List.map args ~f:norm) *)
-  (*           | Arrow_t (args, ret) -> Arrow_t (List.map args ~f:norm, norm ret) *)
-  (*           | Var_t { contents = Free (id, level) } -> *)
-  (*             (match IntMap.find !ctx id with *)
-  (*              | Some id -> Type.free id level *)
-  (*              | None -> *)
-  (*                let new_id = fresh_int () in *)
-  (*                ctx := IntMap.add !ctx ~key:new_id ~data:id; *)
-  (*                Type.free new_id level) *)
-  (*           | Var_t { contents = Link t } -> norm t *)
-  (*         in *)
-  (*         norm t *)
-
-  (*       let of_hole h = *)
-  (*         let free_ctx = ref IntMap.empty in *)
-  (*         let type_ = normalize_free free_ctx h.Hole.type_ in *)
-  (*         let type_ctx = StaticDistance.Map.map h.Hole.ctx ~f:(normalize_free free_ctx) in *)
-  (*         ({ ctx = type_ctx; symbol = h.Hole.symbol; type_; }, !free_ctx) *)
-  (*     end *)
-
-  (*     type t = { *)
-  (*       hole : Hole_without_id.t; *)
-  (*       spec : Specification.t; *)
-  (*     } with compare, sexp *)
-
-  (*     let hash = Hashtbl.hash *)
-
-  (*     let of_hole_spec hole spec = *)
-  (*       let (hole, map) = Hole_without_id.of_hole hole in *)
-  (*       ({ hole; spec; }, map) *)
-  (*   end *)
-
-  (*   module HoleTable = Hashtbl.Make(Key) *)
-
-  (*   include Generalizer *)
-
-  (*   let table = HoleTable.create () *)
-
-  (*   let denormalize_unifier u map = *)
-  (*     Unifier.to_alist u *)
-  (*     |> List.filter_map ~f:(fun (k, v) -> Option.map (IntMap.find map k) ~f:(fun k' -> k', v)) *)
-  (*     |> Unifier.of_alist_exn *)
-
-  (*   let generalize hole spec = *)
-  (*     let (key, map) = Key.of_hole_spec hole spec in *)
-  (*     let hs = match HoleTable.find table key with *)
-  (*       | Some hs -> hs *)
-  (*       | None -> *)
-  (*         let generators = select_generators hole.Hole.symbol in *)
-  (*         let hs = List.concat (List.map generators ~f:(fun g -> g hole spec)) in *)
-  (*         HoleTable.add_exn table ~key ~data:hs; *)
-  (*         hs *)
-  (*     in *)
-  (*     List.map hs ~f:(fun (h, u) -> (h, denormalize_unifier u map)) *)
-  (* end *)
+    include Generalizer.Make (struct
+        let generalize hole spec =
+          let generators = select hole.Hole.symbol in
+          List.concat (List.map generators ~f:(fun g -> g hole spec))      
+      end)
+  end
 end
 
 module type Prune_intf = sig
   val should_prune : Hypothesis.t -> bool
 end
 
-(** Maps (hole, spec) pairs to the hypotheses that can fill in the hole and match the spec.
-
-    The memoizer can be queried with a hole, a spec and a cost.
-
-    Internally, the type of the hole and the types in the type context
-    of the hole are normalized by substituting their free type
-    variable ids with fresh ones. The memoizer only stores the
-    normalized holes. This increases potential for sharing when
-    different holes have the same type structure but different ids in
-    their free type variables.
-*)
-
-module Memoizer = struct
-  module type S = sig
-    type t
-    val create : unit -> t
-    val get : t -> Hole.t -> Specification.t -> int -> (Hypothesis.t * Unifier.t) list
-  end
-
-  let denormalize_unifier u map =
-    Unifier.to_alist u
-    |> List.filter_map ~f:(fun (k, v) -> Option.map (IntMap.find map k) ~f:(fun k' -> k', v))
-    |> Unifier.of_alist_exn
-
-  module Key = struct
-    module Hole_without_id = struct
-      type t = {
-        ctx : Type.t StaticDistance.Map.t;
-        type_ : Type.t;
-        symbol : Symbol.t;
-      } with compare, sexp
-
-      let normalize_free ctx t =
-        let fresh_int = Util.Fresh.mk_fresh_int_fun () in
-        let rec norm t = match t with
-          | Var_t { contents = Quant _ }
-          | Const_t _ -> t
-          | App_t (name, args) -> App_t (name, List.map args ~f:norm)
-          | Arrow_t (args, ret) -> Arrow_t (List.map args ~f:norm, norm ret)
-          | Var_t { contents = Free (id, level) } ->
-            (match IntMap.find !ctx id with
-             | Some id -> Type.free id level
-             | None ->
-               let new_id = fresh_int () in
-               ctx := IntMap.add !ctx ~key:new_id ~data:id;
-               Type.free new_id level)
-          | Var_t { contents = Link t } -> norm t
-        in
-        norm t
-
-      let of_hole h =
-        let free_ctx = ref IntMap.empty in
-        let type_ = normalize_free free_ctx h.Hole.type_ in
-        let type_ctx = StaticDistance.Map.map h.Hole.ctx ~f:(normalize_free free_ctx) in
-        ({ ctx = type_ctx; symbol = h.Hole.symbol; type_; }, !free_ctx)
-    end
-
-    type t = {
-      hole : Hole_without_id.t;
-      spec : Specification.t;
-    } with compare, sexp
-
-    let hash = Hashtbl.hash
-
-    let of_hole_spec hole spec =
-      let (hole, map) = Hole_without_id.of_hole hole in
-      ({ hole; spec; }, map)
-  end
-
-  module HoleTable = Hashtbl.Make(Key)
-  module CostTable = Int.Table
-
-  module HoleState = struct
-    type t = {
-      hypotheses : (Hypothesis.t * Unifier.t) list CostTable.t;
-      generalizations : (Hypothesis.t * Unifier.t) list Lazy.t;
-    } with sexp
-  end
-
-  module Make (G: L2_Generalizer.S) (D: Deduction_intf) : S = struct
-    type t = HoleState.t HoleTable.t
-
-    let create () = HoleTable.create ()
-
-    let rec get m hole spec cost =
-      if cost < 0 then raise (Invalid_argument "Argument out of range.") else
-      if cost = 0 then [] else
-        let module S = HoleState in
-        let module H = Hypothesis in
-        let (key, map) = Key.of_hole_spec hole spec in
-        let state = HoleTable.find_or_add m key ~default:(fun () ->
-            {
-              S.hypotheses = CostTable.create ();
-              S.generalizations = Lazy.from_fun (fun () -> G.generalize hole spec);
-            })
-        in
-        let ret =
-          match CostTable.find state.S.hypotheses cost with
-          | Some hs -> hs
-          | None ->
-            (* For each expansion of the grammar symbol for this hole,
-               fill in the holes in the hypothesis and return if it it
-               matches the spec. *)
-            let hs = List.concat_map (Lazy.force state.S.generalizations) ~f:(fun (p, p_u) ->
-                match H.kind p with
-                | H.Concrete -> if H.cost p = cost then [ (p, p_u) ] else []
-                | H.Abstract -> if H.cost p >= cost then [] else
-                    let num_holes = List.length (H.holes p) in
-                    let all_hole_costs =
-                      Util.m_partition (cost - H.cost p) num_holes
-                      |> List.concat_map ~f:Util.permutations
-                    in
-                    List.concat_map all_hole_costs ~f:(fun hole_costs ->
-                        List.fold2_exn (H.holes p) hole_costs ~init:[ (p, p_u) ]
-                          ~f:(fun hs (hole, spec) hole_cost ->
-                              List.concat_map hs ~f:(fun (p, p_u) ->
-                                  let children = get m hole spec hole_cost in
-                                  List.map children ~f:(fun (c, c_u) ->
-                                      let u = Unifier.compose c_u p_u in
-                                      let h = H.fill_hole hole ~parent:p ~child:c in
-                                      h, u))))
-                    |> List.filter ~f:(fun (h, _) ->
-                        (* let () = Debug.eprintf "Verifying %d %s" h.H.cost (H.to_string_hum h) in *)
-                        match H.kind h with
-                        | H.Concrete -> H.verify h
-                        | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t))
-            in
-            CostTable.add_exn state.S.hypotheses ~key:cost ~data:hs; hs
-        in
-        List.map ret ~f:(fun (h, u) -> (h, denormalize_unifier u map))
-  end
-end
-
-module L2_Memoizer = Memoizer.Make (L2_Generalizer.No_lambdas) (L2_Deduction)
+module L2_Memoizer = Memoizer.Make (L2_Generalizer.No_lambdas)
 
 module type Synthesizer_intf = sig
   val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t

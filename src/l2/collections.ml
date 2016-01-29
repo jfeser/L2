@@ -91,7 +91,7 @@ module Matrix = struct
     x |> f |> (Stream.map ~f:(List.map ~f:g)) |> join
 end
 
-module Memoizer (Key: Map.Key) (Value: sig type t end) = struct
+module StreamMemoizer (Key: Map.Key) (Value: sig type t end) = struct
   module KMap = Map.Make(Key)
 
   type memo_stream = {

@@ -2,13 +2,16 @@ open Core.Std
 open OUnit2
 
 open Tests_common
+open Synthesis_common
+    
 open Ast 
 open Infer
 open Hypothesis
 open Improved_search
 
+module Sym = L2_Generalizer.Symbols
 module Gen = L2_Generalizer.With_components
-module Mem = Memoizer.Make (Gen) (L2_Deduction)
+module Mem = L2_Memoizer
 
 let memoizer_tests = "memoizer" >::: [
     "get" >::: [

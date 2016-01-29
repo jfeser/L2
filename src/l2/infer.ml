@@ -11,11 +11,24 @@ exception TypeError of Error.t
 let total_infer_time = ref (Time.Span.of_float 0.0)
 
 module Type0 = struct
+  type const = const_typ =
+    | Num_t
+    | Bool_t
+  with compare, sexp
+
+  type level = int
+  with compare, sexp
+
   type t = typ =
-    | Const_t of const_typ
+    | Const_t of const
     | App_t of id * t list
     | Arrow_t of t list * t
-    | Var_t of var_typ ref
+    | Var_t of var ref
+
+  and var = var_typ =
+    | Free of int * level
+    | Link of t
+    | Quant of string
   with compare, sexp
 
   let equal t1 t2 = compare t1 t2 = 0
