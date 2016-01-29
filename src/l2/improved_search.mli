@@ -19,20 +19,13 @@ module L2_Deduction : Deduction_intf
 
 module L2_Generalizer : sig
   module type S = sig
-    include Generalizer.S
+    val generalize : Generalizer.t
               
     val generate_constants : Generalizer.t
     val generate_identifiers : Generalizer.t
     val generate_expressions : Generalizer.t
     val generate_lambdas : Generalizer.t
     val generate_combinators : Generalizer.t
-
-    val lambda : Symbol.t
-    val combinator : Symbol.t
-    val expression : Symbol.t
-    val constant : Symbol.t
-    val identifier : Symbol.t
-    val base_case : Symbol.t
   end
 
   module Symbols : sig
@@ -49,7 +42,7 @@ module L2_Generalizer : sig
   module No_lambdas : S
 end
 
-module L2_Memoizer : Memoizer.S
+val create_memoizer : unit -> Memoizer.t
 
 module type Synthesizer_intf = sig
   val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t

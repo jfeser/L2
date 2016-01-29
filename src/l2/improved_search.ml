@@ -467,7 +467,7 @@ module L2_Generalizer = struct
   end
 
   module type S = sig
-    include Generalizer.S
+    val generalize : Generalizer.t
 
     (* The following are implementation details of the
        generalizer. They are exposed for testing purposes. *)
@@ -476,13 +476,6 @@ module L2_Generalizer = struct
     val generate_expressions : t
     val generate_lambdas : t
     val generate_combinators : t
-
-    val lambda : Symbol.t
-    val combinator : Symbol.t
-    val expression : Symbol.t
-    val constant : Symbol.t
-    val identifier : Symbol.t
-    val base_case : Symbol.t
   end
 
   module Symbols = struct
@@ -632,11 +625,9 @@ module L2_Generalizer = struct
       else
         failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
 
-    include Generalizer.Make (struct
-        let generalize hole spec =
-          let generators = select hole.Hole.symbol in
-          List.concat (List.map generators ~f:(fun g -> g hole spec))
-      end)
+    let generalize hole spec =
+      let generators = select hole.Hole.symbol in
+      List.concat (List.map generators ~f:(fun g -> g hole spec))
   end
 
   module No_components = struct
@@ -658,11 +649,9 @@ module L2_Generalizer = struct
       else
         failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
 
-    include Generalizer.Make (struct
-        let generalize hole spec =
-          let generators = select hole.Hole.symbol in
-          List.concat (List.map generators ~f:(fun g -> g hole spec))
-      end)
+    let generalize hole spec =
+      let generators = select hole.Hole.symbol in
+      List.concat (List.map generators ~f:(fun g -> g hole spec))
   end
 
   module No_lambdas = struct
@@ -682,19 +671,15 @@ module L2_Generalizer = struct
       else
         failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
 
-    include Generalizer.Make (struct
-        let generalize hole spec =
-          let generators = select hole.Hole.symbol in
-          List.concat (List.map generators ~f:(fun g -> g hole spec))      
-      end)
+    let generalize hole spec =
+      let generators = select hole.Hole.symbol in
+      List.concat (List.map generators ~f:(fun g -> g hole spec))      
   end
 end
 
 module type Prune_intf = sig
   val should_prune : Hypothesis.t -> bool
 end
-
-module L2_Memoizer = Memoizer.Make (L2_Generalizer.No_lambdas)
 
 module type Synthesizer_intf = sig
   val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t
@@ -737,8 +722,10 @@ module type Search_intf = sig
   val search : check_cost:(int -> bool) -> found:(Hypothesis.t -> never_returns) -> Hypothesis.t -> int -> int
 end
 
+let create_memoizer () = Memoizer.create L2_Generalizer.No_lambdas.generalize
+
 module Memoized_search : Search_intf = struct
-  let memoizer = L2_Memoizer.create ()
+  let memoizer = create_memoizer ()
 
   let search ~check_cost ~found hypo initial_cost =
     let module H = Hypothesis in
@@ -751,7 +738,7 @@ module Memoized_search : Search_intf = struct
           List.concat_map (Util.m_partition cost num_holes) ~f:(fun hole_costs ->
               List.fold2_exn (H.holes hypo) hole_costs ~init:[ (hypo, Unifier.empty) ]
                 ~f:(fun hs (hole, spec) hole_cost -> List.concat_map hs ~f:(fun (p, p_u) ->
-                    let children = L2_Memoizer.get memoizer hole spec hole_cost in
+                    let children = Memoizer.get memoizer hole spec hole_cost in
                     List.map children ~f:(fun (c, c_u) ->
                         let u = Unifier.compose c_u p_u in
                         let h = H.fill_hole hole ~parent:p ~child:c in
@@ -876,7 +863,7 @@ module Make_L2_synthesizer (Search: Search_intf) = struct
           List.partition_tf !fresh_hypos ~f:(fun (h, _) -> H.cost h < cost)
         in
         let children = List.concat_map generalizable ~f:(fun (h, _) ->
-            L2_Generalizer.No_components.generalize_all h
+            Generalizer.generalize_all L2_Generalizer.No_components.generalize h
 
             (* After generalizing, push specifications down the
                skeleton and filter skeletons with Bottom

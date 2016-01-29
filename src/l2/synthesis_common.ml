@@ -6,27 +6,18 @@ open Infer
 module Generalizer = struct
   type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
   
-  module type S = sig
-    val generalize : t
-    val generalize_all : Hypothesis.t -> Hypothesis.t list
-  end
-
-  module Make (G: sig val generalize : t end) : S = struct
-    include G
-        
-    let generalize_all hypo =
-      let open Hypothesis in
-      List.fold_left
-        (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
-        ~init:[ hypo ]
-        ~f:(fun hypos (hole, spec) ->
-            let children = List.filter (generalize hole spec) ~f:(fun (c, _) ->
-                kind c = Abstract || Specification.verify spec (skeleton c))
-            in
-            List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
-                apply_unifier (fill_hole hole ~parent:p ~child:c) u))
-            |> List.concat)
-  end
+  let generalize_all generalize hypo =
+    let open Hypothesis in
+    List.fold_left
+      (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
+      ~init:[ hypo ]
+      ~f:(fun hypos (hole, spec) ->
+          let children = List.filter (generalize hole spec) ~f:(fun (c, _) ->
+              kind c = Abstract || Specification.verify spec (skeleton c))
+          in
+          List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
+              apply_unifier (fill_hole hole ~parent:p ~child:c) u))
+          |> List.concat)
 end
 
 
@@ -109,56 +100,60 @@ module Memoizer = struct
     } with sexp
   end
 
-  module Make (G: Generalizer.S) : S = struct
-    type t = HoleState.t HoleTable.t
+  type t = {
+    hole_table : HoleState.t HoleTable.t;
+    generalize : Generalizer.t;
+  }
 
-    let create () = HoleTable.create ()
+  let create g = {
+    generalize = g;
+    hole_table = HoleTable.create ();
+  }
 
-    let rec get m hole spec ~cost =
-      if cost < 0 then raise (Invalid_argument "Argument out of range.") else
-      if cost = 0 then [] else
-        let module S = HoleState in
-        let module H = Hypothesis in
-        let (key, map) = Key.of_hole_spec hole spec in
-        let state = HoleTable.find_or_add m key ~default:(fun () ->
-            {
-              S.hypotheses = CostTable.create ();
-              S.generalizations = Lazy.from_fun (fun () -> G.generalize hole spec);
-            })
-        in
-        let ret =
-          match CostTable.find state.S.hypotheses cost with
-          | Some hs -> hs
-          | None ->
-            (* For each expansion of the grammar symbol for this hole,
-               fill in the holes in the hypothesis and return if it it
-               matches the spec. *)
-            let hs = List.concat_map (Lazy.force state.S.generalizations) ~f:(fun (p, p_u) ->
-                match H.kind p with
-                | H.Concrete -> if H.cost p = cost then [ (p, p_u) ] else []
-                | H.Abstract -> if H.cost p >= cost then [] else
-                    let num_holes = List.length (H.holes p) in
-                    let all_hole_costs =
-                      Util.m_partition (cost - H.cost p) num_holes
-                      |> List.concat_map ~f:Util.permutations
-                    in
-                    List.concat_map all_hole_costs ~f:(fun hole_costs ->
-                        List.fold2_exn (H.holes p) hole_costs ~init:[ (p, p_u) ]
-                          ~f:(fun hs (hole, spec) hole_cost ->
-                              List.concat_map hs ~f:(fun (p, p_u) ->
-                                  let children = get m hole spec hole_cost in
-                                  List.map children ~f:(fun (c, c_u) ->
-                                      let u = Unifier.compose c_u p_u in
-                                      let h = H.fill_hole hole ~parent:p ~child:c in
-                                      h, u))))
-                    |> List.filter ~f:(fun (h, _) ->
-                        (* let () = Debug.eprintf "Verifying %d %s" h.H.cost (H.to_string_hum h) in *)
-                        match H.kind h with
-                        | H.Concrete -> H.verify h
-                        | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t))
-            in
-            CostTable.add_exn state.S.hypotheses ~key:cost ~data:hs; hs
-        in
-        List.map ret ~f:(fun (h, u) -> (h, denormalize_unifier u map))
-  end
+  let rec get m hole spec ~cost =
+    if cost < 0 then raise (Invalid_argument "Argument out of range.") else
+    if cost = 0 then [] else
+      let module S = HoleState in
+      let module H = Hypothesis in
+      let (key, map) = Key.of_hole_spec hole spec in
+      let state = HoleTable.find_or_add m.hole_table key ~default:(fun () ->
+          {
+            S.hypotheses = CostTable.create ();
+            S.generalizations = Lazy.from_fun (fun () -> m.generalize hole spec);
+          })
+      in
+      let ret =
+        match CostTable.find state.S.hypotheses cost with
+        | Some hs -> hs
+        | None ->
+          (* For each expansion of the grammar symbol for this hole,
+             fill in the holes in the hypothesis and return if it it
+             matches the spec. *)
+          let hs = List.concat_map (Lazy.force state.S.generalizations) ~f:(fun (p, p_u) ->
+              match H.kind p with
+              | H.Concrete -> if H.cost p = cost then [ (p, p_u) ] else []
+              | H.Abstract -> if H.cost p >= cost then [] else
+                  let num_holes = List.length (H.holes p) in
+                  let all_hole_costs =
+                    Util.m_partition (cost - H.cost p) num_holes
+                    |> List.concat_map ~f:Util.permutations
+                  in
+                  List.concat_map all_hole_costs ~f:(fun hole_costs ->
+                      List.fold2_exn (H.holes p) hole_costs ~init:[ (p, p_u) ]
+                        ~f:(fun hs (hole, spec) hole_cost ->
+                            List.concat_map hs ~f:(fun (p, p_u) ->
+                                let children = get m hole spec hole_cost in
+                                List.map children ~f:(fun (c, c_u) ->
+                                    let u = Unifier.compose c_u p_u in
+                                    let h = H.fill_hole hole ~parent:p ~child:c in
+                                    h, u))))
+                  |> List.filter ~f:(fun (h, _) ->
+                      (* let () = Debug.eprintf "Verifying %d %s" h.H.cost (H.to_string_hum h) in *)
+                      match H.kind h with
+                      | H.Concrete -> H.verify h
+                      | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t))
+          in
+          CostTable.add_exn state.S.hypotheses ~key:cost ~data:hs; hs
+      in
+      List.map ret ~f:(fun (h, u) -> (h, denormalize_unifier u map))
 end
