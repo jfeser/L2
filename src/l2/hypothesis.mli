@@ -21,6 +21,7 @@ module Symbol : sig
   type t
 
   include Sexpable.S with type t := t
+  include Comparable.S with type t := t
     
   val compare : t -> t -> int
   val equal : t -> t -> bool

@@ -39,28 +39,34 @@ module StaticDistance = struct
 end
 
 module Symbol = struct
-  type t = int
+  module T = struct
+    type t = int with sexp
+    let (compare: t -> t -> int) = Int.compare
+  end
+
+  include T
+  include Comparable.Make(T)
 
   let (names: string Int.Table.t) = Int.Table.create ()
   let (counter: int ref) = ref 0
 
-  let sexp_of_t (s: t) : Sexp.t =
-    let open Sexp in
-    match Int.Table.find names s with
-    | Some name -> Atom name
-    | None -> failwiths (sprintf "BUG: Looking up symbol name of '%d' failed." s)
-                names <:sexp_of<string Int.Table.t>>
-
-  let (compare: t -> t -> int) = Int.compare
   let (equal: t -> t -> bool) = Int.equal
 
   let create (name: string) : t = begin
     let id = incr counter; !counter in
     match Int.Table.add names ~key:id ~data:name with
     | `Ok -> id
-    | `Duplicate -> failwiths "Symbol already created." name String.sexp_of_t
+    | `Duplicate -> failwiths "BUG: Symbol counter overflowed." (names, !counter)
+                      <:sexp_of<string Int.Table.t * int>>
   end
 
+  let sexp_of_t (s: t) : Sexp.t =
+    let open Sexp in
+    match Int.Table.find names s with
+    | Some name -> Atom name
+    | None -> failwiths (sprintf "BUG: Looking up name of symbol '%d' failed." s)
+                names <:sexp_of<string Int.Table.t>>
+  
   let t_of_sexp (s: Sexp.t) : t =
     let open Sexp in
     match s with
