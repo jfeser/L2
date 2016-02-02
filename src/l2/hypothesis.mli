@@ -87,7 +87,26 @@ module Skeleton : sig
   val fill_hole : Hole.t -> parent:'a t -> child:'a t -> 'a t
   val annotation : 'a t -> 'a
   val map_hole : f:(Hole.t * 'a -> 'a t) -> 'a t -> 'a t
-  val map_annotation : f:('a -> 'a) -> 'a t -> 'a t
+  val map_annotation : f:('a -> 'a) -> 'a t -> 'a t      
+end
+
+module CostModel : sig
+  type t = {
+    num : int -> int;
+    bool : bool -> int;
+    hole : Hole.t -> int;
+    id : Skeleton.id -> int;
+    list : 'a. 'a Skeleton.t list -> int;
+    tree : 'a. 'a Skeleton.t Collections.Tree.t -> int;
+    _let : 'a. 'a Skeleton.t -> 'a Skeleton.t -> int;
+    lambda : 'a. int -> 'a Skeleton.t -> int;
+    apply : 'a. 'a Skeleton.t -> 'a Skeleton.t list -> int;
+    op : 'a. Expr.Op.t -> 'a Skeleton.t list -> int;
+  }
+
+  val constant : int -> t
+  val zero : t
+  val cost_of_skeleton : t -> 'a Skeleton.t -> int
 end
 
 module Specification : sig
@@ -128,18 +147,6 @@ module Specification : sig
   val increment_scope : t -> t
 end
 
-module type CostModel_Intf = sig
-  val id_cost : Skeleton.id -> int
-  val op_cost : Expr.Op.t -> int
-  val lambda_cost : int
-  val num_cost : int
-  val bool_cost : int
-  val hole_cost : int
-  val let_cost : int
-  val list_cost : int
-  val tree_cost : int
-end
-
 module Hypothesis : sig
   type skeleton = Specification.t Skeleton.t
 
@@ -166,23 +173,18 @@ module Hypothesis : sig
   val fill_hole : Hole.t -> parent:t -> child:t -> t
   val verify : t -> bool
 
-  (** Create a Hypothesis module that depends on a cost model. The
-      functions that modify the hypothesis costs are located here. *)
-  module Make : functor (CostModel : CostModel_Intf) -> sig
-    val compute_cost : 'a Skeleton.t -> int
-    val of_skeleton : skeleton -> t
+  val of_skeleton : CostModel.t -> skeleton -> t
 
-    (** Constructors *)
-    val num : int -> Specification.t -> t
-    val bool : bool -> Specification.t -> t
-    val id_sd : StaticDistance.t -> Specification.t -> t
-    val id_name : string -> Specification.t -> t
-    val hole : Hole.t -> Specification.t -> t
-    val list : t list -> Specification.t -> t
-    val tree : t Collections.Tree.t -> Specification.t -> t
-    val _let : t * t -> Specification.t -> t
-    val lambda : int * t -> Specification.t -> t
-    val apply : t * t list -> Specification.t -> t
-    val op : Ast.op * t list -> Specification.t -> t
-  end
+  (** Constructors *)
+  val num : CostModel.t -> int -> Specification.t -> t
+  val bool : CostModel.t -> bool -> Specification.t -> t
+  val id_sd : CostModel.t -> StaticDistance.t -> Specification.t -> t
+  val id_name : CostModel.t -> string -> Specification.t -> t
+  val hole : CostModel.t -> Hole.t -> Specification.t -> t
+  val list : CostModel.t -> t list -> Specification.t -> t
+  val tree : CostModel.t -> t Collections.Tree.t -> Specification.t -> t
+  val _let : CostModel.t -> t -> t -> Specification.t -> t
+  val lambda : CostModel.t -> int -> t -> Specification.t -> t
+  val apply : CostModel.t -> t -> t list -> Specification.t -> t
+  val op : CostModel.t -> Ast.op -> t list -> Specification.t -> t
 end

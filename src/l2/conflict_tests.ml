@@ -3,35 +3,12 @@ open OUnit2
 
 open Infer
 
-module Test_CostModel : Hypothesis.CostModel_Intf = struct
-  module Sk = Hypothesis.Skeleton
-    
-  let id_cost = function
-    | Sk.Name name -> begin match name with
-        | "foldr"
-        | "foldl"
-        | "foldt" -> 3
-        | "map"
-        | "mapt"
-        | "filter" -> 2
-        | _ -> 1
-      end
-    | Sk.StaticDistance sd -> 1
-
-  let op_cost = Expr.Op.cost
-  let lambda_cost = 1
-  let num_cost = 1
-  let bool_cost = 1
-  let hole_cost = 0
-  let let_cost = 1
-  let list_cost = 1
-  let tree_cost = 1
-end
-
-module H = Hypothesis.Hypothesis.Make(Test_CostModel)
+module H = Hypothesis.Hypothesis
 module SD = Hypothesis.StaticDistance
 module Sp = Hypothesis.Specification
 open Or_error.Monad_infix
+
+let cm = Hypothesis.CostModel.zero
 
 let of_string str = Sexp.of_string str |> Conflict.t_of_sexp
 
@@ -43,14 +20,14 @@ let of_hypothesis_unpruned_tests =
          (SD.Map.of_alist_exn [x, `List [`Num 1; `Num 2]]), `List [`Num 2; `Num 3];
        ]
      in
-     H.apply (H.id_name "drop" Sp.Top, [
-         H.apply (H.id_name "cdr" Sp.Top, [H.id_sd x Sp.Top]) Sp.Top;
-         H.hole (Hypothesis.Hole.create
-                   (SD.Map.of_alist_exn [x, "list[num]" |> Type.of_string])
-                   ("num" |> Type.of_string)
-                   (Hypothesis.Symbol.create "test")) Sp.Top
-       ]) (Sp.Examples spec)),
-    
+     H.apply cm (H.id_name cm "drop" Sp.Top) [
+       H.apply cm (H.id_name cm "cdr" Sp.Top) [H.id_sd cm x Sp.Top] Sp.Top;
+       H.hole cm (Hypothesis.Hole.create
+                    (SD.Map.of_alist_exn [x, "list[num]" |> Type.of_string])
+                    ("num" |> Type.of_string)
+                    (Hypothesis.Symbol.create "test")) Sp.Top
+     ] (Sp.Examples spec)),
+
     "((input_spec
   ((Binary Eq (Variable Output) (Variable (Free f3)))
    (Binary Eq (Apply Len ((Variable (Input 1))))
