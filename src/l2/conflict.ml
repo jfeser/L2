@@ -15,15 +15,6 @@ module SD = Hypothesis.StaticDistance
 module Sk = Hypothesis.Skeleton
 module Sp = Hypothesis.Specification
 
-(* let merge_sorts sorts = *)
-(*   let merge2 = V.Map.merge ~f:(fun ~key:k -> function *)
-(*       | `Both (s, s') -> if Sort.equal s s' then Some s else *)
-(*           failwiths "Examples have conflicting sorts." (s, s') *)
-(*             <:sexp_of<Sort.t * Sort.t>> *)
-(*       | `Left s | `Right s -> Some s) *)
-(*   in *)
-(*   Or_error.try_with (fun () -> List.fold sorts ~init:V.Map.empty ~f:merge2) *)
-
 (** Requires: 'components' is a mapping from strings to
     components. 's' is a skeleton which is a composition of functions,
     variables, and constants.
@@ -242,7 +233,7 @@ let prune_spec_tree spec spec_tree =
 
   | Z3.Solver.UNKNOWN
   | Z3.Solver.SATISFIABLE -> `NoConflict
-    
+
 (* let of_skeleton names components s = *)
 (*   let unbound_component_err func = *)
 (*     error "Unbound component." func <:sexp_of<string>> *)

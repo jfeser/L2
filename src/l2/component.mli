@@ -95,6 +95,7 @@ module Specification : sig
     sorts : Sort.t Variable.Map.t;
   } with sexp
 
+  include Comparable.S with type t := t
   include Equal.S with type t := t
     
   val of_string : String.t -> t Or_error.t
@@ -124,5 +125,5 @@ type t = {
 include Sexpable.S with type t := t
 include Comparable.S with type t := t
 
-val create : name:string -> spec:string -> type_:string -> arity:int -> t Or_error.t
+val create : name:string -> spec:string -> type_:string -> t Or_error.t
 val stdlib : t String.Map.t

@@ -219,18 +219,18 @@ module Term = struct
             | None -> error "No sort available for variable." (var, sorts)
                         <:sexp_of<V.t * Sort.t V.Map.t>>
           end
-        | Apply ("Len", [x]) ->
-          to_z3 sorts zctx x >>| fun x ->
-          z3_app (Z3_Defs.Functions.len zctx) [x]
-        | Apply ("Sub", [x1; x2]) ->
-          to_z3 sorts zctx x1 >>= fun x1 -> 
-          to_z3 sorts zctx x2 >>| fun x2 -> 
-          Z3.Arithmetic.mk_sub zctx [x1; x2]
-        | Apply ("Plus", [x1; x2]) ->
-          to_z3 sorts zctx x1 >>= fun x1 ->
-          to_z3 sorts zctx x2 >>| fun x2 ->
-          Z3.Arithmetic.mk_add zctx [x1; x2]
-        | t -> error "Unsupported term." t sexp_of_t)
+        | Apply (func, args) ->
+          List.map args ~f:(to_z3 sorts zctx) |> Or_error.all >>= fun z3_args ->
+          begin match func, z3_args with
+            | "Not", [x] -> Ok (Z3.Boolean.mk_not zctx x)
+            | "And", xs -> Ok (Z3.Boolean.mk_and zctx xs)
+            | "Len", [x] -> Ok (z3_app (Z3_Defs.Functions.len zctx) [x])
+            | "Sub", [x1; x2] -> Ok (Z3.Arithmetic.mk_sub zctx [x1; x2])
+            | "Add", [x1; x2] -> Ok (Z3.Arithmetic.mk_add zctx [x1; x2])
+            | "Eq", [x1; x2] -> Ok (Z3.Boolean.mk_eq zctx x1 x2)
+            | "Gt", [x1; x2] -> Ok (Z3.Arithmetic.mk_gt zctx x1 x2)
+            | _ -> error "Unexpected function or arguments." (func, args) <:sexp_of<string * t list>>
+          end)
 
     include Comparable.Make(T)
 end
@@ -264,14 +264,18 @@ end
   (*     <:sexp_of<t * Sort.t Variable.Map.t>> *)
 
 module Specification = struct
-  type t = {
-    _constraint : Term.t;
-    sorts : Sort.t Variable.Map.t;
-  } with sexp, compare
+  module T = struct
+    type t = {
+      _constraint : Term.t;
+      sorts : Sort.t Variable.Map.t;
+    } with sexp, compare
+  end
+
+  include T
 
   open Or_error.Monad_infix
 
-  module T = Term
+  module Te = Term
   module V = Variable
   module C = Constant
   module S = Sort
@@ -360,13 +364,13 @@ module Specification = struct
   let to_z3 zctx s =
     let z3_or_error =
       match s._constraint with
-      | T.Apply ("And", conjuncts) -> List.map conjuncts ~f:(T.to_z3 s.sorts zctx)
-      | t -> [ T.to_z3 s.sorts zctx t ]
+      | Te.Apply ("And", conjuncts) -> List.map conjuncts ~f:(Te.to_z3 s.sorts zctx)
+      | t -> [ Te.to_z3 s.sorts zctx t ]
     in
     Or_error.all z3_or_error
 
   let substitute_var m s = {
-    _constraint = T.substitute_var m s._constraint;
+    _constraint = Te.substitute_var m s._constraint;
     sorts = V.Map.to_alist s.sorts
             |> List.map ~f:(fun (v, s) -> Option.value (V.Map.find m v) ~default:v, s)
             |> V.Map.of_alist_exn;
@@ -389,20 +393,20 @@ module Specification = struct
     Z3.SMT.parse_smtlib2_string zctx background_str sort_symbols sorts func_symbols funcs
 
   let top = {
-    _constraint = T.Constant (C.Bool true);
+    _constraint = Te.Constant (C.Bool true);
     sorts = V.Map.empty;
   }
 
   let bottom = {
-    _constraint = T.Constant (C.Bool false);
+    _constraint = Te.Constant (C.Bool false);
     sorts = V.Map.empty;
   }
 
   let clauses s = match s._constraint with
-    | T.Apply ("And", cl) -> cl
+    | Te.Apply ("And", cl) -> cl
     | cl -> [cl]
 
-  let negate s = { s with _constraint = T.Apply ("Not", [s._constraint]) }
+  let negate s = { s with _constraint = Te.Apply ("Not", [s._constraint]) }
 
   let entails zctx s1 s2 =
     to_z3 zctx s1 >>= fun z1 -> 
@@ -417,9 +421,11 @@ module Specification = struct
                  
   let conjoin s1 s2 =
     if Variable.Map.equal Sort.equal s1.sorts s2.sorts then
-      Ok { _constraint = T.Apply ("And", clauses s1 @ clauses s2); sorts = s1.sorts }
+      Ok { _constraint = Te.Apply ("And", clauses s1 @ clauses s2); sorts = s1.sorts }
     else
       error "Sorts are not compatible." (s1, s2) <:sexp_of<t * t>>
+
+  include Comparable.Make(T)
 end
 
 module T = struct
@@ -433,10 +439,15 @@ end
 
 include T
 
-let create ~name ~spec ~type_ ~arity =
+let create ~name ~spec ~type_ =
   let open Or_error.Monad_infix in
   Specification.of_string spec >>| fun spec ->
-  { name; spec; type_ = Type.of_string type_; arity; }
+  let t = Type.of_string type_ in
+  let arity = match t with
+    | Type.Arrow_t (args, _) -> List.length args
+    | _ -> 0
+  in
+  { name; spec; type_ = t; arity; }
 
 include Comparable.Make(T)
 
