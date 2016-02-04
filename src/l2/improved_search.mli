@@ -5,7 +5,9 @@ open Synthesis_common
 open Hypothesis
 open Infer
 
-val counter : Collections.Counter.t  
+val counter : Collections.Counter.t
+
+val cost_model : CostModel.t
 
 module type Deduction_intf = sig
   (** Attempt to push all specifications towards the leaves of the

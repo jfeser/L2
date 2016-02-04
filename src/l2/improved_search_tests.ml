@@ -13,6 +13,38 @@ module Sym = L2_Generalizer.Symbols
 module Gen = L2_Generalizer.With_components
 module Mem = Memoizer
 
+let top = Specification.Top
+let cost_model_tests = "cost-model" >::: [
+    test_case (fun ctxt ->
+        let skel_str =
+          "(Apply_h
+   ((Id_h (Name append) Top)
+    ((Hole_h
+      ((id 27) (ctx ()) (type_ (App_t list ((Const_t Num_t))))
+       (symbol Expression))
+      Top)
+     (Hole_h
+      ((id 28) (ctx ()) (type_ (App_t list ((Const_t Num_t))))
+       (symbol Expression))
+      Top)))
+   Top)"
+        in
+        let h =
+          Skeleton.t_of_sexp Specification.t_of_sexp (Sexp.of_string skel_str)
+          |> Hypothesis.of_skeleton cost_model
+        in
+        assert_equal ~ctxt ~printer:Int.to_string 1 (Hypothesis.cost h));
+
+    test_case (fun ctxt ->
+        let h =
+          let cm = cost_model in
+          let one = Hypothesis.num cm 1 top in
+          Hypothesis.apply cm (Hypothesis.id_name cm "append" top) [one; one] top
+        in
+        assert_equal ~ctxt ~printer:Int.to_string 3 (Hypothesis.cost h))
+
+  ]
+
 let memoizer_tests = "memoizer" >::: [
     "get" >::: [
       test_case (fun _ ->
@@ -57,6 +89,8 @@ let memoizer_tests = "memoizer" >::: [
   ]
 
 let tests = "search" >::: [
+    cost_model_tests;
+    
     "symbol" >::: [
       "create" >::: [
         test_case (fun _ ->

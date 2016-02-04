@@ -36,6 +36,23 @@ let static_distance_tests = "static-distance" >::: [
     ]
   ]
 
+let top = Specification.Top
+let constant_cm = CostModel.constant 1
+
+let cost_model_tests = "cost-model" >::: [
+    test_case (fun ctxt ->
+        let h = Hypothesis.num constant_cm 1 top in
+        assert_equal ~ctxt ~printer:Int.to_string 1 (Hypothesis.cost h)
+      );
+    
+    test_case (fun ctxt ->
+        let one = Hypothesis.num constant_cm 1 top in
+        let h = Hypothesis.apply constant_cm (Hypothesis.id_name constant_cm "+" top) [one; one] top in
+        assert_equal ~ctxt ~printer:Int.to_string 4 (Hypothesis.cost h)
+      );
+  ]
+
 let tests = "hypothesis" >::: [
     static_distance_tests;
+    cost_model_tests;
   ]

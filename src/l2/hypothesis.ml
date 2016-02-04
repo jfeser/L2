@@ -344,7 +344,7 @@ module CostModel = struct
       | Sk.Tree_h (x, _) -> cm.tree x + List.int_sum (List.map (Tree.flatten x) ~f:cost)
       | Sk.Let_h ((x, y), _) -> cm._let x y + cost x + cost y
       | Sk.Lambda_h ((x, y), _) -> cm.lambda x y + cost y
-      | Sk.Apply_h ((x, y), _) -> cm.apply x y + List.int_sum (List.map y ~f:cost)
+      | Sk.Apply_h ((x, y), _) -> cm.apply x y + cost x + List.int_sum (List.map y ~f:cost)
       | Sk.Op_h ((x, y), _) -> cm.op x y + List.int_sum (List.map y ~f:cost)
     in
     cost sk
@@ -667,7 +667,7 @@ module Hypothesis = struct
     {
       skeleton = Table.hashcons table
           (Sk.Apply_h ((sk_func, sk_args), s));
-      cost = cm.C.apply sk_func sk_args + List.int_sum (List.map args ~f:cost);
+      cost = cm.C.apply sk_func sk_args + cost func + List.int_sum (List.map args ~f:cost);
       kind =
         if func.kind = Abstract || List.exists args ~f:(fun h -> h.kind = Abstract) then
           Abstract else Concrete;
