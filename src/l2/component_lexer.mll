@@ -26,19 +26,7 @@ rule token = parse
        | ')'                   { RPAREN }
        | '['                   { LBRACKET }
        | ']'                   { RBRACKET }
-       | '^'                   { AND }
-       | '='                   { EQUALS }
-       | "!="                  { NOT_EQUALS }
-       | '>'                   { GREATER_THAN }
-       | '<'                   { LESS_THAN }
-       | ">="                  { GREATER_THAN_OR_EQUALS }
-       | "<="                  { LESS_THAN_OR_EQUALS }
-       | "⊂"                   { SUBSET }
-       | "⊃"                   { SUPERSET }
-       | "⊄"                   { NOT_SUBSET }
-       | "⊅"                   { NOT_SUPERSET }
        | ','                   { COMMA }
-       | "_|_"                 { BOTTOM }
        | '-'?['0'-'9']+ as num { NUM (int_of_string num) }
        | input_var             { INPUT_VAR (Int.of_string input_num) }
        | free_var as id        { FREE_VAR id }

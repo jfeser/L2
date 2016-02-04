@@ -66,7 +66,6 @@ module Constant : sig
     | Bool of bool
     | Int of int
     | Nil
-    | Bottom
   with sexp, compare
 
   val to_z3 : Z3.context -> t -> Z3.Expr.expr Or_error.t
@@ -90,34 +89,9 @@ module Term : sig
   val to_z3 : Sort.t Variable.Map.t -> Z3.context -> t -> Z3.Expr.expr Or_error.t
 end
 
-module Predicate : sig
-  type operator =
-    | Eq
-    | Neq
-    | Gt
-    | Lt
-    | Ge
-    | Le
-    | Superset
-    | Subset
-    | NotSuperset
-    | NotSubset
-  with sexp, compare
-      
-  type t =
-    | Binary of operator * Term.t * Term.t
-  with sexp, compare
-       
-  val of_string : String.t -> t Or_error.t
-  val substitute : Term.t Term.Map.t -> t -> t
-  val substitute_var : Variable.t Variable.Map.t -> t -> t
-  val evaluate : Term.t Variable.Map.t -> t -> Term.t Or_error.t
-  val to_z3 : Sort.t Variable.Map.t -> Z3.context -> t -> Z3.Expr.expr Or_error.t
-end                       
-
 module Specification : sig
   type t = {
-    constraints : Predicate.t list;
+    _constraint : Term.t;
     sorts : Sort.t Variable.Map.t;
   } with sexp
 
@@ -125,21 +99,30 @@ module Specification : sig
     
   val of_string : String.t -> t Or_error.t
       
-  val top : t
-    
-  val of_examples : ?predicates:Predicate.t List.t ->
-    Hypothesis.Specification.Examples.t -> t Hypothesis.StaticDistance.Map.t Or_error.t
   val to_z3 : Z3.context -> t -> Z3.Expr.expr list Or_error.t
   val substitute_var : Variable.t Variable.Map.t -> t -> t
+
+  val top : t
+  val bottom : t
+
+  val clauses : t -> Term.t list
+
+  val background : Z3.context -> Z3.Expr.expr
+  
+  val entails : Z3.context -> t -> t -> bool Or_error.t
+  val negate : t -> t
+  val conjoin : t -> t -> t Or_error.t
 end
 
 type t = {
   name : string;
+  arity : int;
   spec : Specification.t;
   type_ : Type.t;
 }
 
 include Sexpable.S with type t := t
+include Comparable.S with type t := t
 
-val create : string -> string -> string -> t Or_error.t
+val create : name:string -> spec:string -> type_:string -> arity:int -> t Or_error.t
 val stdlib : t String.Map.t

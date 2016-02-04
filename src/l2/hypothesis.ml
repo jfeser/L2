@@ -52,6 +52,12 @@ module Symbol = struct
 
   let (equal: t -> t -> bool) = Int.equal
 
+  let to_string s =
+    match Int.Table.find names s with
+    | Some name -> name
+    | None -> failwiths (sprintf "BUG: Looking up name of symbol '%d' failed." s)
+                names <:sexp_of<string Int.Table.t>>
+  
   let create (name: string) : t = begin
     let id = incr counter; !counter in
     match Int.Table.add names ~key:id ~data:name with
@@ -60,12 +66,7 @@ module Symbol = struct
                       <:sexp_of<string Int.Table.t * int>>
   end
 
-  let sexp_of_t (s: t) : Sexp.t =
-    let open Sexp in
-    match Int.Table.find names s with
-    | Some name -> Atom name
-    | None -> failwiths (sprintf "BUG: Looking up name of symbol '%d' failed." s)
-                names <:sexp_of<string Int.Table.t>>
+  let sexp_of_t (s: t) : Sexp.t = Sexp.Atom (to_string s)
   
   let t_of_sexp (s: Sexp.t) : t =
     let open Sexp in
@@ -112,17 +113,24 @@ module Hole = struct
 end
 
 module Skeleton = struct
-  type id =
-    | StaticDistance of StaticDistance.t
-    | Name of string
-  with compare, sexp
+  module Id = struct
+    module T = struct
+      type t = 
+        | StaticDistance of StaticDistance.t
+        | Name of string
+      with compare, sexp
+    end
+
+    include T
+    include Comparable.Make(T)
+  end
 
   type 'a t =
     | Num_h of int * 'a
     | Bool_h of bool * 'a
     | List_h of 'a t list * 'a
     | Tree_h of 'a t Tree.t * 'a
-    | Id_h of id * 'a
+    | Id_h of Id.t * 'a
     | Let_h of ('a t * 'a t) * 'a
     | Lambda_h of (int * 'a t) * 'a
     | Apply_h of ('a t * ('a t list)) * 'a
@@ -152,8 +160,8 @@ module Skeleton = struct
     | Num_h (x, _) -> Int.to_string x
     | Bool_h (true, _) -> "#t"
     | Bool_h (false, _) -> "#f"
-    | Id_h (StaticDistance x, _) -> StaticDistance.to_string x
-    | Id_h (Name x, _) -> x
+    | Id_h (Id.StaticDistance x, _) -> StaticDistance.to_string x
+    | Id_h (Id.Name x, _) -> x
     | List_h (x, _) -> sprintf "[%s]" (list_to_string x)
     | Tree_h (x, _) -> Tree.to_string x ~str:ts
     | Op_h ((op, args), _) -> sprintf "(%s %s)" (Expr.Op.to_string op) (list_to_string args)
@@ -171,7 +179,7 @@ module Skeleton = struct
       match s with
       | Num_h (x, _) -> `Num x
       | Bool_h (x, _) -> `Bool x
-      | Id_h (StaticDistance x, _) ->
+      | Id_h (Id.StaticDistance x, _) ->
         (match StaticDistance.Map.find ctx x with
          | Some name -> `Id name
          | None ->
@@ -180,7 +188,7 @@ module Skeleton = struct
                 (sexp_of_t (fun _ -> Sexp.Atom "?"))
                 StaticDistance.sexp_of_t
                 (StaticDistance.Map.sexp_of_t String.sexp_of_t)))
-      | Id_h (Name x, _) -> `Id x
+      | Id_h (Id.Name x, _) -> `Id x
       | List_h (elems, _) -> `List (List.map elems ~f:(to_expr ctx))
       | Tree_h (elems, _) -> `Tree (Tree.map elems ~f:(to_expr ctx))
       | Let_h ((bound, body), _) ->
@@ -216,8 +224,8 @@ module Skeleton = struct
       | `Bool x -> Bool_h (x, spec)
       | `Id id ->
         (match String.Map.find ctx id with
-         | Some sd -> Id_h (StaticDistance sd, spec)
-         | None -> Id_h (Name id, spec))
+         | Some sd -> Id_h (Id.StaticDistance sd, spec)
+         | None -> Id_h (Id.Name id, spec))
       | `List l -> List_h (List.map l ~f:(of_expr ctx), spec)
       | `Tree t -> Tree_h (Tree.map t ~f:(of_expr ctx), spec)
       | `Let (id, bound, body) ->
@@ -301,7 +309,7 @@ module CostModel = struct
     num : int -> int;
     bool : bool -> int;
     hole : Hole.t -> int;
-    id : Skeleton.id -> int;
+    id : Skeleton.Id.t -> int;
     list : 'a. 'a Skeleton.t list -> int;
     tree : 'a. 'a Skeleton.t Collections.Tree.t -> int;
     _let : 'a. 'a Skeleton.t -> 'a Skeleton.t -> int;
@@ -608,7 +616,7 @@ module Hypothesis = struct
     holes = [];
   }
   let id_sd cm x s : t =
-    let id = Sk.StaticDistance x in
+    let id = Sk.Id.StaticDistance x in
     {
       skeleton = Table.hashcons table (Sk.Id_h (id, s));
       cost = cm.C.id id;
@@ -666,8 +674,8 @@ module Hypothesis = struct
       holes = func.holes @ (List.concat_map args ~f:holes);
     }
   let id_name cm x s : t = {
-    skeleton = Table.hashcons table (Sk.Id_h (Sk.Name x, s));
-    cost = cm.C.id (Sk.Name x);
+    skeleton = Table.hashcons table (Sk.Id_h (Sk.Id.Name x, s));
+    cost = cm.C.id (Sk.Id.Name x);
     kind = Concrete;
     holes = [];
   }

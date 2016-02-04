@@ -33,7 +33,7 @@ let cost_model : CostModel.t =
     C.apply = (fun _ _ -> 0);
     C.op = (fun op _ -> Expr.Op.cost op);
     C.id = function
-      | Sk.Name name -> begin match name with
+      | Sk.Id.Name name -> begin match name with
           | "foldr"
           | "foldl"
           | "foldt" -> 3
@@ -42,7 +42,7 @@ let cost_model : CostModel.t =
           | "filter" -> 2
           | _ -> 1
         end
-      | Sk.StaticDistance sd -> 1;
+      | Sk.Id.StaticDistance sd -> 1;
   }
 
 module type Deduction_intf = sig
@@ -104,7 +104,7 @@ module L2_Deduction : Deduction_intf = struct
     let deduce spec args =
       let open Result.Monad_infix in
       match args with
-      | [ Sk.Id_h (Sk.StaticDistance sd, _) as list; lambda ] when (Sk.annotation lambda) = Sp.Top ->
+      | [ Sk.Id_h (Sk.Id.StaticDistance sd, _) as list; lambda ] when (Sk.annotation lambda) = Sp.Top ->
         let child_spec = lambda_spec sd spec in
         [ list; Sk.map_annotation lambda ~f:(fun _ -> child_spec) ]
       | _ -> args
@@ -140,7 +140,7 @@ module L2_Deduction : Deduction_intf = struct
     let deduce spec args =
       let open Result.Monad_infix in
       match args with
-      | [ Sk.Id_h (Sk.StaticDistance sd, _) as input; lambda; base ] ->
+      | [ Sk.Id_h (Sk.Id.StaticDistance sd, _) as input; lambda; base ] ->
         let b_spec = Sk.annotation base in
         let b_spec = if b_spec = Sp.Top then base_spec sd spec else b_spec in
         [ input; lambda; Sk.map_annotation base ~f:(fun _ -> b_spec ) ]
@@ -281,12 +281,12 @@ module L2_Deduction : Deduction_intf = struct
       m_args >>| fun args -> Sk.Op_h ((op, args), s)
     | Sk.Apply_h ((func, args), s) ->
       let args = match func with
-        | Sk.Id_h (Sk.Name "map", _) -> Deduce_map.deduce s args
-        | Sk.Id_h (Sk.Name "mapt", _) -> Deduce_mapt.deduce s args
-        | Sk.Id_h (Sk.Name "filter", _) -> Deduce_filter.deduce s args
-        | Sk.Id_h (Sk.Name "foldl", _) -> Deduce_foldl.deduce s args
-        | Sk.Id_h (Sk.Name "foldr", _) -> Deduce_foldr.deduce s args
-        | Sk.Id_h (Sk.Name "foldt", _) -> Deduce_foldt.deduce s args
+        | Sk.Id_h (Sk.Id.Name "map", _) -> Deduce_map.deduce s args
+        | Sk.Id_h (Sk.Id.Name "mapt", _) -> Deduce_mapt.deduce s args
+        | Sk.Id_h (Sk.Id.Name "filter", _) -> Deduce_filter.deduce s args
+        | Sk.Id_h (Sk.Id.Name "foldl", _) -> Deduce_foldl.deduce s args
+        | Sk.Id_h (Sk.Id.Name "foldr", _) -> Deduce_foldr.deduce s args
+        | Sk.Id_h (Sk.Id.Name "foldt", _) -> Deduce_foldt.deduce s args
         | _ -> args        
       in
       let m_args =
@@ -310,8 +310,8 @@ module L2_Deduction : Deduction_intf = struct
       | SE.Bool_r x -> U.K (if x then "true" else "false")
       | SE.List_r [] -> U.K "[]"
       | SE.List_r (x::xs) -> U.Cons (f x, f (SE.List_r xs))
-      | SE.Id_r (Sk.StaticDistance sd) -> U.V (StaticDistance.to_string sd)
-      | SE.Id_r (Sk.Name id) -> U.V id
+      | SE.Id_r (Sk.Id.StaticDistance sd) -> U.V (StaticDistance.to_string sd)
+      | SE.Id_r (Sk.Id.Name id) -> U.V id
       | SE.Op_r (RCons, [xs; x])
       | SE.Op_r (Cons, [x; xs]) -> U.Cons (f x, f xs)
       | SE.Symbol_r id -> 

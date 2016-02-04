@@ -25,6 +25,7 @@ module Symbol : sig
     
   val compare : t -> t -> int
   val equal : t -> t -> bool
+  val to_string : t -> string
   val create : string -> t
 end
 
@@ -53,16 +54,21 @@ module Hole : sig
 end
 
 module Skeleton : sig
-  type id =
-    | StaticDistance of StaticDistance.t
-    | Name of string
-              
+  module Id : sig
+    type t =
+      | StaticDistance of StaticDistance.t
+      | Name of string
+
+    include Sexpable.S with type t := t
+    include Comparable.S with type t := t
+  end
+
   type 'a t =
     | Num_h of int * 'a
     | Bool_h of bool * 'a
     | List_h of 'a t list * 'a
     | Tree_h of 'a t Collections.Tree.t * 'a
-    | Id_h of id * 'a
+    | Id_h of Id.t * 'a
     | Let_h of ('a t * 'a t) * 'a
     | Lambda_h of (int * 'a t) * 'a
     | Apply_h of ('a t * 'a t list) * 'a
@@ -70,9 +76,6 @@ module Skeleton : sig
     | Hole_h of Hole.t * 'a
 
   include Sexpable.S1 with type 'a t := 'a t
-  val id_of_sexp : Sexp.t -> id
-  val sexp_of_id : id -> Sexp.t
-  val compare_id : id -> id -> int
 
   val equal : equal:('a -> 'a -> bool) -> 'a t -> 'a t -> bool
   val to_string_hum : 'a t -> string
@@ -95,7 +98,7 @@ module CostModel : sig
     num : int -> int;
     bool : bool -> int;
     hole : Hole.t -> int;
-    id : Skeleton.id -> int;
+    id : Skeleton.Id.t -> int;
     list : 'a. 'a Skeleton.t list -> int;
     tree : 'a. 'a Skeleton.t Collections.Tree.t -> int;
     _let : 'a. 'a Skeleton.t -> 'a Skeleton.t -> int;

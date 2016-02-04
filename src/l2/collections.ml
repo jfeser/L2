@@ -29,6 +29,11 @@ module ListExt = struct
       let a, b, c = unzip3 xs in
       (a1::a), (b1::b), (c1::c)
     | [] -> [], [], []
+
+  let rec repeat n x = if n = 0 then [] else x :: (repeat (n - 1) x)
+
+  (* diag [1,2,3] 0 = [[0,2,3], [1,0,3], [1,2,0]] *)
+  let diag l x = List.init (List.length l) ~f:(fun i -> (List.take l i) @ [x] @ (List.drop l (i + 1)))
 end
 module List = ListExt
 
@@ -396,6 +401,29 @@ module Counter = struct
         "count", `Int v.count;
         "description", `String v.desc;
       ])))
+end
+
+module KTree = struct
+  type 'a t =
+    | Leaf of 'a
+    | Node of 'a * 'a t list
+  with sexp, compare
+
+  let value = function
+    | Leaf x
+    | Node (x, _) -> x
+
+  let rec fold ~f = function
+    | Leaf x -> f x []
+    | Node (x, xs) -> f x (List.map xs ~f:(fold ~f))
+
+  let rec map ~f = function
+    | Leaf x -> Leaf (f x)
+    | Node (x, xs) -> Node (f x, List.map xs ~f:(map ~f))
+
+  let rec flatten = function
+    | Leaf x -> [x]
+    | Node (x, xs) -> x :: (List.map xs ~f:flatten |> List.concat)
 end
 
 module Tree = struct

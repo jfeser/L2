@@ -175,7 +175,7 @@ type result =
   | Bool_r of bool
   | List_r of result list
   | Tree_r of result Tree.t
-  | Id_r of Skeleton.id
+  | Id_r of Skeleton.Id.t
   | Apply_r of result * result list
   | Op_r of Expr.Op.t * result list
   | Symbol_r of Hole.Id.t
@@ -458,9 +458,9 @@ let partially_evaluate ?recursion_limit ?(ctx = StaticDistance.Map.empty) skelet
       | S.List_h (l, _) -> List_r (eval_all l)
       | S.Tree_h (x, _) -> Tree_r (Tree.map x ~f:(eval limit ctx))
       | S.Lambda_h _ -> Closure_r (res, ctx)
-      | S.Id_h (S.StaticDistance sd as id, _) ->
+      | S.Id_h (S.Id.StaticDistance sd as id, _) ->
         Option.value (StaticDistance.Map.find !ctx sd) ~default:(Id_r id)
-      | S.Id_h (S.Name name as id, _) ->
+      | S.Id_h (S.Id.Name name as id, _) ->
         Option.value (String.Map.find stdlib name) ~default:(Id_r id)
       | S.Let_h ((bound, body), _) ->
         let ctx = ref (StaticDistance.map_increment_scope !ctx) in
@@ -481,53 +481,53 @@ let partially_evaluate ?recursion_limit ?(ctx = StaticDistance.Map.empty) skelet
           (*       eval limit ctx body *)
           (*     | None -> raise (EvalError `WrongNumberOfArguments) *)
           (*   end *)
-          | Id_r (S.Name "intersperse") as f -> (match args with
+          | Id_r (S.Id.Name "intersperse") as f -> (match args with
               | [List_r []; _] -> List_r []
               | [List_r [x]; _] -> List_r [x]
               | [List_r [x; y]; a] -> List_r [x; a; y]
               | [List_r [x; y; z]; a] -> List_r [x; a; y; a; z]
               | [List_r [x; y; z; w]; a] -> List_r [x; a; y; a; z; a; w]
               | _ -> Apply_r (f, args))
-          | Id_r (S.Name "sort") as f -> (match args with
+          | Id_r (S.Id.Name "sort") as f -> (match args with
               | [List_r []] -> List_r []
               | [List_r [x]] -> List_r [x]
               | _ -> Apply_r (f, args))
-          | Id_r (S.Name "reverse") as f -> (match args with
+          | Id_r (S.Id.Name "reverse") as f -> (match args with
               | [List_r []] -> List_r []
               | [List_r [x]] -> List_r [x]
               | [List_r [x; y]] -> List_r [y; x]
               | [List_r [x; y; z]] -> List_r [z; y; x]
               | [List_r [x; y; z; w]] -> List_r [w; z; y; x]
               | _ -> Apply_r (f, args))
-          | Id_r (S.Name "append") as f -> (match args with
+          | Id_r (S.Id.Name "append") as f -> (match args with
               | [List_r []; x]
               | [x; List_r []] -> x
               | [List_r [x]; y] -> Op_r (O.Cons, [x; y])
               | [List_r [x; y]; z] -> Op_r (O.Cons, [x; Op_r (O.Cons, [y; z])])
               | _ -> Apply_r (f, args))
-          | Id_r (S.Name "merge") as f -> (match args with
+          | Id_r (S.Id.Name "merge") as f -> (match args with
               | [List_r []; x]
               | [x; List_r []] -> x
               | _ -> Apply_r (f, args))
-          | Id_r (S.Name "dedup") as f -> (match args with
+          | Id_r (S.Id.Name "dedup") as f -> (match args with
               | [List_r []] -> List_r []
               | [List_r [x]] -> List_r [x]
               | [List_r [x; y]] -> if x = y then List_r [x] else List_r [x; y]
               | _ -> Apply_r (f, args))
-          | Id_r (S.Name "zip") as f -> (match args with
+          | Id_r (S.Id.Name "zip") as f -> (match args with
               | [_; List_r []]
               | [List_r []; _] -> List_r []
               | [List_r [x]; List_r [y]] -> List_r [List_r [x; y]]
               | [List_r [x; y]; List_r [z]] -> List_r [List_r [x; z]]
               | [List_r [x; y; _]; List_r [z]] -> List_r [List_r [x; z]]
               | _ -> Apply_r (f, args))
-          | Id_r (S.Name "take") as f -> (match args with
+          | Id_r (S.Id.Name "take") as f -> (match args with
               | [List_r []; _] -> List_r []
               | _ -> Apply_r (f, args))
-          | Id_r (S.Name "drop") as f -> (match args with
+          | Id_r (S.Id.Name "drop") as f -> (match args with
               | [List_r []; _] -> List_r []
               | _ -> Apply_r (f, args))
-          | Id_r (S.Name "concat") as f -> (match args with
+          | Id_r (S.Id.Name "concat") as f -> (match args with
               | [List_r []] -> List_r []
               | _ -> Apply_r (f, args))
           | r -> Apply_r (r, args)

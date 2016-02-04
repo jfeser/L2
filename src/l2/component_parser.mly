@@ -13,51 +13,23 @@ open Component0
 %token RPAREN
 %token LBRACKET
 %token RBRACKET
-%token AND
 %token COMMA
-%token BOTTOM
 %token WHERE
 %token EOF
-
-%token EQUALS
-%token NOT_EQUALS
-%token GREATER_THAN
-%token LESS_THAN
-%token GREATER_THAN_OR_EQUALS
-%token LESS_THAN_OR_EQUALS
-%token SUBSET
-%token SUPERSET
-%token NOT_SUBSET
-%token NOT_SUPERSET
 
 %token INT_SORT
 %token BOOL_SORT
 %token LIST_SORT
 %token STRING_SORT
 
-%start <Component0.conjunct> conjunction_eof
-%start <Component0.predicate> predicate_eof
 %start <Component0.parsed_specification> specification_eof
 %%
 
 specification_eof:
  | x = specification; EOF { x }
 
-conjunction_eof:
- | x = conjunction; EOF { x }
-
-predicate_eof:
- | x = predicate; EOF { x }
-
 specification:
- | c = conjunction; WHERE; s = sort_defs { (c, s) }
-
-conjunction:
- | x = separated_list(AND, predicate) { x }
-
-predicate:
- | x1 = term; o = operator; x2 = term { Binary (o, x1, x2) }
- | LPAREN; x1 = term; o = operator; x2 = term; RPAREN { Binary (o, x1, x2) }
+ | t = term; WHERE; s = sort_defs { (t, s) }
 
 term:
  | x = variable { Variable x }
@@ -78,18 +50,6 @@ sort:
  | BOOL_SORT { Bool }
  | LIST_SORT { List }
  | STRING_SORT { String }
-
-operator:
- | EQUALS { Eq }
- | NOT_EQUALS { Neq }
- | GREATER_THAN { Gt }
- | LESS_THAN { Lt }
- | GREATER_THAN_OR_EQUALS { Ge }
- | LESS_THAN_OR_EQUALS { Le }
- | SUBSET { Subset }
- | SUPERSET { Superset }
- | NOT_SUBSET { NotSubset }
- | NOT_SUPERSET { NotSuperset }
  
 variable:
  | x = INPUT_VAR { Input x }
@@ -99,4 +59,3 @@ variable:
 constant:
  | x = BOOL { Bool x }
  | x = NUM { Int x }
- | BOTTOM { Bottom }
