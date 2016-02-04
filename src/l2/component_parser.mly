@@ -30,6 +30,7 @@ specification_eof:
 
 specification:
  | t = term; WHERE; s = sort_defs { (t, s) }
+ | t = term { (t, []) }
 
 term:
  | x = variable { Variable x }
