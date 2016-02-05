@@ -684,39 +684,6 @@ module type Synthesizer_intf = sig
   val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t
 end
 
-module Make_BFS_Synthesizer (G: L2_Generalizer.S) : Synthesizer_intf = struct
-  exception SynthesisException of Hypothesis.t Option.t
-
-  let synthesize hypo ~cost:max_cost =
-    let open Hypothesis in
-    let heap = Heap.create ~cmp:compare_cost () in
-    try
-      Heap.add heap hypo;
-      while true do
-        match Heap.pop heap with
-        | Some h ->
-          (* Take the hole with the smallest id. *)
-          let m_hole =
-            List.min_elt (holes h) ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2)
-          in
-          (match m_hole with
-           | Some (hole, spec) ->
-             List.iter (G.generalize hole spec) ~f:(fun (c, u) ->
-                 if (kind c) = Abstract || Hypothesis.verify c then
-                   let h = apply_unifier (fill_hole hole ~parent:h ~child:c) u in
-
-                   match kind c with
-                   | Concrete ->
-                     let () = printf "%s\n" (Skeleton.to_string_hum (skeleton h)) in
-                     if Hypothesis.verify h then raise (SynthesisException (Some h))
-                   | Abstract -> Heap.add heap h)
-           | None -> failwiths "BUG: Abstract hypothesis has no holes."
-                       h Hypothesis.sexp_of_t)
-        | None -> raise (SynthesisException None)
-      done; None
-    with SynthesisException h -> h
-end
-
 module type Search_intf = sig
   val search : check_cost:(int -> bool) -> found:(Hypothesis.t -> never_returns) -> Hypothesis.t -> int -> int
 end
@@ -726,113 +693,17 @@ let create_memoizer () = Memoizer.create L2_Generalizer.No_lambdas.generalize
 module Memoized_search : Search_intf = struct
   let memoizer = create_memoizer ()
 
-  let search ~check_cost ~found hypo initial_cost =
+  let search ~check_cost ~found hypo initial_cost =  
     let module H = Hypothesis in
     let rec search (cost: int) =
       (* If the cost of searching this level exceeds the max cost, end the search. *)
       if check_cost cost then cost else
-        (* Otherwise, examine the next row in the search tree. *)
-        begin
-          let num_holes = List.length (H.holes hypo) in
-          List.concat_map (Util.m_partition cost num_holes) ~f:(fun hole_costs ->
-              List.fold2_exn (H.holes hypo) hole_costs ~init:[ (hypo, Unifier.empty) ]
-                ~f:(fun hs (hole, spec) hole_cost -> List.concat_map hs ~f:(fun (p, p_u) ->
-                    let children = Memoizer.get memoizer hole spec hole_cost in
-                    List.map children ~f:(fun (c, c_u) ->
-                        let u = Unifier.compose c_u p_u in
-                        let h = H.fill_hole hole ~parent:p ~child:c in
-                        h, u))))
-          |> List.iter ~f:(fun (h, _) ->
-              match H.kind h with
-              | H.Concrete -> if H.verify h then never_returns (found h)
-              | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t);
-          search (cost + 1)
-        end
+        match List.hd (Memoizer.fill_holes_in_hypothesis memoizer hypo (cost + H.cost hypo)) with
+        | Some (sln, _) -> never_returns (found sln)
+        | None -> search (cost + 1)
     in
     search initial_cost
-end  
-
-(* module Conflict_search = struct *)
-(*   module H = Hypothesis *)
-    
-(*   let rec get parent hole spec cost = *)
-(*     List.concat_map (L2_Generalizer.No_lambdas.generalize hole spec) ~f:(fun (p, p_u) -> *)
-(*         match H.kind p with *)
-(*         | H.Concrete -> if H.cost p = cost then [ (p, p_u) ] else [] *)
-(*         | H.Abstract -> if H.cost p >= cost then [] else *)
-(*             let num_holes = List.length (H.holes p) in *)
-(*             let all_hole_costs = *)
-(*               Util.m_partition (cost - H.cost p) num_holes *)
-(*               |> List.concat_map ~f:Util.permutations *)
-(*             in *)
-(*             let parent_hole = hole in *)
-(*             List.concat_map all_hole_costs ~f:(fun hole_costs -> *)
-(*                 List.fold2_exn (H.holes p) hole_costs ~init:[ (p, p_u) ] *)
-(*                   ~f:(fun hs (hole, spec) hole_cost -> *)
-(*                       List.iter hs ~f:(fun (h, u) -> *)
-(*                           let full_hypo = H.fill_hole parent_hole ~parent ~child:h in *)
-(*                           begin *)
-(*                             match Conflict.of_hypothesis full_hypo with *)
-(*                             | Ok (`Conflict c) -> *)
-(*                               printf "Found conflict!\n%s\n%s\n%!" (H.to_string_hum full_hypo) *)
-(*                                 (Sexp.to_string_hum (Conflict.sexp_of_t c)) *)
-(*                             | Ok `NoConflict -> printf "No conflict.\n%s\n%!" (H.to_string_hum full_hypo) *)
-(*                             | Error err -> () *)
-(*                               (\* printf "Error.\n%s\n%s\n%!" (H.to_string_hum h) (Error.to_string_hum err) *\) *)
-(*                           end; *)
-
-(*                         ); *)
-                      
-(*                       (\* let hs = List.filter_map hs ~f:(fun (h, u) -> *\) *)
-(*                       (\*     begin *\) *)
-(*                       (\*       match Conflict.of_hypothesis (H.fill_hole parent_hole ~parent ~child:h) with *\) *)
-(*                       (\*       | Ok (`Conflict c) -> *\) *)
-(*                       (\*         printf "Found conflict!\n%s\n%s\n%!" (H.to_string_hum h) *\) *)
-(*                       (\*           (Sexp.to_string_hum (Conflict.sexp_of_t c)) *\) *)
-(*                       (\*       | Ok `NoConflict -> printf "No conflict.\n%s\n%!" (H.to_string_hum h) *\) *)
-(*                       (\*       | Error err -> *\) *)
-(*                       (\*         printf "Error.\n%s\n%s\n%!" (H.to_string_hum h) (Error.to_string_hum err) *\) *)
-(*                       (\*     end; *\) *)
-
-(*                       (\*     Option.map (L2_Deduction.push_specifications (H.skeleton h)) ~f:(fun s -> *\) *)
-(*                       (\*         L2_Hypothesis.of_skeleton s, u)) *\) *)
-(*                       (\* in *\) *)
-(*                       List.concat_map hs ~f:(fun (p, p_u) -> *)
-(*                           let children = get p hole spec hole_cost in *)
-(*                           List.map children ~f:(fun (c, c_u) -> *)
-(*                               let u = Unifier.compose c_u p_u in *)
-(*                               let h = H.fill_hole hole ~parent:p ~child:c in *)
-(*                               h, u)))) *)
-(*             |> List.filter ~f:(fun (h, _) -> *)
-(*                 (\* let () = Debug.eprintf "Verifying %d %s" h.H.cost (H.to_string_hum h) in *\) *)
-(*                 match H.kind h with *)
-(*                 | H.Concrete -> H.verify h *)
-(*                 | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t))   *)
-
-(*   let search ~check_cost ~found hypo initial_cost = *)
-(*     let rec search (cost: int) = *)
-(*       (\* If the cost of searching this level exceeds the max cost, end the search. *\) *)
-(*       if check_cost cost then cost else *)
-(*         (\* Otherwise, examine the next row in the search tree. *\) *)
-(*         begin *)
-(*           let num_holes = List.length (H.holes hypo) in *)
-(*           List.concat_map (Util.m_partition cost num_holes) ~f:(fun hole_costs -> *)
-(*               List.fold2_exn (H.holes hypo) hole_costs ~init:[ (hypo, Unifier.empty) ] *)
-(*                 ~f:(fun hs (hole, spec) hole_cost -> List.concat_map hs ~f:(fun (p, p_u) -> *)
-(*                     let children = get (Hypothesis.hole cost_model hole spec) hole spec hole_cost in *)
-(*                     List.map children ~f:(fun (c, c_u) -> *)
-(*                         let u = Unifier.compose c_u p_u in *)
-(*                         let h = H.fill_hole hole ~parent:p ~child:c in *)
-(*                         h, u)))) *)
-(*           |> List.iter ~f:(fun (h, _) -> *)
-(*               match H.kind h with *)
-(*               | H.Concrete -> if H.verify h then never_returns (found h) *)
-(*               | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t); *)
-(*           search (cost + 1) *)
-(*         end *)
-(*     in *)
-(*     search initial_cost *)
-(* end *)
+end
 
 module Make_L2_synthesizer (Search: Search_intf) = struct
   exception SynthesisException of Hypothesis.t
