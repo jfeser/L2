@@ -202,19 +202,19 @@ module Constrained = struct
     { states; initial_states; components; rules }
 end
 
-(* module Conflict = struct *)
-(*   type t = { *)
-(*     automaton : Constrained.t; *)
-(*     any_state : Symbol.t; *)
-(*   } *)
+module Conflict = struct
+  type t = {
+    automaton : Constrained.t;
+    any_state : Symbol.t;
+  }
 
-(*   let complement ca = *)
-(*     let rules' = List.concat_map ca.automaton.A.rules ~f:(fun r -> *)
-(*         let negated_r = (Rule.start_state r, Spec.negate (Rule.spec r), Rule.end_states r) in *)
-(*         let rs = List.map (List.diag (Rule.end_states r) ca.any_state) ~f:(fun es -> *)
-(*             (Rule.start_state r, Rule.spec r, es)) *)
-(*         in *)
-(*         negated_r :: rs) *)
-(*     in *)
-(*     { ca with automaton = { ca.automaton with A.rules = rules' } } *)
-(* end *)
+  let complement ca =
+    let rules' = List.concat_map ca.automaton.Constrained.rules ~f:(fun r ->
+        let negated_r = (Rule.start_state r, Spec.negate (Rule.spec r), Rule.end_states r) in
+        let rs = List.map (List.diag (Rule.end_states r) ca.any_state) ~f:(fun es ->
+            (Rule.start_state r, Rule.spec r, es))
+        in
+        negated_r :: rs)
+    in
+    { ca with automaton = { ca.automaton with Constrained.rules = rules' } }
+end
