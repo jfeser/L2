@@ -181,8 +181,6 @@ let generate_lemmas
     (expr: TypedExpr.t) : Z3.Expr.expr * (Z3.Expr.expr list) =
   let name_of_expr e =
     let name = fresh_name () in
-    let msg = sprintf "Mapped %s to %s." (TypedExpr.to_string e) name in
-    LOG msg NAME "l2.solver" LEVEL DEBUG;
     Z3.Expr.mk_const_s
       zctx
       name
@@ -462,11 +460,6 @@ let memoized_check
            Z3.Solver.add solver asserts;
            Z3.Solver.check solver [])
     in
-    (* let () = *)
-    (*   let msg = *)
-    (*     Z3.Solver.get_statistics solver |> Z3.Solver.Statistics.to_string *)
-    (*   in LOG msg NAME "l2.solver.stats" LEVEL INFO *)
-    (* in *)
     (match x with
      | Z3.Solver.UNSATISFIABLE -> counter_incr "solver_unsat"
      | Z3.Solver.SATISFIABLE -> counter_incr "solver_sat"
@@ -538,24 +531,10 @@ let check_constraints
        in
 
        if List.length assertions = 0 then true else
-         (* let () = *)
-         (*   let msg = *)
-         (*     ((sprintf "SMT generated from %s:\n" (TypedExpr.to_string expr)) ^ *)
-         (*      (List.map ~f:z3_to_string assertions *)
-         (*       |> String.concat ~sep:"\n")) *)
-         (*   in LOG msg NAME "l2.solver" LEVEL INFO *)
-         (* in *)
-
          (match memoized_check solver assertions with
           | Z3.Solver.UNSATISFIABLE -> counter_incr "check_false"; false
           | Z3.Solver.SATISFIABLE -> counter_incr "check_true"; true
-          | Z3.Solver.UNKNOWN ->
-            let msg =
-              sprintf "Solver returned UNKNOWN on %s." (TypedExpr.to_string expr)
-            in
-            counter_incr "check_true";
-            LOG msg NAME "l2.solver" LEVEL WARN;
-            true)
+          | Z3.Solver.UNKNOWN -> counter_incr "check_true"; true)
      with Z3native.Exception _ -> false)
   | _ -> failwith (sprintf "Unsupported expression: %s" (to_string expr))
 
@@ -568,34 +547,9 @@ let memoized_check_constraints
     Expr.normalize ~bound:stdlib_names (TypedExpr.to_expr expr)
   in
 
-  LOG "Looking up %s in memoizer." (Expr.to_string normal_expr)
-    NAME "l2.solver.memo" LEVEL INFO;
-
   match Expr.Map.find !memoizer normal_expr with
   | Some ret -> counter_incr "expr_memoizer"; ret
   | None ->
     let ret = check_constraints zctx examples expr in
     memoizer := Expr.Map.add !memoizer ~key:normal_expr ~data:ret; ret
-
-let log_summary () =
-  let open Time.Span in
-  let log_strs = List.iter ~f:(fun s -> LOG s LEVEL INFO) in
-
-  log_strs (Timer.to_strings timer);
-  log_strs (Counter.to_strings counter);
-
-  LOG "Maximum time in solver: %s" (to_short_string !max_solve_time)
-    LEVEL INFO;
-
-  (try
-     LOG "Average time in solver: %s"
-       (to_short_string
-          ((Timer.find_exn timer "solve") /
-           (float (Counter.find_exn counter "solver_call"))))
-       LEVEL INFO
-   with Invalid_argument _ -> ());
-
-  (let msg = FormulaII.log_summary formula_memoizer in
-   LOG msg LEVEL INFO);
-
 

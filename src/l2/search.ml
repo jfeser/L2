@@ -443,98 +443,45 @@ let solve_single
         let ctx = Ctx.bind init_ctx name (TypedExpr.to_expr e) in
         let target = (spec.Spec.target ctx) (`Id "_") in
 
-        let res =
-          (match target with
-           | `Let (name, body, _) ->
-             (* if Expr.all_abstract body then true else *)
-             (* If the example output does not pass the
-                postcondition of the outermost function, discard this
-                candidate. *)
-             (* if not (check_outermost_application body examples) then false else *)
-               (* Attempt partial evaluation and unification. *)
-               List.for_all (List.zip_exn examples result_sterms)
-                 ~f:(fun ((input, result), result_sterm) ->
-                     let expr =
-                       Eval.ExprValue.of_expr ((spec.Spec.target ctx) input)
-                     in
-                     try
-                       let lhs : Eval.ExprValue.t =
-                         run_with_time "partial_eval" (fun () ->
-                           Eval.partial_eval
-                             ~recursion_limit:100
-                             ~ctx:Eval.stdlib_evctx
-                             expr)
-                       in
-                       match Unify.sterm_of_expr_value lhs, result_sterm with
-                       | (Some lhs_term, Some result_term) ->
-                         let r =
-                           (try
-                              let _ =
-                                run_with_time "unify" (fun () ->
-                                    Unify.unify_one
-                                      (Unify.translate lhs_term)
-                                      (Unify.translate result_term))
-                              in true
-                            with Unify.Non_unifiable -> false)
-                         in
-                         LOG "%s ?= %s : %b\n"
-                           (Unify.sterm_to_string lhs_term)
-                           (Unify.sterm_to_string result_term)
-                           r
-                           LEVEL TRACE;
-                         r
-                       | _ -> true
-                     with
-                     | Eval.HitRecursionLimit ->
-                       LOG "Partial evalution of %s hit recursion limit."
-                         (Eval.ExprValue.to_string expr)
-                         LEVEL TRACE;
-                       true
-                     | Eval.RuntimeError err ->
-                       LOG "Partial evalution of %s failed with error %s."
-                         (Eval.ExprValue.to_string expr) (Error.to_string_hum err)
-                         LEVEL TRACE;
-                       false)
-           | _ -> failwith "Bad result from solve_single.")
-        in
-
-        (LOG "Checked abstract hypo %s. Meets constraints? %b."
-           (Expr.to_string target) res
-           LEVEL TRACE);
-        res
-
-      (* match target with *)
-      (* | `Let (name, body, _) -> *)
-      (*   if Rewrite.is_redundant [] body then false else *)
-      (*     if Expr.all_abstract body then true else *)
-      (*       (try *)
-      (*          let typed_target = *)
-      (*            infer (Ctx.bind tctx name (Var_t (ref (Quant "a")))) body *)
-      (*          in *)
-      (*          let (res, runtime) = *)
-      (*            Util.with_runtime (fun () -> *)
-      (*                Deduction.memoized_check_constraints *)
-      (*                  z3_memoizer zctx examples typed_target) *)
-      (*          in *)
-      (*          let () = *)
-      (*            total_deduction_time := *)
-      (*              Time.Span.(+) !total_deduction_time runtime *)
-      (*          in *)
-      (*          let () = *)
-      (*            let msg = *)
-      (*              sprintf "Checked abstract hypo: %s.\nMeets constraints? %b." *)
-      (*                (Expr.to_string target) res *)
-      (*            in LOG msg NAME "l2.search" LEVEL INFO *)
-      (*          in *)
-      (*          res *)
-      (*        with TypeError msg -> *)
-      (*          let () = *)
-      (*            let msg' = *)
-      (*              sprintf "Checking %s failed: %s\n" *)
-      (*                (Expr.to_string target) (Error.to_string_hum msg) *)
-      (*            in LOG msg' NAME "l2.search" LEVEL WARN *)
-      (*          in false) *)
-      (* | _ -> failwith "Bad result from solve_single." *)
+        match target with
+        | `Let (name, body, _) ->
+          (* if Expr.all_abstract body then true else *)
+          (* If the example output does not pass the
+             postcondition of the outermost function, discard this
+             candidate. *)
+          (* if not (check_outermost_application body examples) then false else *)
+          (* Attempt partial evaluation and unification. *)
+          List.for_all (List.zip_exn examples result_sterms)
+            ~f:(fun ((input, result), result_sterm) ->
+                let expr =
+                  Eval.ExprValue.of_expr ((spec.Spec.target ctx) input)
+                in
+                try
+                  let lhs : Eval.ExprValue.t =
+                    run_with_time "partial_eval" (fun () ->
+                        Eval.partial_eval
+                          ~recursion_limit:100
+                          ~ctx:Eval.stdlib_evctx
+                          expr)
+                  in
+                  match Unify.sterm_of_expr_value lhs, result_sterm with
+                  | (Some lhs_term, Some result_term) ->
+                    let r =
+                      (try
+                         let _ =
+                           run_with_time "unify" (fun () ->
+                               Unify.unify_one
+                                 (Unify.translate lhs_term)
+                                 (Unify.translate result_term))
+                         in true
+                       with Unify.Non_unifiable -> false)
+                    in
+                    r
+                  | _ -> true
+                with
+                | Eval.HitRecursionLimit -> true
+                | Eval.RuntimeError err -> false)
+        | _ -> failwith "Bad result from solve_single."
       in
 
       let check (name: string) (e: TypedExpr.t) : bool =
@@ -557,8 +504,6 @@ let solve_single
 
     Sstream.map_matrix matrix ~f:(fun ctx ->
         let target = spec.Spec.target ctx in
-        LOG "Checked concrete hypo %s." (Expr.to_string (target (`Id "_")))
-          LEVEL TRACE;
         if verify target examples then Some target else None)
   in
 
@@ -570,11 +515,7 @@ let solve_single
     let rec search' (exh_cost: int) : (expr -> expr) option =
       let cost = total_cost spec.Spec.cost exh_cost in
       (* If the cost of searching this level exceeds the max cost, end the search. *)
-      if cost >= max_cost then begin
-        if exh_cost > 0 then
-          LOG "Searched %s to exhaustive cost %d." (Spec.to_string spec) exh_cost LEVEL TRACE;
-        None
-      end
+      if cost >= max_cost then None
 
       (* Otherwise, examine the next row in the search tree. *)
       else begin
@@ -652,18 +593,5 @@ let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
     | Ctx.UnboundError _ -> false
   in
 
-  let ret =
-    Ctx.bind (Ctx.empty ()) (Example.name examples)
+  Ctx.bind (Ctx.empty ()) (Example.name examples)
       ((solve_single ~init ~verify ~config examples) (`Id "_"))
-  in
-
-  (* Performance logging. *)
-  begin
-    let log_strs = List.iter ~f:(fun s -> LOG s LEVEL INFO) in
-
-    log_strs (Timer.to_strings timer);
-
-    (* Deduction.log_summary (); *)
-    
-    ret
-  end ;;

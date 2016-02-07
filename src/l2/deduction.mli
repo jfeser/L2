@@ -1,6 +1,3 @@
-(** Write the performance counters to the log at level INFO. *)
-val log_summary : unit -> unit
-
 (** Expose debugging timer and counter for logging. *)
 val timer : Collections.Timer.t
 val counter : Collections.Counter.t
