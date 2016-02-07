@@ -159,7 +159,7 @@ module Hypothesis : sig
 
   type t
 
-  include Sexpable with type t := t
+  include Sexpable.S with type t := t
 
   val skeleton : t -> skeleton
   val cost : t -> int
