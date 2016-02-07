@@ -49,14 +49,6 @@ let reduce_tests = "reduce" >::: [
   ]
 
 let generalize_tests = "generalize" >::: [
-    test_case (fun ctxt ->
-        let a_expected = create ["q0"; "q1"] ["q0"] components [
-            ("q0", "Gt(Len(r), Len(i2)) where r: list, i2: list", ["q1"; "q0"]);
-            ("q1", "#t", []);
-            ("q0", "Eq(Len(r), 0) where r: list", [])
-          ] in
-        let a' = CA.reduce zctx a_expected |> Or_error.ok_exn in
-        assert_equal ~cmp:CA.equal ~ctxt ~printer:CA.to_string a_expected a');
   ]
 
 let tests = "constraint-automaton" >::: [
