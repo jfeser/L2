@@ -1,15 +1,15 @@
 open Core.Std
 
 type t = {
-  verbosity: int with default(0), sexp_drop_default;
-  untyped: bool with default(false), sexp_drop_default;
-  deduction: bool with default(true), sexp_drop_default;
-  infer_base: bool with default(true), sexp_drop_default;
-  use_solver: bool with default(false), sexp_drop_default;
-  max_exhaustive_depth: int with default(7), sexp_drop_default;
+  verbosity: int [@default 0] [@sexp_drop_default];
+  untyped: bool [@default false] [@sexp_drop_default];
+  deduction: bool [@default true] [@sexp_drop_default];
+  infer_base: bool [@default true] [@sexp_drop_default];
+  use_solver: bool [@default false] [@sexp_drop_default];
+  max_exhaustive_depth: int [@default 7] [@sexp_drop_default];
   check_prob: float;
-  improved_search: bool with default(false), sexp_drop_default;
-} with sexp
+  improved_search: bool [@default false] [@sexp_drop_default];
+} [@@deriving sexp]
 
 let default = {
   verbosity=0;

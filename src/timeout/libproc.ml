@@ -87,7 +87,7 @@ module ProcessInfo = struct
     system_time: Time_ns.Span.t;
     wired_size: int64;
     resident_size: int64;
-  } with sexp
+  } [@@deriving sexp]
 
   let ticks_to_ns ticks = (Int.of_int64_exn ticks) * 100
   let get_time_as_int info field =

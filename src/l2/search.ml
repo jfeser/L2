@@ -6,11 +6,11 @@ open Infer
 open Structure
 open Util
 
-module Typ = struct type t = Ast.typ with compare, sexp end
+module Typ = struct type t = Ast.typ [@@deriving sexp, compare] end
 module TypMemoizer = Sstream.Memoizer (Typ) (TypedExpr)
 
 module SimpleMemoizer =
-  Sstream.Memoizer (struct type t = TypedExpr.t list with compare, sexp end) (Expr)
+  Sstream.Memoizer (struct type t = TypedExpr.t list [@@deriving sexp, compare] end) (Expr)
 
 let default_init =
   ["0"; "1"; "inf"; "[]"; "#f"]

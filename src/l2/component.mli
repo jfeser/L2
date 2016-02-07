@@ -39,7 +39,7 @@ module Sort : sig
     | Bool
     | List
     | String
-  with sexp, compare
+  [@@deriving sexp, compare]
 
   include Equal.S with type t := t
 
@@ -54,7 +54,7 @@ module Variable : sig
     | Free of string
     | Input of int
     | Output
-  with sexp, compare
+  [@@deriving sexp, compare]
 
   include Comparable.S with type t := t
 
@@ -66,7 +66,7 @@ module Constant : sig
     | Bool of bool
     | Int of int
     | Nil
-  with sexp, compare
+  [@@deriving sexp, compare]
 
   val to_z3 : Z3.context -> t -> Z3.Expr.expr Or_error.t
 end
@@ -76,7 +76,7 @@ module Term : sig
     | Constant of Constant.t
     | Variable of Variable.t
     | Apply of string * t list
-  with sexp, compare
+  [@@deriving sexp, compare]
 
   include Comparable.S with type t := t
                  
@@ -93,7 +93,7 @@ module Specification : sig
   type t = {
     _constraint : Term.t;
     sorts : Sort.t Variable.Map.t;
-  } with sexp
+  } [@@deriving sexp]
 
   include Comparable.S with type t := t
   include Equal.S with type t := t

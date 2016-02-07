@@ -6,7 +6,7 @@ open Util
 
 module StaticDistance = struct
   module T = struct
-    type t = int * int with compare, sexp
+    type t = int * int [@@deriving compare, sexp]
   end
 
   include T
@@ -40,7 +40,7 @@ end
 
 module Symbol = struct
   module T = struct
-    type t = int with sexp
+    type t = int [@@deriving sexp]
     let (compare: t -> t -> int) = Int.compare
   end
 
@@ -56,14 +56,14 @@ module Symbol = struct
     match Int.Table.find names s with
     | Some name -> name
     | None -> failwiths (sprintf "BUG: Looking up name of symbol '%d' failed." s)
-                names <:sexp_of<string Int.Table.t>>
+                names [%sexp_of:string Int.Table.t]
   
   let create (name: string) : t = begin
     let id = incr counter; !counter in
     match Int.Table.add names ~key:id ~data:name with
     | `Ok -> id
     | `Duplicate -> failwiths "BUG: Symbol counter overflowed." (names, !counter)
-                      <:sexp_of<string Int.Table.t * int>>
+                      [%sexp_of:string Int.Table.t * int]
   end
 
   let sexp_of_t (s: t) : Sexp.t = Sexp.Atom (to_string s)
@@ -92,7 +92,7 @@ module Hole = struct
     ctx : Type.t StaticDistance.Map.t;
     type_ : Type.t;
     symbol : Symbol.t;
-  } with sexp, compare
+  } [@@deriving sexp, compare]
 
   let counter = ref 0
   
@@ -118,7 +118,7 @@ module Skeleton = struct
       type t = 
         | StaticDistance of StaticDistance.t
         | Name of string
-      with compare, sexp
+      [@@deriving compare, sexp]
     end
 
     include T
@@ -136,7 +136,7 @@ module Skeleton = struct
     | Apply_h of ('a t * ('a t list)) * 'a
     | Op_h of (Expr.Op.t * ('a t list)) * 'a
     | Hole_h of Hole.t * 'a
-  with compare, sexp
+  [@@deriving compare, sexp]
 
   let rec equal ~equal:e h1 h2 = match h1, h2 with
     | Num_h (x1, s1), Num_h (x2, s2) -> Int.equal x1 x2 && e s1 s2
@@ -354,14 +354,14 @@ module Specification = struct
   module Examples = struct
     module Input = struct
       module T = struct
-        type t = Ast.value StaticDistance.Map.t with sexp, compare
+        type t = Ast.value StaticDistance.Map.t [@@deriving sexp, compare]
       end
       include T
       include Comparable.Make(T)
     end
 
-    type example = (Input.t * Ast.value) with sexp, compare
-    type t = example list with sexp, compare
+    type example = (Input.t * Ast.value) [@@deriving sexp, compare]
+    type t = example list [@@deriving sexp, compare]
 
     let of_list exs =
       let module I = Input in
@@ -387,14 +387,14 @@ module Specification = struct
   module FunctionExamples = struct
     module Input = struct
       module T = struct
-        type t = Ast.value StaticDistance.Map.t * Ast.value list with sexp, compare
+        type t = Ast.value StaticDistance.Map.t * Ast.value list [@@deriving sexp, compare]
       end
       include T
       include Comparable.Make(T)
     end
 
-    type example = (Input.t * Ast.value) with sexp, compare
-    type t = example list with sexp, compare
+    type example = (Input.t * Ast.value) [@@deriving sexp, compare]
+    type t = example list [@@deriving sexp, compare]
 
     let of_list exs =
       let module I = Input in
@@ -419,7 +419,7 @@ module Specification = struct
     | Top
     | Examples of Examples.t
     | FunctionExamples of FunctionExamples.t
-  with compare, sexp
+  [@@deriving compare, sexp]
 
   let hash = Hashtbl.hash
   let compare = compare_t
@@ -510,7 +510,7 @@ module Hypothesis = struct
   type kind =
     | Abstract
     | Concrete
-  with sexp
+  [@@deriving sexp]
 
   type t = {
     skeleton : skeleton Hashcons.hash_consed;
@@ -549,10 +549,10 @@ module Hypothesis = struct
         List [ Atom "kind"; kind_s ];
         List [ Atom "holes"; holes_s ];
       ] -> {
-        skeleton = Table.hashcons table (<:of_sexp<Sp.t Sk.t>> skel_s);
+        skeleton = Table.hashcons table ([%of_sexp:Sp.t Sk.t] skel_s);
         cost = Int.t_of_sexp cost_s;
         kind = kind_of_sexp kind_s;
-        holes = <:of_sexp<(Hole.t * Sp.t) list>> holes_s;
+        holes = [%of_sexp:(Hole.t * Sp.t) list] holes_s;
       }
     | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
 

@@ -156,7 +156,7 @@ struct
   end
 
   module IntPairSet = Set.Make(struct
-      type t = int * int with sexp, compare
+      type t = int * int [@@deriving sexp, compare]
     end)
 
   type perf_counters = {
@@ -275,7 +275,7 @@ module StringMap = Map.Make(String)
 module Ctx = struct
   type 'a t =
     'a StringMap.t ref
-  with compare, sexp
+  [@@deriving compare, sexp]
     
   exception UnboundError of string
 
@@ -407,7 +407,7 @@ module KTree = struct
   type 'a t =
     | Leaf of 'a
     | Node of 'a * 'a t list
-  with sexp, compare
+  [@@deriving sexp, compare]
 
   let value = function
     | Leaf x
@@ -430,7 +430,7 @@ module Tree = struct
   type 'a t =
     | Empty
     | Node of 'a * 'a t list
-  with compare, sexp
+  [@@deriving compare, sexp]
 
   let rec to_string t ~str =
     match t with

@@ -6,7 +6,7 @@ open Hypothesis
 module Spec = Component.Specification
 
 module Rule = struct
-  type t = Symbol.t * Spec.t * (Symbol.t list) with sexp, compare
+  type t = Symbol.t * Spec.t * (Symbol.t list) [@@deriving sexp, compare]
 
   let start_state (q, _, _) = q
   let spec (_, s, _) = s
@@ -24,7 +24,7 @@ module Constrained = struct
     initial_states : Symbol.Set.t;
     components : C.Set.t;
     rules : Rule.t list;
-  } with sexp, compare
+  } [@@deriving sexp, compare]
 
   let equal a1 a2 = (compare a1 a2 = 0)
   let to_string a = Sexp.to_string_hum (sexp_of_t a)
@@ -32,7 +32,7 @@ module Constrained = struct
   let create states initial_states components rules =
     if not (Set.subset initial_states states) then
       failwiths "Initial states not a subset of states."
-        (states, initial_states) <:sexp_of<String.Set.t * String.Set.t>>
+        (states, initial_states) [%sexp_of:String.Set.t * String.Set.t]
     else
       let (states, symbol_map) = String.Set.fold states
           ~init:(Symbol.Set.empty, String.Map.empty) ~f:(fun (ss, m) st ->
@@ -131,7 +131,7 @@ module Constrained = struct
             | type_ ->
               if List.length (Rule.end_states r) > 0 then
                 failwiths "Number of output states does not match component arity."
-                  (r, c) <:sexp_of<Rule.t * C.t>>
+                  (r, c) [%sexp_of:Rule.t * C.t]
               else
                 Infer.Unifier.of_types c.C.type_ hole.Hole.type_ >>| fun unifier ->
                 let hypo = H.id_name cm c.C.name Sp.Top in
@@ -160,7 +160,7 @@ module Constrained = struct
 
   module SymbolPair = struct
     module T = struct
-      type t = Symbol.t * Symbol.t with compare, sexp
+      type t = Symbol.t * Symbol.t [@@deriving compare, sexp]
     end
 
     include Comparable.Make(T)

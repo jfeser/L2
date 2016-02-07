@@ -17,7 +17,7 @@ let of_string_exn (s: string) : t =
 
 let of_string (s: string) : t Or_error.t =
   try Ok (of_string_exn s) with
-  | ParseError s -> error "Parsing Example.t failed." s <:sexp_of<string>>
+  | ParseError s -> error "Parsing Example.t failed." s [%sexp_of:string]
 
 (** Convert an example to a string. *)
 let to_string (ex: t) : string =

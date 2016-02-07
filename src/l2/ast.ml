@@ -4,7 +4,7 @@ open Collections
 
 exception ParseError of string
 
-type id = string with compare, sexp
+type id = string [@@deriving compare, sexp]
 
 (** Represents the type of a value or expression. *)
 type typ =
@@ -21,7 +21,7 @@ and var_typ =
   | Link of typ
   | Quant of string
 and level = int
-with compare, sexp
+[@@deriving compare, sexp]
 
 type op =
   | Plus
@@ -46,7 +46,7 @@ type op =
   | Tree
   | Value
   | Children
-  with compare, sexp
+  [@@deriving compare, sexp]
 
 type expr =
   [ `Num of int
@@ -58,10 +58,10 @@ type expr =
   | `Lambda of id list * expr
   | `Apply of expr * (expr list)
   | `Op of op * (expr list)
-  ] with compare, sexp
+  ] [@@deriving compare, sexp]
 
-type example = expr * expr with compare, sexp
-type constr = expr * (id list) with compare, sexp
+type example = expr * expr [@@deriving compare, sexp]
+type constr = expr * (id list) [@@deriving compare, sexp]
 
 type value = [
   | `Num of int
@@ -70,4 +70,4 @@ type value = [
   | `Tree of value Tree.t
   | `Closure of expr * (value Ctx.t)
   | `Unit
-] with compare, sexp
+] [@@deriving compare, sexp]

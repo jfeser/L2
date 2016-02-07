@@ -14,10 +14,10 @@ module Type0 = struct
   type const = const_typ =
     | Num_t
     | Bool_t
-  with compare, sexp
+  [@@deriving compare, sexp]
 
   type level = int
-  with compare, sexp
+  [@@deriving compare, sexp]
 
   type t = typ =
     | Const_t of const
@@ -29,7 +29,7 @@ module Type0 = struct
     | Free of int * level
     | Link of t
     | Quant of string
-  with compare, sexp
+  [@@deriving compare, sexp]
 
   let equal t1 t2 = compare t1 t2 = 0
 
@@ -123,7 +123,7 @@ module TypedExpr = struct
     | Lambda of (id list * t) * Type0.t
     | Apply of (t * (t list)) * Type0.t
     | Op of (Op.t * (t list)) * Type0.t
-  with compare, sexp
+  [@@deriving compare, sexp]
 
   let normalize (expr: t) : t =
     let count = ref (-1) in
@@ -204,7 +204,7 @@ module TypedExprMap = Core.Std.Map.Make(TypedExpr)
     can be applied to a type to fill in some or all of its free type
     variables. *)
 module Unifier = struct
-  type t = Type0.t IntMap.t with sexp
+  type t = Type0.t IntMap.t [@@deriving sexp]
 
   let empty = IntMap.empty
 
@@ -489,7 +489,7 @@ let typed_expr_of_string (s: string) : TypedExpr.t =
 (** Return a list of names that are free in the given expression,
     along with their types. *)
 module IdTypeSet = Set.Make(struct
-    type t = id * typ with compare, sexp
+    type t = id * typ [@@deriving compare, sexp]
   end)
 
 let stdlib_names = Ctx.keys stdlib_tctx |> String.Set.of_list
@@ -548,7 +548,7 @@ module ImmutableType = struct
       | Arrow_i of t list * t
       | Quant_i of string
       | Free_i of int * level
-    with compare, sexp
+    [@@deriving compare, sexp]
 
     let hash = Hashtbl.hash
   end

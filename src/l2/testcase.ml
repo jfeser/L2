@@ -10,7 +10,7 @@ type t = {
   case : case;
 }
 
-let json_error str json = Or_error.error str (Json.pretty_to_string json) <:sexp_of<string>>
+let json_error str json = Or_error.error str (Json.pretty_to_string json) [%sexp_of:string]
 
 let examples_of_json j =
   let open Or_error.Monad_infix in
@@ -44,7 +44,7 @@ let of_json j =
       "contents", contents;
     ] -> begin match kind with
       | "examples" -> examples_of_json contents >>| fun case -> { name; desc; case; }
-      | _ -> error "Unexpected kind." (kind, Json.pretty_to_string j) <:sexp_of<string * string>>
+      | _ -> error "Unexpected kind." (kind, Json.pretty_to_string j) [%sexp_of:string * string]
     end
   | j -> json_error "Test case is malformed." j
 

@@ -50,7 +50,7 @@ module Memoizer = struct
         ctx : Type.t StaticDistance.Map.t;
         type_ : Type.t;
         symbol : Symbol.t;
-      } with compare, sexp
+      } [@@deriving compare, sexp]
 
       let normalize_free ctx t =
         let open Type in
@@ -81,7 +81,7 @@ module Memoizer = struct
     type t = {
       hole : Hole_without_id.t;
       spec : Specification.t;
-    } with compare, sexp
+    } [@@deriving compare, sexp]
 
     let hash = Hashtbl.hash
 
@@ -97,7 +97,7 @@ module Memoizer = struct
     type t = {
       hypotheses : (Hypothesis.t * Unifier.t) list CostTable.t;
       generalizations : (Hypothesis.t * Unifier.t) list Lazy.t;
-    } with sexp
+    } [@@deriving sexp]
   end
 
   type t = {

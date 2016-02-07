@@ -7,10 +7,10 @@ open Util
 
 module Map = Core.Std.Map.Make(
   struct
-    type t = expr with compare, sexp
+    type t = expr [@@deriving compare, sexp]
   end)
 
-type t = expr with compare, sexp
+type t = expr [@@deriving compare, sexp]
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
@@ -22,7 +22,7 @@ module Op = struct
       let compare = compare_op
     end)
 
-  type t = op with compare, sexp
+  type t = op [@@deriving compare, sexp]
 
   (** Type for storing operator metadata. *)
   type metadata = {
@@ -166,7 +166,7 @@ let of_string_exn (s: string) : t =
 
 let of_string (s: string) : t Or_error.t =
   try Ok (of_string_exn s) with
-  | ParseError s -> error "Parsing Expr.t failed." s <:sexp_of<string>>
+  | ParseError s -> error "Parsing Expr.t failed." s [%sexp_of:string]
 
 (** Convert an expression to a string. *)
 let rec to_string (expr: t) : string =

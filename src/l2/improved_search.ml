@@ -55,19 +55,19 @@ module L2_Deduction : Deduction_intf = struct
   module Sk = Skeleton
 
   let type_err name type_ =
-    failwiths "Unexpected type for return value of function." (name, type_) <:sexp_of<id * Type.t>>
+    failwiths "Unexpected type for return value of function." (name, type_) [%sexp_of:id * Type.t]
 
   let spec_err name spec =
-    failwiths "Unexpected spec for return value of function." (name, spec) <:sexp_of<id * Sp.t>>
+    failwiths "Unexpected spec for return value of function." (name, spec) [%sexp_of:id * Sp.t]
 
   let input_err name inp =
-    failwiths "Unexpected input value for function." (name, inp) <:sexp_of<id * value>>
+    failwiths "Unexpected input value for function." (name, inp) [%sexp_of:id * value]
 
   let ret_err name ret =
-    failwiths "Unexpected return value of function." (name, ret) <:sexp_of<id * value>>
+    failwiths "Unexpected return value of function." (name, ret) [%sexp_of:id * value]
 
   let lookup_err name id =
-    failwiths "Variable name not present in context." (name, id) <:sexp_of<id * StaticDistance.t>>
+    failwiths "Variable name not present in context." (name, id) [%sexp_of:id * StaticDistance.t]
 
   module type Deduce_2_intf = sig
       val name : string

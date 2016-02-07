@@ -180,7 +180,7 @@ type result =
   | Op_r of Expr.Op.t * result list
   | Symbol_r of Hole.Id.t
   | Closure_r of Specification.t Skeleton.t * result StaticDistance.Map.t ref
-with compare, sexp
+[@@deriving compare, sexp]
 
 let rec result_of_value = function
   | `Bool x -> Bool_r x
@@ -213,7 +213,7 @@ let skeleton_of_result r =
 
 module PathContext = struct
   module PathConditionMap = Map.Make(struct
-      type t = result list with compare, sexp
+      type t = result list [@@deriving compare, sexp]
     end)
 
   type t = result StaticDistance.Map.t PathConditionMap.t

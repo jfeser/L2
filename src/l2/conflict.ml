@@ -25,13 +25,13 @@ module Sp = Hypothesis.Specification
 *)
 let spec_tree_of_skeleton (components : S.t String.Map.t) (s : 'a Sk.t) : S.t KTree.t Or_error.t =
   let unexpected_skeleton_err s =
-    error "Unexpected skeleton type." s <:sexp_of<Hypothesis.Specification.t Sk.t>>
+    error "Unexpected skeleton type." s [%sexp_of:Hypothesis.Specification.t Sk.t]
   in
 
   let lookup_component name =
     match String.Map.find components name with
     | Some spec -> Ok spec
-    | None -> error "No specification for component." name <:sexp_of<string>>
+    | None -> error "No specification for component." name [%sexp_of:string]
   in
 
   let spec_of_skeleton_node = function
@@ -109,7 +109,7 @@ let rename_spec_tree t =
 
   rename t
 
-type location = int list * int with sexp
+type location = int list * int [@@deriving sexp]
 
 (** Requires: 't' is a tree of specifications. 
 
@@ -224,7 +224,7 @@ let prune_spec_tree spec spec_tree =
         match Int.Map.find id_to_loc id with
         | Some loc -> loc
         | None -> failwiths "BUG: Core contains a boolean with no associated location."
-                    (id, id_to_loc) <:sexp_of<int * location Int.Map.t>>)
+                    (id, id_to_loc) [%sexp_of:int * location Int.Map.t])
     in
 
     (* Filter the original spec tree to only contain clauses that

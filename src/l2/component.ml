@@ -48,7 +48,7 @@ module Sort = struct
     | Bool
     | List
     | String
-  with sexp, compare
+  [@@deriving sexp, compare]
 
   open Or_error.Monad_infix
 
@@ -72,7 +72,7 @@ module Sort = struct
     | [] -> Or_error.error_string "The empty list is not well sorted."
     | vs -> List.map vs ~f:of_value |> Or_error.all >>= fun sorts -> 
       if List.all_equal sorts then Ok (List.hd_exn sorts) else
-        error "Values are not well sorted." vs <:sexp_of<Ast.value list>>
+        error "Values are not well sorted." vs [%sexp_of:Ast.value list]
   
   let to_z3 zctx = function
     | Int -> Z3_Defs.Sorts.int zctx
@@ -87,7 +87,7 @@ module Variable = struct
       | Free of string
       | Input of int
       | Output
-    with sexp, compare
+    [@@deriving sexp, compare]
   end
 
   include T
@@ -104,7 +104,7 @@ module Constant = struct
     | Bool of bool
     | Int of int
     | Nil
-  with sexp, compare
+  [@@deriving sexp, compare]
   
   let to_z3 zctx c =
     let err c = error "Unexpected constant in constraint." c sexp_of_t in
@@ -121,7 +121,7 @@ module Term = struct
         | Constant of Constant.t
         | Variable of Variable.t
         | Apply of string * t list
-    with sexp, compare
+    [@@deriving sexp, compare]
   end
 
   include T
@@ -136,7 +136,7 @@ module Term = struct
                       
     | Variable v -> begin match V.Map.find ctx v with
         | Some x -> Ok x
-        | None -> error "Unbound variable." (v, ctx) <:sexp_of<V.t * t V.Map.t>>
+        | None -> error "Unbound variable." (v, ctx) [%sexp_of:V.t * t V.Map.t]
       end
       
     | Apply (f, args) as apply ->
@@ -144,7 +144,7 @@ module Term = struct
       Or_error.all args >>= fun args -> begin
         let int_int_bool t1 op t2 = match t1, t2 with
           | Constant (C.Int x1), Constant (C.Int x2) -> Ok (Constant (C.Bool (op x1 x2)))
-          | _ -> error "Unexpected arguments." (f, args) <:sexp_of<string * t list>>
+          | _ -> error "Unexpected arguments." (f, args) [%sexp_of:string * t list]
         in
 
         match f, args with
@@ -203,7 +203,7 @@ module Term = struct
     | `List x ->
       List.map x ~f:of_value
       |> List.fold_right ~init:(Constant C.Nil) ~f:(fun e a -> Apply ("Cons", [e; a]))
-    | v -> failwiths "Unsupported value." v <:sexp_of<Ast.value>>
+    | v -> failwiths "Unsupported value." v [%sexp_of:Ast.value]
 
   let rec to_z3 sorts zctx t =
     let z3_app = Z3.FuncDecl.apply in
@@ -217,7 +217,7 @@ module Term = struct
               let z3_sort = Sort.to_z3 zctx sort in
               Ok (V.to_z3 zctx z3_sort var)
             | None -> error "No sort available for variable." (var, sorts)
-                        <:sexp_of<V.t * Sort.t V.Map.t>>
+                        [%sexp_of:V.t * Sort.t V.Map.t]
           end
         | Apply (func, args) ->
           List.map args ~f:(to_z3 sorts zctx) |> Or_error.all >>= fun z3_args ->
@@ -229,7 +229,7 @@ module Term = struct
             | "Add", [x1; x2] -> Ok (Z3.Arithmetic.mk_add zctx [x1; x2])
             | "Eq", [x1; x2] -> Ok (Z3.Boolean.mk_eq zctx x1 x2)
             | "Gt", [x1; x2] -> Ok (Z3.Arithmetic.mk_gt zctx x1 x2)
-            | _ -> error "Unexpected function or arguments." (func, args) <:sexp_of<string * t list>>
+            | _ -> error "Unexpected function or arguments." (func, args) [%sexp_of:string * t list]
           end)
 
     include Comparable.Make(T)
@@ -268,7 +268,7 @@ module Specification = struct
     type t = {
       _constraint : Term.t;
       sorts : Sort.t Variable.Map.t;
-    } with sexp, compare
+    } [@@deriving sexp, compare]
   end
 
   include T
@@ -314,7 +314,7 @@ module Specification = struct
       try Ok (Component_parser.specification_eof Component_lexer.token lexbuf) with
       | Component_parser.Error -> error "Failed to parse." s String.sexp_of_t
       | Component_lexer.SyntaxError err ->
-        error "Failed to parse." (s, err) <:sexp_of<string * string>>
+        error "Failed to parse." (s, err) [%sexp_of:string * string]
       | Parsing.Parse_error -> error "Failed to parse." s String.sexp_of_t
     in
     parsed >>= fun (_constraint, sorts_list) ->
@@ -417,13 +417,13 @@ module Specification = struct
     match Z3.Solver.check solver [] with
     | Z3.Solver.SATISFIABLE -> Ok false
     | Z3.Solver.UNSATISFIABLE -> Ok true
-    | Z3.Solver.UNKNOWN -> error "Solver returned unknown." (s1, s2) <:sexp_of<t * t>>
+    | Z3.Solver.UNKNOWN -> error "Solver returned unknown." (s1, s2) [%sexp_of:t * t]
                  
   let conjoin s1 s2 =
     if Variable.Map.equal Sort.equal s1.sorts s2.sorts then
       Ok { _constraint = Te.Apply ("And", clauses s1 @ clauses s2); sorts = s1.sorts }
     else
-      error "Sorts are not compatible." (s1, s2) <:sexp_of<t * t>>
+      error "Sorts are not compatible." (s1, s2) [%sexp_of:t * t]
 
   include Comparable.Make(T)
 end
@@ -434,7 +434,7 @@ module T = struct
     arity : int;
     spec : Specification.t;
     type_ : Type.t;
-  } with compare, sexp
+  } [@@deriving compare, sexp]
 end
 
 include T

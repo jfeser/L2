@@ -11,7 +11,7 @@ exception Unknown
 type term =
   | Var of id
   | Term of id * term list
-with sexp
+[@@deriving sexp]
 
 type sterm =
   | Cons of sterm * sterm
@@ -19,7 +19,7 @@ type sterm =
   | V of id (* Variable *)
   | U of id * bool (* Volatile? variable *)
 
-type substitution = (id * term) list with sexp
+type substitution = (id * term) list [@@deriving sexp]
 
 let rec sterm_to_string (s: sterm) : string =
   let ts = sterm_to_string in

@@ -109,7 +109,7 @@ let eval ?recursion_limit ctx expr =
     if limit = 0 then begin
       match recursion_limit with
       | Some l -> 
-        let err = Error.create "Exceeded recursion limit." (l, expr) <:sexp_of<int * Expr.t>> in
+        let err = Error.create "Exceeded recursion limit." (l, expr) [%sexp_of:int * Expr.t] in
         raise (RuntimeError err)
       | None -> failwith "BUG: No recursion limit specified but limit = 0."
     end
@@ -241,7 +241,7 @@ module ExprValue = struct
     | `Lambda of id list * t
     | `Apply of t * (t list)
     | `Op of op * (t list)
-  ] with compare, sexp
+  ] [@@deriving compare, sexp]
 
   let rec to_string (e: t) : string =
     let list_to_string l = String.concat ~sep:" " (List.map ~f:to_string l) in
