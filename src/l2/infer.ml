@@ -113,17 +113,21 @@ let unify_error ?msg t1 t2 =
           (Type0.to_string t1) (Type0.to_string t2)))
 
 module TypedExpr = struct
-  type t =
-    | Num of int * Type0.t
-    | Bool of bool * Type0.t
-    | List of t list * Type0.t
-    | Tree of t Tree.t * Type0.t
-    | Id of id * Type0.t
-    | Let of (id * t * t) * Type0.t
-    | Lambda of (id list * t) * Type0.t
-    | Apply of (t * (t list)) * Type0.t
-    | Op of (Op.t * (t list)) * Type0.t
-  [@@deriving compare, sexp]
+  module T = struct
+    type t =
+      | Num of int * Type0.t
+      | Bool of bool * Type0.t
+      | List of t list * Type0.t
+      | Tree of t Tree.t * Type0.t
+      | Id of id * Type0.t
+      | Let of (id * t * t) * Type0.t
+      | Lambda of (id list * t) * Type0.t
+      | Apply of (t * (t list)) * Type0.t
+      | Op of (Op.t * (t list)) * Type0.t
+      [@@deriving compare, sexp]
+  end
+
+  include T
 
   let normalize (expr: t) : t =
     let count = ref (-1) in
@@ -196,9 +200,9 @@ module TypedExpr = struct
 
   (** Convert a typed expression to a string. *)
   let to_string (e: t) : string = Expr.to_string (to_expr e)
-end
 
-module TypedExprMap = Core.Std.Map.Make(TypedExpr)
+  include Comparable.Make(T)
+end
 
 (** A unifier is a mapping from free type variables to types. It
     can be applied to a type to fill in some or all of its free type

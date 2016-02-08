@@ -176,7 +176,7 @@ let infer_length_constraint
     to use in its lemmas. Return a tuple, (name, lemmas). *)
 let generate_lemmas
     (fresh_name: unit -> string)
-    (ctx: Z3.Expr.expr TypedExprMap.t ref)
+    (ctx: Z3.Expr.expr TypedExpr.Map.t ref)
     (zctx: Z3.context)
     (expr: TypedExpr.t) : Z3.Expr.expr * (Z3.Expr.expr list) =
   let name_of_expr e =
@@ -190,11 +190,11 @@ let generate_lemmas
 
   let rec g ctx zctx expr =
     let name =
-      match TypedExprMap.find !ctx expr with
+      match TypedExpr.Map.find !ctx expr with
       | Some n -> n
       | None ->
         let z3_name = name_of_expr expr in
-        ctx := TypedExprMap.add !ctx ~key:expr ~data:z3_name; z3_name
+        ctx := TypedExpr.Map.add !ctx ~key:expr ~data:z3_name; z3_name
     in
 
     let open TypedExpr in
@@ -488,7 +488,7 @@ let check_constraints
 
        (* Store mappings between the constants used in the examples and
           Z3 names in a shared table. *)
-       let example_expr_to_z3 = ref TypedExprMap.empty in
+       let example_expr_to_z3 = ref TypedExpr.Map.empty in
 
        let assertions = List.concat_map examples ~f:(fun (ex: example) ->
            let _, input_args, output = Example.to_triple ex in
@@ -514,7 +514,7 @@ let check_constraints
            let ctx =
              ref (List.fold_left
                     ~f:(fun ctx (arg, t, (z3arg, _)) ->
-                        TypedExprMap.add ctx ~key:(Id (arg, t)) ~data:z3arg)
+                        TypedExpr.Map.add ctx ~key:(Id (arg, t)) ~data:z3arg)
                     ~init:!example_expr_to_z3
                     (zip3_exn args args_t named_input_asserts))
            in

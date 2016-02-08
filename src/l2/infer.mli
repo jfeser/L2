@@ -75,17 +75,15 @@ module TypedExpr : sig
     | Apply of (t * t list) * Type.t
     | Op of (Expr.Op.t * t list) * Type.t
 
-  val t_of_sexp : Sexp.t -> t
-  val sexp_of_t : t -> Sexp.t
-  val compare : t -> t -> int
+  include Comparable.S with type t := t
+  include Sexpable.S with type t := t
+
   val normalize : t -> t
   val map : f:(Type.t -> Type.t) -> t -> t
   val to_expr : t -> Expr.t
   val to_type : t -> Type.t
   val to_string : t -> string
 end
-
-module TypedExprMap : Map.S with type Key.t = TypedExpr.t
 
 module Unifier : sig
   type t
