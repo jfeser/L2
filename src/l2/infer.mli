@@ -24,9 +24,9 @@ module Type : sig
     | Free of int * level
     | Link of typ
     | Quant of string
+
+  include Sexpable.S with type t := t
   
-  val t_of_sexp : Sexp.t -> t
-  val sexp_of_t : t -> Sexp.t
   val compare : t -> t -> int
   val equal : t -> t -> bool
   val nesting_depth : t -> int
@@ -53,10 +53,10 @@ module ImmutableType : sig
     | Quant_i of string
     | Free_i of int * level
 
+  include Sexpable.S with type t := t
+  
   module Table : Hashtbl.S with type key = t
 
-  val sexp_of_t : t -> Sexp.t
-  val t_of_sexp : Sexp.t -> t
   val compare : t -> t -> int
   val hash : t -> int
   val of_type : Type.t -> t
@@ -87,6 +87,9 @@ end
 
 module Unifier : sig
   type t
+
+  include Sexpable.S with type t := t
+  
   val empty : t
   val apply : t -> Type.t -> Type.t
   val compose : t -> t -> t
@@ -96,8 +99,6 @@ module Unifier : sig
   val of_types : Type.t -> Type.t -> t option
   val to_alist : t -> (int * Type.t) list
   val of_alist_exn : (int * Type.t) list -> t
-  val t_of_sexp : Sexp.t -> t
-  val sexp_of_t : t -> Sexp.t
   val to_string : t -> string
 end
 

@@ -23,7 +23,6 @@ let default = {
 }  
 
 let of_string (s: string) : t = t_of_sexp (Sexp.of_string (String.strip s))
-
 let to_string (c: t) : string = Sexp.to_string_hum (sexp_of_t c)
 
 let config = ref default

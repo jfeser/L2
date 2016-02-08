@@ -1,3 +1,5 @@
+open Core.Std
+
 (** Contains runtime configuration for L2. *)
 type t = {
   (** The logging verbosity. (deprecated) *)
@@ -26,11 +28,8 @@ type t = {
 (** The default configuration. *)
 val default : t
 
-val t_of_sexp : Sexplib.Type.t -> t
-val sexp_of_t : t -> Sexplib.Type.t
-
-val of_string : bytes -> t
-val to_string : t -> bytes
+include Sexpable.S with type t := t
+include Stringable.S with type t := t
 
 (** The current configuration. *)
 val config : t ref
