@@ -260,13 +260,16 @@ module Spec = struct
           match Ctx.lookup_exn vctx list_name with
           | `List [x] -> Some ((apply_lambda init_expr x, result), vctx)
           | `List (r::rs) ->
-            let x::xs = List.rev (r::rs) in
-            let acc_result_m = List.find_map examples ~f:(fun ((_, result), vctx) ->
-                match Ctx.lookup_exn vctx list_name with
-                | `List rs' when xs = (List.rev rs') -> Some result
-                | _ -> None)
-            in
-            Option.map acc_result_m ~f:(fun acc_result -> (apply_lambda acc_result x, result), vctx)
+            begin match List.rev (r::rs) with
+              | x::xs -> 
+                let acc_result_m = List.find_map examples ~f:(fun ((_, result), vctx) ->
+                    match Ctx.lookup_exn vctx list_name with
+                    | `List rs' when xs = (List.rev rs') -> Some result
+                    | _ -> None)
+                in
+                Option.map acc_result_m ~f:(fun acc_result -> (apply_lambda acc_result x, result), vctx)
+              | [] -> failwith "BUG: This should never happen."
+            end
           | _ -> None)
       in
       if Example.check ex then

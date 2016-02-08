@@ -271,11 +271,11 @@ module Unifier = struct
     try Some (of_types_exn t1 t2) with TypeError _ -> None
 
   let of_alist_exn = IntMap.of_alist_exn
-  let to_alist = IntMap.to_alist
+  let to_alist = IntMap.to_alist ~key_order:`Decreasing
 
   let relevant_to u t =
     let free_t = Type0.free_vars t in
-    IntMap.filter u ~f:(fun ~key:id ~data:_ -> Int.Set.mem free_t id)
+    IntMap.filteri u ~f:(fun ~key:id ~data:_ -> Int.Set.mem free_t id)
 end
 
 let fresh_free level = Var_t (ref (Free (Fresh.int (), level)))

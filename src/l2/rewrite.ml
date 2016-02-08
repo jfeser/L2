@@ -91,27 +91,27 @@ let rewrite h =
       let func = rewrite func in
       let args = rewrite_all args in
       (match func with
-       | Id_h (Name "concat", s) -> (match args with
+       | Id_h (Id.Name "concat", s) -> (match args with
            | [List_h ([], s)] -> List_h ([], s)
            | [List_h (l, s)] -> List_h (List.filter l ~f:(function
                | List_h ([], _) -> false
                | _ -> true), s)
            | _ -> Apply_h ((func, args), s))
 
-       | Id_h (Name "append", s) -> (match args with
+       | Id_h (Id.Name "append", s) -> (match args with
            | [List_h ([], s); x] | [x; List_h ([], s)] -> x
            | _ -> Apply_h ((func, args), s))
 
-       | Id_h (Name "reverse", s) -> (match args with
+       | Id_h (Id.Name "reverse", s) -> (match args with
            | [List_h ([], s)] -> List_h ([], s)
-           | [Apply_h ((Id_h (Name "reverse", _), [x]), _)] -> x
+           | [Apply_h ((Id_h (Id.Name "reverse", _), [x]), _)] -> x
            | _ -> Apply_h ((func, args), s))
 
-       | Id_h (Name "intersperse", s) -> (match args with
+       | Id_h (Id.Name "intersperse", s) -> (match args with
            | [List_h ([], s); _] -> List_h ([], s)
            | _ -> Apply_h ((func, args), s))
 
-       | Id_h (Name "merge", s) -> (match args with
+       | Id_h (Id.Name "merge", s) -> (match args with
            | [List_h ([], s); _] | [_; List_h ([], s)] -> List_h ([], s)
            | _ -> Apply_h ((func, args), s))
 

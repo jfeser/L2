@@ -309,7 +309,7 @@ module Ctx = struct
       c1 c2
   let map ctx ~f:f = ref (StringMap.map !ctx ~f:f)
   let mapi ctx ~f:f = ref (StringMap.mapi !ctx ~f:f)
-  let filter ctx ~f:f = ref (StringMap.filter !ctx ~f:f)
+  let filter ctx ~f:f = ref (StringMap.filteri !ctx ~f:f)
   let filter_mapi ctx ~f:f = ref (StringMap.filter_mapi !ctx ~f:f)
 
   let equal cmp c1 c2 = StringMap.equal cmp !c1 !c2

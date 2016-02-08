@@ -55,7 +55,7 @@ sort:
 variable:
  | x = INPUT_VAR { Input x }
  | x = FREE_VAR { Free x }
- | x = OUTPUT_VAR { Output }
+ | OUTPUT_VAR { Output }
 
 constant:
  | x = BOOL { Bool x }

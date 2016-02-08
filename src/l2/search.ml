@@ -114,8 +114,6 @@ let rec enumerate
   : TypedExpr.t Sstream.matrix =
   let open Sstream in
 
-  let base_terms = List.map ~f:TypedExpr.to_expr init in
-
   (* Init is finite, so we can construct an init stream by breaking
      init into a list of size classes and returning that list as a
      stream. *)
@@ -132,20 +130,23 @@ let rec enumerate
     let choose (prev_args: TypedExpr.t list) : (TypedExpr.t list) matrix =
       let prev_args_len = List.length prev_args in
 
+      (* Instantiate the argument types in the same context. Free
+         type variables should be shared across arguments. For example,
+         when instantiating the argument types for equals: (a, a) ->
+         bool, both a's should map to the same free type. *)
+      let arg_typs' =
+        let ctx = Ctx.empty () in
+        List.map arg_typs ~f:(instantiate ~ctx:ctx 0)
+      in
+      
       (* Split the argument type list into the types of the
          arguments that have already been selected and the head of
          the list of remaining types (which will be the type of the
          current argument). *)
-      let prev_arg_typs, (current_typ::_) =
-        (* Instantiate the argument types in the same context. Free
-           type variables should be shared across arguments. For example,
-           when instantiating the argument types for equals: (a, a) ->
-           bool, both a's should map to the same free type. *)
-        let arg_typs' =
-          let ctx = Ctx.empty () in
-          List.map arg_typs ~f:(instantiate ~ctx:ctx 0)
-        in
-        List.split_n arg_typs' (List.length prev_args)
+      let prev_arg_typs, current_typ =
+        match List.split_n arg_typs' (List.length prev_args) with
+        | pt, (ct::_) -> pt, ct
+        | _ -> failwith "BUG: Should never happen."
       in
 
       (* Unify the types of the previous arguments with the actual
@@ -198,8 +199,9 @@ let rec enumerate
   let op_matrix op op_typ =
     callable_matrix
       (fun args ->
-         let Arrow_t (_, ret_t) = op_typ in
-         check (TypedExpr.Op ((op, args), ret_t)))
+         match op_typ with
+         | Arrow_t (_, ret_t) -> check (TypedExpr.Op ((op, args), ret_t))
+         | _ -> failwiths "Operator type is not an arrow." op_typ [%sexp_of:Type.t])
       (Expr.Op.cost op)
       (fun ret_typ args -> TypedExpr.Op ((op, args), ret_typ))
       op_typ
@@ -207,8 +209,9 @@ let rec enumerate
   let apply_matrix func func_typ =
     callable_matrix
       (fun args ->
-         let Arrow_t (_, ret_t) = func_typ in
-         check (TypedExpr.Apply ((func, args), ret_t)))
+         match func_typ with
+         | Arrow_t (_, ret_t) -> check (TypedExpr.Apply ((func, args), ret_t))
+         | _ -> failwiths "Function type is not an arrow." func_typ [%sexp_of:Type.t])
       1
       (fun ret_typ args -> TypedExpr.Apply ((func, args), ret_typ))
       func_typ
@@ -427,11 +430,6 @@ let solve_single
          when some of the holes are not filled by an expression. *)
       let init_ctx =
         Ctx.mapi ~f:(fun ~key ~data -> `Id key) spec.Spec.holes
-      in
-
-      let init_tctx =
-        Ctx.merge_right
-          stdlib_tctx (Ctx.map ~f:(fun hole -> hole.signature) spec.Spec.holes)
       in
           
       let check' (name: string) (e: TypedExpr.t) : bool =

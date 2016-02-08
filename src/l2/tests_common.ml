@@ -14,7 +14,7 @@ let assert_equivalent ~sexp expected real =
   in
   let expected_m = to_count_map expected in
   let real_m = to_count_map real in
-  Map.iter expected_m ~f:(fun ~key:k ~data:v ->
+  Map.iteri expected_m ~f:(fun ~key:k ~data:v ->
       let v' = match Map.find real_m k with
         | Some v' -> v'
         | None -> 0
@@ -22,7 +22,7 @@ let assert_equivalent ~sexp expected real =
       if v <> v' then
         assert_failure (sprintf "Expected %d instances of %s but got %d."
                           v (Sexp.to_string_hum k) v'));
-  Map.iter real_m ~f:(fun ~key:k ~data:v ->
+  Map.iteri real_m ~f:(fun ~key:k ~data:v ->
       let v' = match Map.find expected_m k with
         | Some v' -> v'
         | None -> 0

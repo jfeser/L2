@@ -1,6 +1,7 @@
 open Core.Std
 
 open Ast
+open Hypothesis
 
 type id = string
 
@@ -83,11 +84,11 @@ let sterm_of_result r =
     | Bool_r x -> K (if x then "true" else "false")
     | List_r [] -> K "[]"
     | List_r (x::xs) -> Cons (f x, f (List_r xs))
-    | Id_r (StaticDistance sd) -> V (Hypothesis.StaticDistance.to_string sd)
-    | Id_r (Name id) -> V id
+    | Id_r (Skeleton.Id.StaticDistance sd) -> V (StaticDistance.to_string sd)
+    | Id_r (Skeleton.Id.Name id) -> V id
     | Op_r (RCons, [xs; x])
     | Op_r (Cons, [x; xs]) -> Cons (f x, f xs)
-    | Symbol_r id -> V (Hypothesis.Hole.Id.to_string id)
+    | Symbol_r id -> V (Hole.Id.to_string id)
     | Apply_r _ -> V (fresh_name ())
     | Closure_r _
     | Tree_r _
