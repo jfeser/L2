@@ -204,17 +204,17 @@ module TypedExprMap = Core.Std.Map.Make(TypedExpr)
     can be applied to a type to fill in some or all of its free type
     variables. *)
 module Unifier = struct
-  type t = Type0.t IntMap.t [@@deriving sexp]
+  type t = Type0.t Int.Map.t [@@deriving sexp]
 
-  let empty = IntMap.empty
+  let empty = Int.Map.empty
 
-  let equal = IntMap.equal Type0.equal
+  let equal = Int.Map.equal Type0.equal
   let to_string u = Sexp.to_string_hum (sexp_of_t u)
 
   let rec apply (s: t) (t: typ) : typ = match t with
     | Const_t _ | Var_t {contents = Quant _} -> t
     | Var_t {contents = Free (id, _)} ->
-      (match IntMap.find s id with
+      (match Int.Map.find s id with
        | Some t' -> t'
        | None -> t)
     | Var_t {contents = Link t} -> apply s t
@@ -223,9 +223,9 @@ module Unifier = struct
 
   let compose (s1: t) (s2: t) : t =
     let merge outer inner =
-      IntMap.fold ~f:(fun ~key:name ~data:typ m ->
-          IntMap.add ~key:name ~data:typ m) ~init:outer inner
-    in merge s1 (IntMap.map ~f:(fun t -> apply s1 t) s2)
+      Int.Map.fold ~f:(fun ~key:name ~data:typ m ->
+          Int.Map.add ~key:name ~data:typ m) ~init:outer inner
+    in merge s1 (Int.Map.map ~f:(fun t -> apply s1 t) s2)
 
   let rec of_types_exn (t1: typ) (t2: typ) : t =
     (* Check whether the free variable 'id' occurs in type 'typ'. If it
@@ -240,7 +240,7 @@ module Unifier = struct
       | Arrow_t (args, ret) -> List.exists args ~f:(occurs id) || occurs id ret
     in
 
-    if t1 = t2 then IntMap.empty else
+    if t1 = t2 then Int.Map.empty else
       match t1, t2 with
       | Var_t {contents = Link x}, y
       | x, Var_t {contents = Link y} -> of_types_exn x y
@@ -254,28 +254,28 @@ module Unifier = struct
         if occurs id t then
           unify_error t1 t2 ~msg:(Info.of_thunk (fun () ->
               sprintf "Free variable %d occurs in %s." id (Type0.to_string t)))
-        else IntMap.singleton id t
+        else Int.Map.singleton id t
       | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
         let s1 =
-          List.fold2_exn ~init:IntMap.empty args1 args2 ~f:(fun s a1 a2 ->
+          List.fold2_exn ~init:Int.Map.empty args1 args2 ~f:(fun s a1 a2 ->
               compose s (of_types_exn a1 a2))
         in
         let s2 = of_types_exn ret1 ret2 in
         compose s1 s2
       | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
-        List.fold2_exn ~init:IntMap.empty args1 args2 ~f:(fun s a1 a2 ->
+        List.fold2_exn ~init:Int.Map.empty args1 args2 ~f:(fun s a1 a2 ->
             compose s (of_types_exn a1 a2))
       | _ -> unify_error t1 t2
 
   let of_types t1 t2 =
     try Some (of_types_exn t1 t2) with TypeError _ -> None
 
-  let of_alist_exn = IntMap.of_alist_exn
-  let to_alist = IntMap.to_alist ~key_order:`Decreasing
+  let of_alist_exn = Int.Map.of_alist_exn
+  let to_alist = Int.Map.to_alist ~key_order:`Decreasing
 
   let relevant_to u t =
     let free_t = Type0.free_vars t in
-    IntMap.filteri u ~f:(fun ~key:id ~data:_ -> Int.Set.mem free_t id)
+    Int.Map.filteri u ~f:(fun ~key:id ~data:_ -> Int.Set.mem free_t id)
 end
 
 let fresh_free level = Var_t (ref (Free (Fresh.int (), level)))

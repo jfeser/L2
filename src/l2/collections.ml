@@ -269,59 +269,56 @@ struct
     sprintf "Total sets stored: %d\n" (Hashtbl.length i.store)
 end
 
-module IntMap = Core.Std.Map.Make(Int)
-module StringMap = Map.Make(String)
-
 module Ctx = struct
   type 'a t =
-    'a StringMap.t ref
+    'a String.Map.t ref
   [@@deriving compare, sexp]
     
   exception UnboundError of string
 
   (** Return an empty context. *)
-  let empty () : 'a t = ref StringMap.empty
+  let empty () : 'a t = ref String.Map.empty
 
   (** Look up an id in a context. *)
-  let lookup ctx id = StringMap.find !ctx id
+  let lookup ctx id = String.Map.find !ctx id
   let lookup_exn ctx id = match lookup ctx id with
     | Some v -> v
     | None -> raise (UnboundError id)
 
   (** Bind a type or value to an id, returning a new context. *)
-  let bind ctx id data = ref (StringMap.add !ctx ~key:id ~data:data)
+  let bind ctx id data = ref (String.Map.add !ctx ~key:id ~data:data)
   let bind_alist ctx alist =
     List.fold alist ~init:ctx ~f:(fun ctx' (id, data) -> bind ctx' id data)
 
   (** Remove a binding from a context, returning a new context. *)
-  let unbind ctx id = ref (StringMap.remove !ctx id)
+  let unbind ctx id = ref (String.Map.remove !ctx id)
 
   (** Bind a type or value to an id, updating the context in place. *)
-  let update ctx id data = ctx := StringMap.add !ctx ~key:id ~data:data
+  let update ctx id data = ctx := String.Map.add !ctx ~key:id ~data:data
 
   (** Remove a binding from a context, updating the context in place. *)
-  let remove ctx id = ctx := StringMap.remove !ctx id
+  let remove ctx id = ctx := String.Map.remove !ctx id
 
-  let merge c1 c2 ~f:f = ref (StringMap.merge !c1 !c2 ~f:f)
+  let merge c1 c2 ~f:f = ref (String.Map.merge !c1 !c2 ~f:f)
   let merge_right (c1: 'a t) (c2: 'a t) : 'a t =
     merge ~f:(fun ~key v -> match v with
         | `Both (_, v) | `Left v | `Right v -> Some v)
       c1 c2
-  let map ctx ~f:f = ref (StringMap.map !ctx ~f:f)
-  let mapi ctx ~f:f = ref (StringMap.mapi !ctx ~f:f)
-  let filter ctx ~f:f = ref (StringMap.filteri !ctx ~f:f)
-  let filter_mapi ctx ~f:f = ref (StringMap.filter_mapi !ctx ~f:f)
+  let map ctx ~f:f = ref (String.Map.map !ctx ~f:f)
+  let mapi ctx ~f:f = ref (String.Map.mapi !ctx ~f:f)
+  let filter ctx ~f:f = ref (String.Map.filteri !ctx ~f:f)
+  let filter_mapi ctx ~f:f = ref (String.Map.filter_mapi !ctx ~f:f)
 
-  let equal cmp c1 c2 = StringMap.equal cmp !c1 !c2
+  let equal cmp c1 c2 = String.Map.equal cmp !c1 !c2
 
-  let keys ctx = StringMap.keys !ctx
-  let data ctx = StringMap.data !ctx
+  let keys ctx = String.Map.keys !ctx
+  let data ctx = String.Map.data !ctx
 
-  let of_alist alist = ref (StringMap.of_alist alist)
-  let of_alist_exn alist = ref (StringMap.of_alist_exn alist)
-  let of_alist_mult alist = ref (StringMap.of_alist_multi alist)
+  let of_alist alist = ref (String.Map.of_alist alist)
+  let of_alist_exn alist = ref (String.Map.of_alist_exn alist)
+  let of_alist_mult alist = ref (String.Map.of_alist_multi alist)
 
-  let to_alist ctx = StringMap.to_alist !ctx
+  let to_alist ctx = String.Map.to_alist !ctx
   let to_string (ctx: 'a t) (str: 'a -> string) : string =
     to_alist ctx
     |> List.map ~f:(fun (key, value) -> key ^ ": " ^ (str value))
