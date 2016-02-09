@@ -65,14 +65,13 @@ let synth_command =
     +> flag "-c" ~aliases:["--config"] (optional string) ~doc:" read configuration from file"
     +> flag "-d" ~aliases:["--debug"] (optional string) ~doc:" write debugging information to file in JSON format"
     +> flag "-e" ~aliases:["--engine"] (optional_with_default "v1" string) ~doc:" the synthesis algorithm to use"
-    +> flag "-i" no_arg ~doc:" use improved search"
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
     +> flag "-V" ~aliases:["--very-verbose"] no_arg ~doc:" print many progress messages while searching"
     +> flag "-z" ~aliases:["--use-z3"] no_arg ~doc:" use Z3 for pruning"
     +> anon (maybe ("testcase" %: string))
   in
 
-  let run config_file json_file engine_str use_improved_search verbose very_verbose use_solver m_testcase_name () =
+  let run config_file json_file engine_str verbose very_verbose use_solver m_testcase_name () =
     let initial_config = 
       match config_file with
       | Some file -> In_channel.read_all file |> Config.of_string
@@ -85,7 +84,6 @@ let synth_command =
           if very_verbose then 2 else 1
         else 0;
       Config.use_solver;
-      Config.improved_search = use_improved_search;
     };
 
     let module Let_syntax = Or_error.Let_syntax in

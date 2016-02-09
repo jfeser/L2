@@ -21,8 +21,6 @@ type t = {
   max_exhaustive_depth : int;
 
   check_prob : float;
-
-  improved_search: bool;
 }
 
 (** The default configuration. *)
