@@ -11,6 +11,7 @@ PKG ounit
 PKG ppx_sexp_conv
 PKG ppx_compare
 PKG ppx_sexp_value
+PKG ppx_let
 
 EXT here
 EXT ounit
