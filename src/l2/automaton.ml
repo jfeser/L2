@@ -2,6 +2,7 @@ open Core.Std
 
 open Collections
 open Hypothesis
+open Infer
 
 module Spec = Component.Specification
 
@@ -57,7 +58,7 @@ module Constrained = struct
     let any_component_fits spec =
       let rec any_fits errs = function
         | [] -> if List.length errs > 0 then Error (Error.of_list errs) else Ok false
-        | c::cs -> begin match Spec.entails zctx spec c.C.spec with
+        | c::cs -> begin match Spec.entails zctx c.C.spec spec with
             | Ok true -> Ok true
             | Ok false -> any_fits errs cs
             | Error err -> any_fits (err::errs) cs
@@ -98,7 +99,7 @@ module Constrained = struct
   let is_empty zctx a =
     let open Or_error.Monad_infix in
     reduce zctx a >>| fun a' -> (Set.is_empty a'.initial_states, a')
-
+  
   let generalize rules matching_components cost_model hole spec =
     let module H = Hypothesis in
     let module Sp = Specification in
@@ -107,47 +108,48 @@ module Constrained = struct
     let cm = cost_model in
     
     (* Select all rules which match the hole symbol. *)
-    List.filter rules ~f:(fun r -> hole.Hole.symbol = Rule.start_state r) |> 
+    List.filter rules ~f:(fun r -> Symbol.equal hole.Hole.symbol (Rule.start_state r)) |> 
 
     (* For each matching rule, select each matching component and expand. *)
     List.map ~f:(fun r ->
         let components =
           Spec.Map.find matching_components (Rule.spec r)
           |> Option.value ~default:[]
+          |> List.filter ~f:(fun c -> Int.equal c.C.arity (Rule.arity r))
         in
 
+        (* print_endline (Sexp.to_string_hum ([%sexp_of:Component.t list] components)); *)
         List.filter_map components ~f:(fun c ->
-            match c.C.type_ with
-            | Infer.Type.Arrow_t (args_t, ret_t) ->
-              Infer.Unifier.of_types ret_t hole.Hole.type_ >>| fun unifier ->
-              let args =
-                List.map args_t ~f:(fun t -> Infer.Unifier.apply unifier t) |>
-                List.map2_exn (Rule.end_states r) ~f:(fun q t ->
-                    H.hole cm (Hole.create hole.Hole.ctx t q) Sp.Top)
-              in
-              let hypo = H.apply cm (H.id_name cm c.C.name Sp.Top) args spec in
-              (hypo, unifier)
+            match instantiate 0 c.C.type_ with
+            | Type.Arrow_t (args_t, ret_t) ->
+              (* Try to unify the return type of the operator with the type of the hole. *)
+              (Unifier.of_types hole.Hole.type_ ret_t) >>| fun u ->
 
+              (* If unification succeeds, apply the unifier to the rest of the type. *)
+              let args_t = List.map args_t ~f:(Unifier.apply u) in
+              let arg_holes = List.map2_exn args_t (Rule.end_states r) ~f:(fun t sym ->
+                  H.hole cm (Hole.create ~ctx:hole.Hole.ctx t sym) Sp.Top)
+              in
+              (H.apply cm (H.id_name cm c.C.name Sp.Top) arg_holes spec, u)
             | type_ ->
-              if List.length (Rule.end_states r) > 0 then
-                failwiths "Number of output states does not match component arity."
-                  (r, c) [%sexp_of:Rule.t * C.t]
-              else
-                Infer.Unifier.of_types c.C.type_ hole.Hole.type_ >>| fun unifier ->
-                let hypo = H.id_name cm c.C.name Sp.Top in
-                (hypo, unifier)
-          )) |>
-    List.concat_no_order
+              Unifier.of_types hole.Hole.type_ type_ >>| fun u ->
+              (H.id_name cm c.C.name Sp.Top, u)))
+    |> List.concat_no_order
 
   let to_generalizer zctx a cost_model =
     let open Or_error.Monad_infix in
 
-    (* For each rule, select the matching components and create a
-       mapping from specifications to matching components. *)
-    List.map a.rules ~f:(fun r ->
-        let spec = Rule.spec r in
-        List.filter_map (C.Set.to_list a.components) ~f:(fun c ->
-            match Spec.entails zctx spec c.C.spec with
+    let specs =
+      List.map a.rules ~f:(Rule.spec)
+      |> List.dedup ~compare:Spec.compare
+    in
+
+    let component_list = C.Set.to_list a.components in
+
+    (* Create a mapping from specifications to matching components. *)    
+    List.map specs ~f:(fun spec ->
+        List.filter_map component_list ~f:(fun c ->
+            match Spec.entails zctx c.C.spec spec with
             | Ok true -> Some (Ok c)
             | Ok false -> None
             | Error err -> Some (Error err))

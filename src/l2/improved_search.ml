@@ -535,7 +535,7 @@ module L2_Generalizer = struct
                 (* If unification succeeds, apply the unifier to the rest of the type. *)
                 let args_t = List.map args_t ~f:(Unifier.apply u) in
                 let arg_holes = List.map args_t ~f:(fun t ->
-                    H.hole cost_model (Hole.create hole.Hole.ctx t expression) Sp.Top)
+                    H.hole cost_model (Hole.create ~ctx:hole.Hole.ctx t expression) Sp.Top)
                 in
                 H.op cost_model op arg_holes spec, u)
           | _ -> None)
@@ -549,7 +549,7 @@ module L2_Generalizer = struct
                 (* If unification succeeds, apply the unifier to the rest of the type. *)
                 let args_t = List.map args_t ~f:(Unifier.apply u) in
                 let arg_holes = List.map args_t ~f:(fun t ->
-                    H.hole cost_model (Hole.create hole.Hole.ctx t expression) Sp.Top)
+                    H.hole cost_model (Hole.create ~ctx:hole.Hole.ctx t expression) Sp.Top)
                 in
                 H.apply cost_model (H.id_name cost_model func Sp.Top) arg_holes spec, u)
           | _ -> None)
@@ -569,7 +569,7 @@ module L2_Generalizer = struct
             ~f:(fun ctx (arg, arg_t) -> StaticDistance.Map.add ctx ~key:arg ~data:arg_t)
         in
         let lambda =
-          H.lambda cost_model num_args (H.hole cost_model (Hole.create type_ctx ret_t combinator) Sp.Top) spec
+          H.lambda cost_model num_args (H.hole cost_model (Hole.create ~ctx:type_ctx ret_t combinator) Sp.Top) spec
         in
         [ lambda, Unifier.empty ]
       | _ -> []
@@ -588,15 +588,15 @@ module L2_Generalizer = struct
                     | "map", [ t1; t2 ]
                     | "mapt", [ t1; t2 ]
                     | "filter", [ t1; t2 ] -> [
-                        H.hole cost_model (Hole.create hole.Hole.ctx t1 identifier) Sp.Top;
-                        H.hole cost_model (Hole.create hole.Hole.ctx t2 lambda) Sp.Top;
+                        H.hole cost_model (Hole.create ~ctx:hole.Hole.ctx t1 identifier) Sp.Top;
+                        H.hole cost_model (Hole.create ~ctx:hole.Hole.ctx t2 lambda) Sp.Top;
                       ]
                     | "foldr", [ t1; t2; t3 ]
                     | "foldl", [ t1; t2; t3 ]
                     | "foldt", [ t1; t2; t3 ] -> [
-                        H.hole cost_model (Hole.create hole.Hole.ctx t1 identifier) Sp.Top;
-                        H.hole cost_model (Hole.create hole.Hole.ctx t2 lambda) Sp.Top;
-                        H.hole cost_model (Hole.create hole.Hole.ctx t3 base_case) Sp.Top;
+                        H.hole cost_model (Hole.create ~ctx:hole.Hole.ctx t1 identifier) Sp.Top;
+                        H.hole cost_model (Hole.create ~ctx:hole.Hole.ctx t2 lambda) Sp.Top;
+                        H.hole cost_model (Hole.create ~ctx:hole.Hole.ctx t3 base_case) Sp.Top;
                       ]
                     | name, _ -> failwith (sprintf "Unexpected combinator name: %s" name)
                   in
@@ -688,7 +688,7 @@ module type Search_intf = sig
   val search : check_cost:(int -> bool) -> found:(Hypothesis.t -> never_returns) -> Hypothesis.t -> int -> int
 end
 
-let create_memoizer () = Memoizer.create L2_Generalizer.No_lambdas.generalize
+let create_memoizer () = Memoizer.create L2_Generalizer.No_lambdas.generalize cost_model
 
 module Memoized_search : Search_intf = struct
   let memoizer = create_memoizer ()
@@ -733,7 +733,7 @@ module Make_L2_synthesizer (Search: Search_intf) = struct
           List.partition_tf !fresh_hypos ~f:(fun (h, _) -> H.cost h < cost)
         in
         let children = List.concat_map generalizable ~f:(fun (h, _) ->
-            Generalizer.generalize_all L2_Generalizer.No_components.generalize h
+            Generalizer.generalize_all L2_Generalizer.No_components.generalize cost_model h
 
             (* After generalizing, push specifications down the
                skeleton and filter skeletons with Bottom
@@ -761,7 +761,7 @@ module Make_L2_synthesizer (Search: Search_intf) = struct
     in
     let t = Infer.Type.normalize (Example.signature examples) in
     Hypothesis.hole cost_model
-      (Hole.create StaticDistance.Map.empty t L2_Generalizer.Symbols.lambda)
+      (Hole.create t L2_Generalizer.Symbols.lambda)
       (Specification.FunctionExamples exs)
 end
 

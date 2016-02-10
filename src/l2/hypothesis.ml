@@ -99,7 +99,7 @@ module Hole = struct
   let equal h1 h2 = h1.id = h2.id
   let to_string h = Sexp.to_string_hum (sexp_of_t h)
 
-  let create ctx type_ symbol = begin
+  let create ?ctx:(ctx = StaticDistance.Map.empty) type_ symbol = begin
     incr counter;
     { id = !counter; ctx; type_; symbol }
   end
@@ -310,12 +310,12 @@ module CostModel = struct
     bool : bool -> int;
     hole : Hole.t -> int;
     id : Skeleton.Id.t -> int;
-    list : 'a. 'a Skeleton.t list -> int;
-    tree : 'a. 'a Skeleton.t Collections.Tree.t -> int;
-    _let : 'a. 'a Skeleton.t -> 'a Skeleton.t -> int;
-    lambda : 'a. int -> 'a Skeleton.t -> int;
-    apply : 'a. 'a Skeleton.t -> 'a Skeleton.t list -> int;
-    op : 'a. Expr.Op.t -> 'a Skeleton.t list -> int;
+    list : 'a. 'a list -> int;
+    tree : 'a. 'a Collections.Tree.t -> int;
+    _let : 'a. 'a -> 'a -> int;
+    lambda : 'a. int -> 'a -> int;
+    apply : 'a. 'a -> 'a list -> int;
+    op : 'a. Expr.Op.t -> 'a list -> int;
   }
 
   let constant x = {
@@ -575,7 +575,7 @@ module Hypothesis = struct
                Sk.Hole_h (Hole.apply_unifier u hole, spec)))
     }
 
-  let fill_hole hole ~parent:p ~child:c = begin
+  let fill_hole cm hole ~parent:p ~child:c = begin
     if not (List.exists p.holes ~f:(fun (h, _) -> Hole.equal h hole)) then
       failwith "Hypothesis does not contain the specified hole.";
     let holes =
@@ -584,7 +584,7 @@ module Hypothesis = struct
     {
       skeleton = Table.hashcons table
           (Sk.fill_hole hole ~parent:(skeleton p) ~child:(skeleton c));
-      cost = p.cost + c.cost;
+      cost = p.cost + c.cost - cm.CostModel.hole hole;
       kind = if List.length holes = 0 then Concrete else Abstract;
       holes;
     }

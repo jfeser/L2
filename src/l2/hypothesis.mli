@@ -49,7 +49,7 @@ module Hole : sig
   val compare : t -> t -> int
   val equal : t -> t -> bool
   val to_string : t -> string
-  val create : Type.t StaticDistance.Map.t -> Type.t -> Symbol.t -> t
+  val create : ?ctx:Type.t StaticDistance.Map.t -> Type.t -> Symbol.t -> t
   val apply_unifier : Unifier.t -> t -> t
 end
 
@@ -99,12 +99,12 @@ module CostModel : sig
     bool : bool -> int;
     hole : Hole.t -> int;
     id : Skeleton.Id.t -> int;
-    list : 'a. 'a Skeleton.t list -> int;
-    tree : 'a. 'a Skeleton.t Collections.Tree.t -> int;
-    _let : 'a. 'a Skeleton.t -> 'a Skeleton.t -> int;
-    lambda : 'a. int -> 'a Skeleton.t -> int;
-    apply : 'a. 'a Skeleton.t -> 'a Skeleton.t list -> int;
-    op : 'a. Expr.Op.t -> 'a Skeleton.t list -> int;
+    list : 'a. 'a list -> int;
+    tree : 'a. 'a Collections.Tree.t -> int;
+    _let : 'a. 'a -> 'a -> int;
+    lambda : 'a. int -> 'a -> int;
+    apply : 'a. 'a -> 'a list -> int;
+    op : 'a. Expr.Op.t -> 'a list -> int;
   }
 
   val constant : int -> t
@@ -173,7 +173,7 @@ module Hypothesis : sig
   
   val compare_cost : t -> t -> int
   val apply_unifier : t -> Unifier.t -> t
-  val fill_hole : Hole.t -> parent:t -> child:t -> t
+  val fill_hole : CostModel.t -> Hole.t -> parent:t -> child:t -> t
   val verify : t -> bool
 
   val of_skeleton : CostModel.t -> skeleton -> t

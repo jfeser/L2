@@ -58,7 +58,7 @@ module Variable : sig
 
   include Comparable.S with type t := t
 
-  val to_z3 : Z3.context -> Z3.Sort.sort -> t -> Z3.Expr.expr
+  val to_z3 : Z3.context -> Z3.Sort.sort -> t -> Z3.Expr.expr Or_error.t
 end
 
 module Constant : sig

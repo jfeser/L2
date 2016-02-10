@@ -6,7 +6,7 @@ open Infer
 module Generalizer = struct
   type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
   
-  let generalize_all generalize hypo =
+  let generalize_all generalize cost_model hypo =
     let open Hypothesis in
     List.fold_left
       (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
@@ -16,10 +16,9 @@ module Generalizer = struct
               kind c = Abstract || Specification.verify spec (skeleton c))
           in
           List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
-              apply_unifier (fill_hole hole ~parent:p ~child:c) u))
+              apply_unifier (fill_hole cost_model hole ~parent:p ~child:c) u))
           |> List.concat)
 end
-
 
 (** Maps (hole, spec) pairs to the hypotheses that can fill in the hole and match the spec.
 
@@ -103,12 +102,16 @@ module Memoizer = struct
   type t = {
     hole_table : HoleState.t HoleTable.t;
     generalize : Generalizer.t;
+    cost_model : CostModel.t;
   }
 
-  let create g = {
+  let create g cm = {
     generalize = g;
+    cost_model = cm;
     hole_table = HoleTable.create ();
   }
+
+  let to_string m = Sexp.to_string_hum ([%sexp_of:HoleState.t HoleTable.t] m.hole_table)
 
   (** Requires: 'm' is a memoization table. 'hypo' is a
       hypothesis. 'cost' is an integer cost.
@@ -120,16 +123,26 @@ module Memoizer = struct
   let rec fill_holes_in_hypothesis m hypo cost =
     let module H = Hypothesis in
 
+    let holes = H.holes hypo in
+    let total_hole_cost =
+      List.map holes ~f:(fun (h, _) -> m.cost_model.CostModel.hole h)
+      |> List.fold_left ~init:0 ~f:(+)
+    in
+
+    let spine_cost = H.cost hypo - total_hole_cost in
+
     match H.kind hypo with
-    | H.Concrete -> if H.cost hypo = cost then [ (hypo, Unifier.empty) ] else []
-    | H.Abstract -> if H.cost hypo >= cost then [] else
-        let holes = H.holes hypo in
-        
-        (* Determine all possible ways to fill in the holes in this generalization. *)
+    | H.Concrete -> if spine_cost = cost then [ (hypo, Unifier.empty) ] else []
+    | H.Abstract -> if spine_cost >= cost then [] else
+        (* Determine all possible ways to fill in the holes in this
+           generalization. We compute the total cost of all holes because
+           this is the part of the hypothesis that will be replaced when
+           we generalize, so this cost can be discounted. *)
         let all_hole_costs =
           let num_holes = List.length holes in
-          Util.m_partition (cost - H.cost hypo) num_holes
+          Util.m_partition (cost - spine_cost) num_holes
           |> List.concat_map ~f:Util.permutations
+          |> List.dedup ~compare:(List.compare Int.compare)
         in
 
         (* For each list of hole costs... *)
@@ -144,9 +157,9 @@ module Memoizer = struct
                       (* Fill in the hole and merge the unifiers. *)
                       List.map children ~f:(fun (c, c_u) ->
                           let u = Unifier.compose c_u p_u in
-                          let h = H.fill_hole hole ~parent:p ~child:c in
+                          let h = H.fill_hole m.cost_model hole ~parent:p ~child:c in
                           h, u))))
-
+          
         (* Only return concrete hypotheses which match the specification. *)
         |> List.filter ~f:(fun (h, _) -> match H.kind h with
             | H.Concrete -> H.verify h
@@ -188,4 +201,13 @@ module Memoizer = struct
           CostTable.add_exn state.S.hypotheses ~key:cost ~data:hs; hs
       in
       List.map ret ~f:(fun (h, u) -> (h, denormalize_unifier u map))
+
+  let to_sequence m initial_hypo initial_cost =
+    Sequence.unfold ~init:initial_cost ~f:(fun cost ->
+        Some (fill_holes_in_hypothesis m initial_hypo cost, cost + 1))
+
+  let to_flat_sequence m initial_hypo initial_cost =
+    to_sequence m initial_hypo initial_cost
+    |> Sequence.map ~f:Sequence.of_list
+    |> Sequence.concat
 end

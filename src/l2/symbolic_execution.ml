@@ -194,7 +194,7 @@ exception ConversionError
 
 let skeleton_of_result r =
   let module S = Skeleton in
-  let hole = Hole.create StaticDistance.Map.empty Infer.Type.num (Symbol.create "TEST") in
+  let hole = Hole.create Infer.Type.num (Symbol.create "TEST") in
   let rec skeleton_of_result r =
     match r with
     | Num_r x -> S.Num_h (x, ())

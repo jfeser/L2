@@ -93,10 +93,13 @@ module Variable = struct
   include T
   include Comparable.Make(T)
 
-  let to_z3 zctx sort = function
-    | Free x -> Z3.Expr.mk_const_s zctx x sort
-    | Input x -> Z3.Expr.mk_const_s zctx ("i" ^ (Int.to_string x)) sort
-    | Output -> Z3.Expr.mk_const_s zctx "r" sort
+  let to_z3 zctx sort v =
+    let err = Or_error.try_with (fun () -> match v with
+      | Free x -> Z3.Expr.mk_const_s zctx x sort
+      | Input x -> Z3.Expr.mk_const_s zctx ("i" ^ (Int.to_string x)) sort
+      | Output -> Z3.Expr.mk_const_s zctx "r" sort)
+    in
+    Or_error.tag_arg err "Variable.to_z3" v [%sexp_of:t]
 end
 
 module Constant = struct
@@ -208,14 +211,14 @@ module Term = struct
   let rec to_z3 sorts zctx t =
     let z3_app = Z3.FuncDecl.apply in
 
-    Or_error.try_with_join (fun () ->
+    let err = Or_error.try_with_join (fun () ->
         match t with
         | Constant c -> C.to_z3 zctx c
         | Variable var ->
           begin match V.Map.find sorts var with
             | Some sort ->
               let z3_sort = Sort.to_z3 zctx sort in
-              Ok (V.to_z3 zctx z3_sort var)
+              V.to_z3 zctx z3_sort var
             | None -> error "No sort available for variable." (var, sorts)
                         [%sexp_of:V.t * Sort.t V.Map.t]
           end
@@ -227,10 +230,19 @@ module Term = struct
             | "Len", [x] -> Ok (z3_app (Z3_Defs.Functions.len zctx) [x])
             | "Sub", [x1; x2] -> Ok (Z3.Arithmetic.mk_sub zctx [x1; x2])
             | "Add", [x1; x2] -> Ok (Z3.Arithmetic.mk_add zctx [x1; x2])
-            | "Eq", [x1; x2] -> Ok (Z3.Boolean.mk_eq zctx x1 x2)
+            | "Eq", [x1; x2] ->
+              let s1 = Z3.Expr.get_sort x1 in
+              let s2 = Z3.Expr.get_sort x2 in
+              if Z3.Sort.equal s1 s2 then
+                Ok (Z3.Boolean.mk_eq zctx x1 x2)
+              else
+                error "Sorts are not equal."
+                  (Z3.Sort.to_string s1, Z3.Sort.to_string s2) [%sexp_of:string * string]
             | "Gt", [x1; x2] -> Ok (Z3.Arithmetic.mk_gt zctx x1 x2)
             | _ -> error "Unexpected function or arguments." (func, args) [%sexp_of:string * t list]
           end)
+    in
+    Or_error.tag_arg err "Term.to_z3" t [%sexp_of:t]
 
     include Comparable.Make(T)
 end
