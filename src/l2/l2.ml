@@ -10,12 +10,12 @@ let get_json testcase runtime solution config : Json.json =
     | `NoSolution -> ""
   in
   let timers = [
-    "search", Search.timer;
+    "search", V1_engine.timer;
     (* "deduction", Deduction.timer; *)
   ] in
   let counters = [
-    "search", Search.counter;
-    "improved_search", Improved_search.counter;
+    "search", V1_engine.counter;
+    "improved_search", V2_engine.counter;
     (* "deduction", Deduction.counter; *)
   ] in
   `Assoc [
@@ -36,7 +36,7 @@ let synthesize engine testcase =
     begin match engine with
       | `V1 -> 
         let (solutions, runtime) = Util.with_runtime (fun () ->
-            Search.solve ~init:Search.extended_init ~config ~bk:bg exs)
+            V1_engine.solve ~init:V1_engine.extended_init ~config ~bk:bg exs)
         in
         let solution_str =
           Ctx.to_alist solutions
@@ -47,7 +47,7 @@ let synthesize engine testcase =
         (`Solution solution_str, runtime)
         
       | `V2 ->
-        let open Improved_search in
+        let open V2_engine in
         let open Hypothesis in
         let (m_solution, runtime) = Util.with_runtime (fun () ->
             let hypo = L2_Synthesizer.initial_hypothesis exs in

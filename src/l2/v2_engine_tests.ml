@@ -7,7 +7,7 @@ open Synthesis_common
 open Ast 
 open Infer
 open Hypothesis
-open Improved_search
+open V2_engine
 
 module Sym = L2_Generalizer.Symbols
 module Gen = L2_Generalizer.With_components
@@ -88,7 +88,7 @@ let memoizer_tests = "memoizer" >::: [
     ]
   ]
 
-let tests = "search" >::: [
+let tests = "v2-engine" >::: [
     cost_model_tests;
     
     "symbol" >::: [

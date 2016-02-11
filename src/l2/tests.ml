@@ -383,7 +383,7 @@ let () = run_test_tt_main
        Unify_tests.tests;
        Collections_tests.tests;
        Type_tests.tests;
-       Improved_search_tests.tests;
+       V2_engine_tests.tests;
        Hypothesis_tests.tests;
        Component_tests.tests;
        Conflict_tests.tests;
