@@ -211,3 +211,9 @@ module Memoizer = struct
     |> Sequence.map ~f:Sequence.of_list
     |> Sequence.concat
 end
+
+module Synthesizer = struct
+  module type S = sig
+    val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t Or_error.t
+  end
+end

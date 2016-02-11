@@ -46,11 +46,7 @@ end
 
 val create_memoizer : unit -> Memoizer.t
 
-module type Synthesizer_intf = sig
-  val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t
-end
-
 module L2_Synthesizer : sig
-  include Synthesizer_intf
+  include Synthesizer.S
   val initial_hypothesis : Example.t list -> Hypothesis.t
 end

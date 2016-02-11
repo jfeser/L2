@@ -54,8 +54,9 @@ let synthesize engine testcase =
             L2_Synthesizer.synthesize hypo ~cost:50)
         in
         match m_solution with
-        | Some s -> (`Solution (Hypothesis.to_string s), runtime)
-        | None -> (`NoSolution, runtime)
+        | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)
+        | Ok None -> (`NoSolution, runtime)
+        | Error err -> print_endline (Error.to_string_hum err); (`NoSolution, runtime)
     end
 
 let synth_command =

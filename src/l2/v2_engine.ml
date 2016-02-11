@@ -680,10 +680,6 @@ module type Prune_intf = sig
   val should_prune : Hypothesis.t -> bool
 end
 
-module type Synthesizer_intf = sig
-  val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t
-end
-
 module type Search_intf = sig
   val search : check_cost:(int -> bool) -> found:(Hypothesis.t -> never_returns) -> Hypothesis.t -> int -> int
 end
@@ -746,8 +742,8 @@ module Make_L2_synthesizer (Search: Search_intf) = struct
         in
         fresh_hypos := remaining @ children;
         stale_hypos := !stale_hypos @ generalizable;
-      done; None
-    with SynthesisException s -> Some s
+      done; Ok None
+    with SynthesisException s -> Ok (Some s)
 
   let initial_hypothesis examples =
     let exs = List.map examples ~f:(function
