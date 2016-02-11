@@ -6,8 +6,7 @@ open Infer
 open Structure
 open Util
 
-module Typ = struct type t = Ast.typ [@@deriving sexp, compare] end
-module TypMemoizer = Sstream.Memoizer (Typ) (TypedExpr)
+module TypMemoizer = Sstream.Memoizer (Type) (TypedExpr)
 
 module SimpleMemoizer =
   Sstream.Memoizer (struct type t = TypedExpr.t list [@@deriving sexp, compare] end) (Expr)
