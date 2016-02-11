@@ -386,7 +386,6 @@ let () = run_test_tt_main
        V2_engine_tests.tests;
        Hypothesis_tests.tests;
        Component_tests.tests;
-       Conflict_tests.tests;
        Automaton_tests.tests;
        
        test_parse_expr;
