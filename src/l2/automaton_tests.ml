@@ -117,7 +117,30 @@ let conflict_tests = "conflict" >::: [
           let conflict =
             Automaton.Conflict.of_skeleton zctx component_set skel spec |> Or_error.ok_exn
           in
-          print_endline (Sexp.to_string_hum ([%sexp_of:Automaton.Conflict.t Option.t] conflict)));
+          let expected_rules =
+            "((q1
+       ((_constraint
+         (Apply And
+          ((Apply Eq
+            ((Apply Add
+              ((Apply Len ((Variable (Input 2)))) (Constant (Int 1))))
+             (Apply Len ((Variable Output))))))))
+        (sorts (((Input 2) List) (Output List))))
+       (* q0))
+      (q0
+       ((_constraint
+         (Apply And
+          ((Apply Eq ((Apply Len ((Variable Output))) (Constant (Int 0)))))))
+        (sorts ((Output List))))
+       ()))"
+            |> Sexp.of_string
+          in
+          let actual_rules =
+            [%sexp_of:Automaton.Rule.t List.t]
+              (Option.value_exn conflict).Automaton.Conflict.automaton.CA.rules
+          in
+
+          assert_equal ~ctxt ~cmp:Sexp.equal ~printer:Sexp.to_string_hum expected_rules actual_rules);
     ]
   ]
 

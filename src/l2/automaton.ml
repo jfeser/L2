@@ -405,8 +405,6 @@ module Conflict = struct
     let (renamed_spec_tree, ret_var) = rename_spec_tree spec_tree in 
     let%bind renamed_spec = S.substitute_var (V.Map.singleton V.Output ret_var) spec in
 
-    print_endline (Sexp.to_string_hum ([%sexp_of:S.t KTree.t] renamed_spec_tree));
-
     (* Collect clauses from the renamed spec tree. *)
     let tree_clauses = collect_clauses renamed_spec_tree in
 
@@ -513,12 +511,8 @@ end
     in
     let%bind spec_tree = spec_tree_of_skeleton spec_map sk in
 
-    print_endline (Sexp.to_string_hum ([%sexp_of:S.t KTree.t] spec_tree));
-    
     match%bind prune_spec_tree spec spec_tree with
     | Some conflict_tree ->
-      print_endline (Sexp.to_string_hum ([%sexp_of:S.t KTree.t] conflict_tree));
-      
       let%map conflict_automaton = of_spec_tree zctx components conflict_tree in
       Some conflict_automaton
     | None -> Ok None
