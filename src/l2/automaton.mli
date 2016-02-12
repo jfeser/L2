@@ -50,5 +50,13 @@ module Conflict : sig
     any_state : Symbol.t;
   }
 
+  include Sexpable.S with type t := t
+
   val complement : t -> t
+  val of_skeleton :
+    Z3.context
+    -> Component.Set.t
+    -> Specification.t Skeleton.t
+    -> Component.Specification.t
+    -> t Option.t Or_error.t
 end

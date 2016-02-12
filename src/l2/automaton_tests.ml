@@ -4,8 +4,10 @@ open OUnit2
 open Synthesis_common
 open Hypothesis
 
+module H = Hypothesis
 module C = Component
 module CA = Automaton.Constrained
+module CSpec = C.Specification
 
 let components = [
   C.create ~name:"cons" ~type_:"(a, list[a]) -> list[a]"
@@ -19,7 +21,7 @@ let create states initial_states components rules =
     (String.Set.of_list states)
     (String.Set.of_list initial_states)
     (C.Set.of_list components)
-    (List.map rules ~f:(fun (q, spec, qq) -> (q, C.Specification.of_string spec |> Or_error.ok_exn, qq)))
+    (List.map rules ~f:(fun (q, spec, qq) -> (q, CSpec.of_string spec |> Or_error.ok_exn, qq)))
 
 let zctx = Z3.mk_context []
 
@@ -73,7 +75,7 @@ let generalize_tests = "generalize" >::: [
              "(((skeleton (Id_h (Name nil) Top)) (cost 1) (kind Concrete) (holes ())))")
           out);
 
-        test_case (fun ctxt ->
+    test_case (fun ctxt ->
         let a = create ["q0"; "q1"] ["q0"] components [
             ("q0", "#t", ["q1"; "q0"]);
             ("q1", "#t", []);
@@ -99,7 +101,31 @@ let generalize_tests = "generalize" >::: [
           out);
   ]
 
+let conflict_tests = "conflict" >::: [
+    "of_skeleton" >::: [
+      test_case (fun ctxt ->
+          let zctx = Z3.mk_context [] in
+          let spec = CSpec.of_string "Eq(3, Len(r)) where r: list" |> Or_error.ok_exn in
+          let cm = CostModel.constant 1 in
+          let top = Specification.Top in
+          let skel = H.apply cm (H.id_name cm "cons" top) [
+              H.id_name cm "elem" top; H.id_name cm "nil" top;
+            ] top
+                     |> H.skeleton
+          in
+          let component_set = Component.Set.of_list components in
+          let conflict =
+            Automaton.Conflict.of_skeleton zctx component_set skel spec |> Or_error.ok_exn
+          in
+          print_endline (Sexp.to_string_hum ([%sexp_of:Automaton.Conflict.t Option.t] conflict)));
+    ]
+  ]
+
+let synthesizer_tests = "synthesizer" >::: [
+  ]
+
 let tests = "constraint-automaton" >::: [
     reduce_tests;
     generalize_tests;
+    conflict_tests;
   ]

@@ -3,6 +3,7 @@ open Core.Std
 open Collections
 open Hypothesis
 open Infer
+open Synthesis_common
 
 module Spec = Component.Specification
 
@@ -208,7 +209,7 @@ module Conflict = struct
   type t = {
     automaton : Constrained.t;
     any_state : Symbol.t;
-  }
+  } [@@deriving sexp]
 
   let complement ca =
     let rules' = List.concat_map ca.automaton.Constrained.rules ~f:(fun r ->
@@ -455,8 +456,62 @@ module Conflict = struct
     | Z3.Solver.UNKNOWN
     | Z3.Solver.SATISFIABLE -> None
 
-  let of_skeleton components sk spec =
+  (** Generates a conflict automaton from a tree of specifications. *)
+  let of_spec_tree zctx components spec_tree =
     let module Let_syntax = Or_error.Let_syntax in
-    let%map spec_tree = spec_tree_of_skeleton components sk in
-    let%map conflict_tree = prune_spec_tree spec spec_tree in
+    let fresh_state =
+      let fresh_int = Util.Fresh.mk_fresh_int_fun () in
+      fun () -> Symbol.create ("q" ^ Int.to_string (fresh_int ()))
+    in
+    let any = Symbol.create "*" in
+    let rec of_spec_tree' = function
+      | KTree.Leaf spec -> begin
+          match%map Spec.entails zctx Spec.top spec with
+          | true -> ([], any, Symbol.Set.empty)
+          | false ->
+            let sym = fresh_state () in
+            ([sym, spec, []], sym, Symbol.Set.singleton sym)
+end
+      | KTree.Node (spec, children) -> begin
+          match%bind Spec.entails zctx Spec.top spec with
+          | true -> Ok ([], any, Symbol.Set.empty)
+          | false ->
+            let%map child_ret = List.map children ~f:of_spec_tree' |> Or_error.all in
+            let child_rules, child_states, child_state_sets = List.unzip3 child_ret in
+            let sym = fresh_state () in
+            [sym, spec, child_states] @ List.concat child_rules,
+            sym,
+            Symbol.Set.union_list child_state_sets
+        end
+    in
+    let%map (rules, initial_state, states) = of_spec_tree' spec_tree in
+    let module CA = Constrained in
+    {
+      any_state = any;
+      automaton = {
+        CA.components = components;
+        CA.rules = rules;
+        CA.initial_states = Symbol.Set.singleton initial_state;
+        CA.states = states;
+      }
+    }
+
+  let of_skeleton zctx components sk spec =
+    let module Let_syntax = Or_error.Let_syntax in
+    let spec_map =
+      Component.Set.to_list components
+      |> List.map ~f:(fun c -> (c.Component.name, c.Component.spec))
+      |> String.Map.of_alist_exn
+    in
+    let%bind spec_tree = spec_tree_of_skeleton spec_map sk in
+
+    print_endline (Sexp.to_string_hum ([%sexp_of:S.t KTree.t] spec_tree));
+    
+    match%bind prune_spec_tree spec spec_tree with
+    | Some conflict_tree ->
+      print_endline (Sexp.to_string_hum ([%sexp_of:S.t KTree.t] conflict_tree));
+      
+      let%map conflict_automaton = of_spec_tree zctx components conflict_tree in
+      Some conflict_automaton
+    | None -> Ok None
 end
