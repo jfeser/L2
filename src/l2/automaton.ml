@@ -299,14 +299,21 @@ module Conflict = struct
     let fresh_int = Util.Fresh.mk_fresh_int_fun () in
     let fresh_name () = "f" ^ (Int.to_string (fresh_int ())) in
 
-    let rec rename =
+    let sub vmap spec =
+      Or_error.tag_arg (S.substitute_var vmap spec)
+        "BUG: Fresh variable collided with a variable in the spec."
+        vmap [%sexp_of:V.t V.Map.t]
+      |> Or_error.ok_exn
+    in
+
+    let rec rename kt =
       let ret_var = V.Free (fresh_name ()) in
       let vmap = V.Map.singleton V.Output ret_var in
 
-      function
+      match kt with
       | KTree.Leaf spec ->
         (* Rename the output variable of the spec to a fresh name. *)
-        let renamed_spec = S.substitute_var vmap spec in
+        let renamed_spec = sub vmap spec in
 
         (* Return the node with the renamed spec + the name of the output variable. *)
         (KTree.Leaf renamed_spec, ret_var)
@@ -321,7 +328,7 @@ module Conflict = struct
             V.Map.add m ~key:(V.Input (i + 1)) ~data:rv)
         in
 
-        let renamed_spec = S.substitute_var vmap spec in
+        let renamed_spec = sub vmap spec in
 
         (KTree.Node (renamed_spec, renamed_children), ret_var)
     in
@@ -393,10 +400,12 @@ module Conflict = struct
     filter [0] spec_tree
 
   let prune_spec_tree spec spec_tree =
-    let open Or_error.Monad_infix in
+    let module Let_syntax = Or_error.Let_syntax in
 
     let (renamed_spec_tree, ret_var) = rename_spec_tree spec_tree in 
-    let renamed_spec = S.substitute_var (V.Map.singleton V.Output ret_var) spec in
+    let%bind renamed_spec = S.substitute_var (V.Map.singleton V.Output ret_var) spec in
+
+    print_endline (Sexp.to_string_hum ([%sexp_of:S.t KTree.t] renamed_spec_tree));
 
     (* Collect clauses from the renamed spec tree. *)
     let tree_clauses = collect_clauses renamed_spec_tree in

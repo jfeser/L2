@@ -3,6 +3,9 @@ open Core.Std
 open Collections
 open Infer
 
+val sexp_of_z3_expr : Z3.Expr.expr -> Sexp.t
+val sexp_of_z3_sort : Z3.Sort.sort -> Sexp.t
+
 module Z3_Defs : sig
   module Symbols :
     sig
@@ -101,7 +104,7 @@ module Specification : sig
   val of_string : String.t -> t Or_error.t
       
   val to_z3 : Z3.context -> t -> Z3.Expr.expr list Or_error.t
-  val substitute_var : Variable.t Variable.Map.t -> t -> t
+  val substitute_var : Variable.t Variable.Map.t -> t -> t Or_error.t
 
   val top : t
   val bottom : t

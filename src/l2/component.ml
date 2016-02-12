@@ -381,12 +381,23 @@ module Specification = struct
     in
     Or_error.all z3_or_error
 
-  let substitute_var m s = {
-    _constraint = Te.substitute_var m s._constraint;
-    sorts = V.Map.to_alist s.sorts
-            |> List.map ~f:(fun (v, s) -> Option.value (V.Map.find m v) ~default:v, s)
-            |> V.Map.of_alist_exn;
-  }
+  let substitute_var m s =
+    let module Let_syntax = Or_error.Let_syntax in
+    let _constraint = Te.substitute_var m s._constraint in
+
+    let%map sorts =
+      V.Map.to_alist s.sorts
+      |> List.fold_left ~init:(Ok V.Map.empty) ~f:(fun m_sorts (var, sort) ->
+          let%bind sorts = m_sorts in
+          let var' = Option.value (V.Map.find m var) ~default:var in
+          match V.Map.find sorts var' with
+          | Some sort' ->
+            if Sort.equal sort sort' then Ok sorts else
+              error "Conflicting sorts after renaming." (var, var', sort, sort')
+                [%sexp_of:V.t * V.t * S.t * S.t]
+          | None -> Ok (V.Map.add sorts ~key:var' ~data:sort))
+    in
+    { _constraint; sorts; }
 
   let background zctx =
     let background_str =
