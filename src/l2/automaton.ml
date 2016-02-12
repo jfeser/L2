@@ -416,8 +416,8 @@ module Conflict = struct
     let solver = Z3.Solver.mk_simple_solver zctx in
 
     (* Convert all clauses to Z3 clauses. *)
-    clauses_to_z3 zctx tree_clauses >>= fun (z3_tree_clauses, id_to_loc) ->
-    S.to_z3 zctx renamed_spec >>| fun z3_spec_clauses ->
+    let%bind (z3_tree_clauses, id_to_loc) = clauses_to_z3 zctx tree_clauses in
+    let%map z3_spec_clauses = S.to_z3 zctx renamed_spec in
 
     (* Add indicator booleans to all clauses and update the clause id to
        location mapping. *)
@@ -449,13 +449,12 @@ module Conflict = struct
     | Z3.Solver.UNSATISFIABLE ->
       let core = Z3.Solver.get_unsat_core solver in
 
-      (* Select all locations that remain in the core. *)
-      let core_locs = List.map core ~f:(fun b ->
+      (* Select all locations that remain in the core. Note that not
+         all booleans have an associated location, because some come from
+         the spec, not the spec tree. *)
+      let core_locs = List.filter_map core ~f:(fun b ->
           let id = Z3.AST.get_id (Z3.Expr.ast_of_expr b) in
-          match Int.Map.find id_to_loc id with
-          | Some loc -> loc
-          | None -> failwiths "BUG: Core contains a boolean with no associated location."
-                      (id, id_to_loc) [%sexp_of:int * location Int.Map.t])
+          Int.Map.find id_to_loc id)
       in
 
       (* Filter the original spec tree to only contain clauses that
