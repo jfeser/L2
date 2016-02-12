@@ -332,3 +332,5 @@ sympy-plots-for-*.tex/
 pldi2015 student research/auto
 *.pptx
 tests
+
+coverage/
