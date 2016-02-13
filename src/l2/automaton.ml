@@ -399,108 +399,110 @@ module Conflict = struct
     in
     filter [0] spec_tree
 
-  let prune_spec_tree spec spec_tree =
-    let module Let_syntax = Or_error.Let_syntax in
+  let prune_spec_tree : Spec.t -> Spec.t KTree.t -> Spec.t KTree.t Option.t Or_error.t =
+    fun spec spec_tree ->
+      let module Let_syntax = Or_error.Let_syntax in
 
-    let (renamed_spec_tree, ret_var) = rename_spec_tree spec_tree in 
-    let%bind renamed_spec = S.substitute_var (V.Map.singleton V.Output ret_var) spec in
+      let (renamed_spec_tree, ret_var) = rename_spec_tree spec_tree in 
+      let%bind renamed_spec = S.substitute_var (V.Map.singleton V.Output ret_var) spec in
 
-    (* Collect clauses from the renamed spec tree. *)
-    let tree_clauses = collect_clauses renamed_spec_tree in
+      (* Collect clauses from the renamed spec tree. *)
+      let tree_clauses = collect_clauses renamed_spec_tree in
 
-    (* Create a Z3 context + solver that can generate unsat cores. *)
-    let cfg = ["UNSAT_CORE", "true"] in
-    let zctx = Z3.mk_context cfg in
-    let solver = Z3.Solver.mk_simple_solver zctx in
+      (* Create a Z3 context + solver that can generate unsat cores. *)
+      let cfg = ["UNSAT_CORE", "true"] in
+      let zctx = Z3.mk_context cfg in
+      let solver = Z3.Solver.mk_simple_solver zctx in
 
-    (* Convert all clauses to Z3 clauses. *)
-    let%bind (z3_tree_clauses, id_to_loc) = clauses_to_z3 zctx tree_clauses in
-    let%map z3_spec_clauses = S.to_z3 zctx renamed_spec in
+      (* Convert all clauses to Z3 clauses. *)
+      let%bind (z3_tree_clauses, id_to_loc) = clauses_to_z3 zctx tree_clauses in
+      let%map z3_spec_clauses = S.to_z3 zctx renamed_spec in
 
-    (* Add indicator booleans to all clauses and update the clause id to
-       location mapping. *)
-    let z3_with_boolean, z3_booleans, id_to_loc =
-      List.fold_left (z3_tree_clauses @ z3_spec_clauses) ~init:([], [], id_to_loc)
-        ~f:(fun (z3_cls, bs, ilm) z3_cl ->
-            (* Create fresh boolean. *)
-            let b = Z3.Expr.mk_fresh_const zctx "b" (Z3.Boolean.mk_sort zctx) in
+      (* Add indicator booleans to all clauses and update the clause id to
+         location mapping. *)
+      let z3_with_boolean, z3_booleans, id_to_loc =
+        List.fold_left (z3_tree_clauses @ z3_spec_clauses) ~init:([], [], id_to_loc)
+          ~f:(fun (z3_cls, bs, ilm) z3_cl ->
+              (* Create fresh boolean. *)
+              let b = Z3.Expr.mk_fresh_const zctx "b" (Z3.Boolean.mk_sort zctx) in
 
-            (* Create clause: b <=> cl. *)
-            let z3_cl' = Z3.Boolean.mk_iff zctx b z3_cl in
+              (* Create clause: b <=> cl. *)
+              let z3_cl' = Z3.Boolean.mk_iff zctx b z3_cl in
 
-            (* Update the id to location mapping with the id of the indicator boolean. *)
-            let old_id = z3_id_of_expr z3_cl in
-            let new_id = z3_id_of_expr b in
-            let ilm' = match Int.Map.find ilm old_id with
-              | Some loc -> Int.Map.add ilm ~key:new_id ~data:loc
-              | None -> ilm
-            in
+              (* Update the id to location mapping with the id of the indicator boolean. *)
+              let old_id = z3_id_of_expr z3_cl in
+              let new_id = z3_id_of_expr b in
+              let ilm' = match Int.Map.find ilm old_id with
+                | Some loc -> Int.Map.add ilm ~key:new_id ~data:loc
+                | None -> ilm
+              in
 
-            (z3_cl' :: z3_cls, b :: bs, ilm'))
-    in
-
-    (* Add tracked clauses and background knowledge to solver. *)
-    Z3.Solver.assert_and_track_l solver z3_with_boolean z3_booleans;
-    Z3.Solver.add solver [S.background zctx];
-
-    match Z3.Solver.check solver [] with
-    | Z3.Solver.UNSATISFIABLE ->
-      let core = Z3.Solver.get_unsat_core solver in
-
-      (* Select all locations that remain in the core. Note that not
-         all booleans have an associated location, because some come from
-         the spec, not the spec tree. *)
-      let core_locs = List.filter_map core ~f:(fun b ->
-          let id = Z3.AST.get_id (Z3.Expr.ast_of_expr b) in
-          Int.Map.find id_to_loc id)
+              (z3_cl' :: z3_cls, b :: bs, ilm'))
       in
 
-      (* Filter the original spec tree to only contain clauses that
-         appear in the core, and return it as a conflict. *)
-      Some (filter_spec_tree spec_tree core_locs)
+      (* Add tracked clauses and background knowledge to solver. *)
+      Z3.Solver.assert_and_track_l solver z3_with_boolean z3_booleans;
+      Z3.Solver.add solver [S.background zctx];
 
-    | Z3.Solver.UNKNOWN
-    | Z3.Solver.SATISFIABLE -> None
+      match Z3.Solver.check solver [] with
+      | Z3.Solver.UNSATISFIABLE ->
+        let core = Z3.Solver.get_unsat_core solver in
+
+        (* Select all locations that remain in the core. Note that not
+           all booleans have an associated location, because some come from
+           the spec, not the spec tree. *)
+        let core_locs = List.filter_map core ~f:(fun b ->
+            let id = Z3.AST.get_id (Z3.Expr.ast_of_expr b) in
+            Int.Map.find id_to_loc id)
+        in
+
+        (* Filter the original spec tree to only contain clauses that
+           appear in the core, and return it as a conflict. *)
+        Some (filter_spec_tree spec_tree core_locs)
+
+      | Z3.Solver.UNKNOWN
+      | Z3.Solver.SATISFIABLE -> None
 
   (** Generates a conflict automaton from a tree of specifications. *)
-  let of_spec_tree zctx components spec_tree =
-    let module Let_syntax = Or_error.Let_syntax in
-    let fresh_state =
-      let fresh_int = Util.Fresh.mk_fresh_int_fun () in
-      fun () -> Symbol.create ("q" ^ Int.to_string (fresh_int ()))
-    in
-    let any = Symbol.create "*" in
-    let rec of_spec_tree' = function
-      | KTree.Leaf spec -> begin
-          match%map Spec.entails zctx Spec.top spec with
-          | true -> ([], any, Symbol.Set.empty)
-          | false ->
-            let sym = fresh_state () in
-            ([sym, spec, []], sym, Symbol.Set.singleton sym)
-end
-      | KTree.Node (spec, children) -> begin
-          match%bind Spec.entails zctx Spec.top spec with
-          | true -> Ok ([], any, Symbol.Set.empty)
-          | false ->
-            let%map child_ret = List.map children ~f:of_spec_tree' |> Or_error.all in
-            let child_rules, child_states, child_state_sets = List.unzip3 child_ret in
-            let sym = fresh_state () in
-            [sym, spec, child_states] @ List.concat child_rules,
-            sym,
-            Symbol.Set.union_list child_state_sets
-        end
-    in
-    let%map (rules, initial_state, states) = of_spec_tree' spec_tree in
-    let module CA = Constrained in
-    {
-      any_state = any;
-      automaton = {
-        CA.components = components;
-        CA.rules = rules;
-        CA.initial_states = Symbol.Set.singleton initial_state;
-        CA.states = states;
+  let of_spec_tree : Z3.context -> Component.Set.t -> Spec.t KTree.t -> t Or_error.t =
+    fun zctx components spec_tree ->
+      let module Let_syntax = Or_error.Let_syntax in
+      let fresh_state =
+        let fresh_int = Util.Fresh.mk_fresh_int_fun () in
+        fun () -> Symbol.create ("q" ^ Int.to_string (fresh_int ()))
+      in
+      let any = Symbol.create "*" in
+      let rec of_spec_tree' = function
+        | KTree.Leaf spec -> begin
+            match%map Spec.entails zctx Spec.top spec with
+            | true -> ([], any, Symbol.Set.empty)
+            | false ->
+              let sym = fresh_state () in
+              ([sym, spec, []], sym, Symbol.Set.singleton sym)
+          end
+        | KTree.Node (spec, children) -> begin
+            match%bind Spec.entails zctx Spec.top spec with
+            | true -> Ok ([], any, Symbol.Set.empty)
+            | false ->
+              let%map child_ret = List.map children ~f:of_spec_tree' |> Or_error.all in
+              let child_rules, child_states, child_state_sets = List.unzip3 child_ret in
+              let sym = fresh_state () in
+              [sym, spec, child_states] @ List.concat child_rules,
+              sym,
+              Symbol.Set.union_list child_state_sets
+          end
+      in
+      let%map (rules, initial_state, states) = of_spec_tree' spec_tree in
+      let module CA = Constrained in
+      {
+        any_state = any;
+        automaton = {
+          CA.components = components;
+          CA.rules = rules;
+          CA.initial_states = Symbol.Set.singleton initial_state;
+          CA.states = states;
+        }
       }
-    }
 
   let of_skeleton zctx components sk spec =
     let module Let_syntax = Or_error.Let_syntax in
