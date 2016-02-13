@@ -141,6 +141,22 @@ let conflict_tests = "conflict" >::: [
           in
 
           assert_equal ~ctxt ~cmp:Sexp.equal ~printer:Sexp.to_string_hum expected_rules actual_rules);
+
+      test_case (fun ctxt ->
+          let zctx = Z3.mk_context [] in
+          let spec = CSpec.of_string "Eq(1, Len(r)) where r: list" |> Or_error.ok_exn in
+          let cm = CostModel.constant 1 in
+          let top = Specification.Top in
+          let skel = H.apply cm (H.id_name cm "cons" top) [
+              H.id_name cm "elem" top; H.id_name cm "nil" top;
+            ] top
+                     |> H.skeleton
+          in
+          let component_set = Component.Set.of_list components in
+          let conflict =
+            Automaton.Conflict.of_skeleton zctx component_set skel spec |> Or_error.ok_exn
+          in
+          assert_bool "No conflict found." (Option.is_none conflict));
     ]
   ]
 
