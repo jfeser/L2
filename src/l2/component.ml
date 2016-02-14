@@ -448,6 +448,8 @@ module Specification = struct
     else
       error "Sorts are not compatible." (s1, s2) [%sexp_of:t * t]
 
+  let is_valid : Z3.context -> t -> bool Or_error.t = fun zctx s -> entails zctx top s
+
   include Comparable.Make(T)
 end
 

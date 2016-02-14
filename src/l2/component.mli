@@ -116,6 +116,7 @@ module Specification : sig
   val entails : Z3.context -> t -> t -> bool Or_error.t
   val negate : t -> t
   val conjoin : t -> t -> t Or_error.t
+  val is_valid : Z3.context -> t -> bool Or_error.t
 end
 
 type t = {
