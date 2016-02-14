@@ -30,6 +30,7 @@ module Constrained : sig
   val equal : t -> t -> bool
   val compare : t -> t -> int
   val to_string : t -> string
+  val invariants : t -> unit
 
   val create :
     String.Set.t
@@ -42,6 +43,7 @@ module Constrained : sig
   val is_empty : Z3.context -> t -> (bool * t) Or_error.t
   val to_generalizer : Z3.context -> t -> CostModel.t -> Generalizer.t Or_error.t
   val intersect : t -> t -> t
+  val mk_any : Component.Set.t -> (Symbol.t * t)
 end
 
 module Conflict : sig
@@ -52,6 +54,8 @@ module Conflict : sig
 
   include Sexpable.S with type t := t
 
+  val invariants : t -> unit
+
   val complement : t -> t
   val of_skeleton :
     Z3.context
@@ -59,4 +63,12 @@ module Conflict : sig
     -> Specification.t Skeleton.t
     -> Component.Specification.t
     -> t Option.t Or_error.t
+end
+
+module Synthesizer : sig
+  val synthesize :
+    max_cost:int
+    -> Component.Set.t
+    -> Component.Specification.t
+    -> Hypothesis.t Option.t Or_error.t
 end

@@ -33,6 +33,8 @@ let reduce_tests = "reduce" >::: [
             ("q0", "#t", [])
           ] in
         let a' = CA.reduce zctx a_expected |> Or_error.ok_exn in
+        CA.invariants a_expected;
+        CA.invariants a';
         assert_equal ~cmp:CA.equal ~ctxt ~printer:CA.to_string a_expected a');
 
     test_case (fun ctxt ->
@@ -42,6 +44,8 @@ let reduce_tests = "reduce" >::: [
             ("q0", "Eq(Len(r), 0) where r: list", [])
           ] in
         let a' = CA.reduce zctx a_expected |> Or_error.ok_exn in
+        CA.invariants a_expected;
+        CA.invariants a';
         assert_equal ~cmp:CA.equal ~ctxt ~printer:CA.to_string a_expected a');
 
     test_case (fun ctxt ->
@@ -50,6 +54,8 @@ let reduce_tests = "reduce" >::: [
             ("q1", "#t", []);
           ] in
         let a' = CA.reduce zctx a |> Or_error.ok_exn in
+        CA.invariants a;
+        CA.invariants a';
         assert_equal ~ctxt 0 (Symbol.Set.length a'.CA.initial_states));
   ]
 
@@ -60,6 +66,7 @@ let generalize_tests = "generalize" >::: [
             ("q1", "#t", []);
             ("q0", "#t", []);
           ] in
+        CA.invariants a;
         let cm = CostModel.constant 1 in
         let gen = CA.to_generalizer zctx a cm |> Or_error.ok_exn in
         let memo = Memoizer.create gen cm in
@@ -81,6 +88,7 @@ let generalize_tests = "generalize" >::: [
             ("q1", "#t", []);
             ("q0", "#t", []);
           ] in
+        CA.invariants a;
         let cm = CostModel.constant 1 in
         let gen = CA.to_generalizer zctx a cm |> Or_error.ok_exn in
         let memo = Memoizer.create gen cm in
@@ -115,8 +123,11 @@ let conflict_tests = "conflict" >::: [
           in
           let component_set = Component.Set.of_list components in
           let conflict =
-            Automaton.Conflict.of_skeleton zctx component_set skel spec |> Or_error.ok_exn
+            Option.value_exn
+              (Automaton.Conflict.of_skeleton zctx component_set skel spec
+               |> Or_error.ok_exn)
           in
+          Automaton.Conflict.invariants conflict;
           let expected_rules =
             "((q1
        ((_constraint
@@ -136,8 +147,7 @@ let conflict_tests = "conflict" >::: [
             |> Sexp.of_string
           in
           let actual_rules =
-            [%sexp_of:Automaton.Rule.t List.t]
-              (Option.value_exn conflict).Automaton.Conflict.automaton.CA.rules
+            [%sexp_of:Automaton.Rule.t List.t] conflict.Automaton.Conflict.automaton.CA.rules
           in
 
           assert_equal ~ctxt ~cmp:Sexp.equal ~printer:Sexp.to_string_hum expected_rules actual_rules);
@@ -160,11 +170,28 @@ let conflict_tests = "conflict" >::: [
     ]
   ]
 
+let mk_any_tests = "mk_any" >::: [
+    test_case (fun ctxt ->
+        let (_, a) = CA.mk_any (C.Set.of_list components) in
+        CA.invariants a);
+  ]
+
 let synthesizer_tests = "synthesizer" >::: [
+    "synthesize" >::: [
+      test_case (fun ctxt ->
+          let spec = CSpec.of_string "Eq(3, Len(r)) where r: list" |> Or_error.ok_exn in
+          let result =
+            Automaton.Synthesizer.synthesize ~max_cost:10 (Component.Set.of_list components) spec
+            |> Or_error.ok_exn
+          in
+          print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t Option.t] result)));
+    ]
   ]
 
 let tests = "constraint-automaton" >::: [
     reduce_tests;
     generalize_tests;
     conflict_tests;
+    synthesizer_tests;
+    mk_any_tests;
   ]
