@@ -40,48 +40,46 @@ end
 
 module Symbol = struct
   module T = struct
-    type t = int [@@deriving sexp]
+    type t = int
+
+    let (names: string Int.Table.t) = Int.Table.create ()
+    let (counter: int ref) = ref 0
+    
     let (compare: t -> t -> int) = Int.compare
+    let (equal: t -> t -> bool) = Int.equal
+
+    let create (name: string) : t =
+      let id = incr counter; !counter in
+      match Int.Table.add names ~key:id ~data:name with
+      | `Ok -> id
+      | `Duplicate -> failwiths "BUG: Symbol counter overflowed." (names, !counter)
+                        [%sexp_of:string Int.Table.t * int]
+
+    let to_string s =
+      match Int.Table.find names s with
+      | Some name -> name
+      | None -> failwiths (sprintf "BUG: Looking up name of symbol '%d' failed." s)
+                  names [%sexp_of:string Int.Table.t]
+    
+    let sexp_of_t (s: t) : Sexp.t = Sexp.Atom (to_string s)
+
+    let t_of_sexp (s: Sexp.t) : t =
+      let open Sexp in
+      match s with
+      | Atom name ->
+        let m_id =
+          Int.Table.to_alist names
+          |> List.find_map ~f:(fun (id, name') -> if String.equal name name' then Some id else None)
+        in
+        begin match m_id with
+          | Some id -> id
+          | None -> create name
+        end
+      | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
   end
 
   include T
   include Comparable.Make(T)
-
-  let (names: string Int.Table.t) = Int.Table.create ()
-  let (counter: int ref) = ref 0
-
-  let (equal: t -> t -> bool) = Int.equal
-
-  let to_string s =
-    match Int.Table.find names s with
-    | Some name -> name
-    | None -> failwiths (sprintf "BUG: Looking up name of symbol '%d' failed." s)
-                names [%sexp_of:string Int.Table.t]
-  
-  let create (name: string) : t = begin
-    let id = incr counter; !counter in
-    match Int.Table.add names ~key:id ~data:name with
-    | `Ok -> id
-    | `Duplicate -> failwiths "BUG: Symbol counter overflowed." (names, !counter)
-                      [%sexp_of:string Int.Table.t * int]
-  end
-
-  let sexp_of_t (s: t) : Sexp.t = Sexp.Atom (to_string s)
-  
-  let t_of_sexp (s: Sexp.t) : t =
-    let open Sexp in
-    match s with
-    | Atom name ->
-      let m_id =
-        Int.Table.to_alist names
-        |> List.find_map ~f:(fun (id, name') -> if String.equal name name' then Some id else None)
-      in
-      begin match m_id with
-        | Some id -> id
-        | None -> create name
-      end
-    | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
-
 end
 
 module Hole = struct
