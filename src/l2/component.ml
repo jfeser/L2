@@ -442,11 +442,16 @@ module Specification = struct
     | Z3.Solver.UNSATISFIABLE -> Ok true
     | Z3.Solver.UNKNOWN -> error "Solver returned unknown." (s1, s2) [%sexp_of:t * t]
                  
-  let conjoin s1 s2 =
-    if Variable.Map.equal Sort.equal s1.sorts s2.sorts then
-      Ok { _constraint = Te.Apply ("And", clauses s1 @ clauses s2); sorts = s1.sorts }
-    else
-      error "Sorts are not compatible." (s1, s2) [%sexp_of:t * t]
+  let conjoin : t -> t -> t Or_error.t = fun s1 s2 ->
+    let module Let_syntax = Or_error.Let_syntax in
+    let%map merged_sorts = Or_error.try_with (fun () ->
+        Variable.Map.merge s1.sorts s2.sorts ~f:(fun ~key -> function
+            | `Left sort | `Right sort -> Some sort
+            | `Both (sort1, sort2) ->
+              if Sort.equal sort1 sort2 then Some sort1 else
+                failwiths "Sorts are not compatible." (s1, s2) [%sexp_of:t * t]))
+    in
+    { _constraint = Te.Apply ("And", clauses s1 @ clauses s2); sorts = merged_sorts }
 
   let is_valid : Z3.context -> t -> bool Or_error.t = fun zctx s -> entails zctx top s
 

@@ -180,8 +180,9 @@ let synthesizer_tests = "synthesizer" >::: [
     "synthesize" >::: [
       test_case (fun ctxt ->
           let spec = CSpec.of_string "Eq(3, Len(r)) where r: list" |> Or_error.ok_exn in
+          let type_ = Infer.Type.of_string "list[a]" in
           let result =
-            Automaton.Synthesizer.synthesize ~max_cost:10 (Component.Set.of_list components) spec
+            Automaton.Synthesizer.synthesize ~max_cost:10 (Component.Set.of_list components) spec type_
             |> Or_error.ok_exn
           in
           print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t Option.t] result)));

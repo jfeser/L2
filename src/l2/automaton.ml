@@ -18,9 +18,13 @@ module Rule = struct
   let is_terminal r = arity r = 0
 end
 
+let mk_fresh_state : unit -> unit -> Symbol.t = fun () ->
+  let fresh_int = Util.Fresh.mk_fresh_int_fun () in
+  fun () -> Symbol.create ("q" ^ (Int.to_string (fresh_int ())))
+
 module Constrained = struct
   module C = Component
-    
+
   type t = {
     states : Symbol.Set.t;
     initial_states : Symbol.Set.t;
@@ -35,7 +39,7 @@ module Constrained = struct
     if not (Symbol.Set.subset a.initial_states a.states) then
       failwiths "'initial_states' is not a subset of 'states'."
         (a.initial_states, a.states) [%sexp_of:Symbol.Set.t * Symbol.Set.t];
-    
+
     List.iter a.rules ~f:(fun rule ->
         let (q, _, qq) = rule in
         if not (Symbol.Set.mem a.states q) then
@@ -92,7 +96,7 @@ module Constrained = struct
       in
       if Set.equal m m' then m' else fix m'
     in
-    
+
     let m =
       List.fold_left a.rules ~init:Symbol.Set.empty ~f:(fun m r ->
           if Rule.is_terminal r && any_component_fits (Rule.spec r)
@@ -114,16 +118,16 @@ module Constrained = struct
   let is_empty zctx a =
     let open Or_error.Monad_infix in
     reduce zctx a >>| fun a' -> (Set.is_empty a'.initial_states, a')
-  
+
   let generalize rules matching_components cost_model hole spec =
     let module H = Hypothesis in
     let module Sp = Specification in
     let open Option.Monad_infix in
 
     let cm = cost_model in
-    
+
     (* Select all rules which match the hole symbol. *)
-    List.filter rules ~f:(fun r -> Symbol.equal hole.Hole.symbol (Rule.start_state r)) |> 
+    List.filter rules ~f:(fun r -> Symbol.equal hole.Hole.symbol (Rule.start_state r)) |>
 
     (* For each matching rule, select each matching component and expand. *)
     List.map ~f:(fun r ->
@@ -161,7 +165,7 @@ module Constrained = struct
 
     let component_list = C.Set.to_list a.components in
 
-    (* Create a mapping from specifications to matching components. *)    
+    (* Create a mapping from specifications to matching components. *)
     List.map specs ~f:(fun spec ->
         List.filter_map component_list ~f:(fun c ->
             match Spec.entails zctx c.C.spec spec with
@@ -183,7 +187,7 @@ module Constrained = struct
     include T
     include Comparable.Make(T)
   end
-    
+
   let intersect a1 a2 =
     let find_pair map pair =
       match SymbolPair.Map.find map pair with
@@ -191,10 +195,12 @@ module Constrained = struct
           | None -> failwiths "BUG: State pair does not have an associated symbol."
                       (pair, map) [%sexp_of:(SymbolPair.t * Symbol.t SymbolPair.Map.t)]
     in
+    let fresh_state = mk_fresh_state () in
+
     let (states, symbol_map) =
       List.cartesian_product (Symbol.Set.to_list a1.states) (Symbol.Set.to_list a2.states) |>
       List.fold ~init:(Symbol.Set.empty, SymbolPair.Map.empty) ~f:(fun (ss, m) (st1, st2) ->
-            let sym = Symbol.create (Symbol.to_string st1 ^ ", " ^ Symbol.to_string st2) in
+            let sym = fresh_state () in
             let ss' = Symbol.Set.add ss sym in
             let m' = SymbolPair.Map.add m ~key:(st1, st2) ~data:sym in
             (ss', m'))
@@ -209,10 +215,11 @@ module Constrained = struct
     let components = Component.Set.union a1.components a2.components in
 
     let rules =
-      List.cartesian_product a1.rules a2.rules |>
-      List.filter_map ~f:(fun (r1, r2) ->
+      List.cartesian_product a1.rules a2.rules
+      |> List.filter ~f:(fun (r1, r2) -> Rule.arity r1 = Rule.arity r2) 
+      |> List.filter_map ~f:(fun (r1, r2) ->
           match Spec.conjoin (Rule.spec r1) (Rule.spec r2) with
-          | Ok spec -> 
+          | Ok spec ->
             if Rule.arity r1 = Rule.arity r2 then
               let q = find_pair symbol_map (Rule.start_state r1, Rule.start_state r2) in
               let qq =
@@ -232,9 +239,9 @@ module Constrained = struct
     let initial_states = Symbol.Set.singleton state in
     let states = initial_states in
     let rules =
-      Sequence.map (C.Set.to_sequence components) ~f:(fun c ->
-        (state, c.Component.spec, List.repeat c.Component.arity state))
-      |> Sequence.to_list
+      Set.map components ~comparator:Int.comparator ~f:(fun c -> c.Component.arity)
+      |> Int.Set.to_list
+      |> List.map ~f:(fun arity -> (state, Spec.top, List.repeat arity state))
     in
     (state, { initial_states; states; rules; components; })
 end
@@ -252,18 +259,39 @@ module Conflict = struct
         (ca.any_state, ca.automaton.Constrained.states) [%sexp_of:Symbol.t * Symbol.Set.t]
 
   let complement : t -> t = fun ca ->
+    let distinct_arities =
+      Set.map ca.automaton.Constrained.components ~comparator:Int.comparator
+        ~f:(fun c -> c.Component.arity)
+    in
     let rules' = List.concat_map ca.automaton.Constrained.rules ~f:(fun r ->
-        let negated_r = (Rule.start_state r, Spec.negate (Rule.spec r), Rule.end_states r) in
-        let rs = List.map (List.diag (Rule.end_states r) ca.any_state) ~f:(fun es ->
-            (Rule.start_state r, Rule.spec r, es))
+        let (q, spec, qq) = r in
+        let arity = Rule.arity r in
+        
+        (* q -> ~spec -> (@, ..., @) *)
+        let negated_r = (q, Spec.negate spec, List.repeat arity ca.any_state) in
+
+        (* q -> T -> (q0, ..., qn) where n != arity and there exists a
+           component with arity n. *)
+        let other_arity_rs =
+          Int.Set.remove distinct_arities arity
+          |> Int.Set.to_list
+          |> List.map ~f:(fun a -> (q, Spec.top, List.repeat a ca.any_state))
         in
-        negated_r :: rs)
+
+        (* q -> spec -> (q0, @, ..., @), ... q -> spec -> (@, ..., @, qn) *)
+        let other_deviation_rs = List.filter_mapi qq ~f:(fun i q' ->
+            if Symbol.equal q' ca.any_state then None else
+              let qq' = (List.repeat i ca.any_state) @ (q' :: List.repeat (arity - i - 1) ca.any_state) in
+              Some (q, spec, qq'))
+        in
+
+        negated_r :: other_arity_rs @ other_deviation_rs)
     in
     { ca with automaton = { ca.automaton with Constrained.rules = rules' } }
 
   let to_constrained_automaton : t -> Constrained.t = fun ca ->
     let module CA = Constrained in
-    
+
     (* Generate an automaton that accepts all compositions of the
        components in the input automaton. *)
     let components = ca.automaton.CA.components in
@@ -277,14 +305,18 @@ module Conflict = struct
           let q' = map_any q in
           let qq' = List.map qq ~f:map_any in
           (q', spec, qq'))
+      @ any_a.CA.rules
     in
 
     let initial_states = Symbol.Set.map ~f:map_any ca.automaton.CA.initial_states in
-    let states = Symbol.Set.map ~f:map_any ca.automaton.CA.states in
+    let states =
+      Symbol.Set.map ~f:map_any ca.automaton.CA.states
+      |> Symbol.Set.union any_a.CA.states
+    in
     let a = { CA.states; CA.initial_states; CA.rules; components; } in
     Constrained.invariants a;
     a
-            
+
 
   module T = Component.Term
   module C = Component.Constant
@@ -402,7 +434,7 @@ module Conflict = struct
 
   type location = int list * int [@@deriving sexp]
 
-  (** Requires: 't' is a tree of specifications. 
+  (** Requires: 't' is a tree of specifications.
 
       Ensures: Returns a flat list of the clauses in the tree, annotated
       with their location in the tree + location in the spec and their
@@ -468,7 +500,7 @@ module Conflict = struct
     fun spec spec_tree ->
       let module Let_syntax = Or_error.Let_syntax in
 
-      let (renamed_spec_tree, ret_var) = rename_spec_tree spec_tree in 
+      let (renamed_spec_tree, ret_var) = rename_spec_tree spec_tree in
       let%bind renamed_spec = S.substitute_var (V.Map.singleton V.Output ret_var) spec in
 
       (* Collect clauses from the renamed spec tree. *)
@@ -532,12 +564,8 @@ module Conflict = struct
   let of_spec_tree : Z3.context -> Component.Set.t -> Spec.t KTree.t -> t Or_error.t =
     fun zctx components spec_tree ->
       let module Let_syntax = Or_error.Let_syntax in
-      let fresh_state =
-        let fresh_int = Util.Fresh.mk_fresh_int_fun () in
-        fun () -> Symbol.create ("q" ^ Int.to_string (fresh_int ()))
-      in
+      let fresh_state = mk_fresh_state () in
       let any = Symbol.create "*" in
-      let any_set = Symbol.Set.singleton any in
 
       let rec of_spec_tree' = function
         (* At the leaves, if the transition spec is valid, then
@@ -546,7 +574,7 @@ module Conflict = struct
            starts at the new state. *)
         | KTree.Leaf spec -> begin
             match%map Spec.is_valid zctx spec with
-            | true -> ([], any, any_set)
+            | true -> ([], any, Symbol.Set.empty)
             | false ->
               let sym = fresh_state () in
               ([sym, spec, []], sym, Symbol.Set.singleton sym)
@@ -558,7 +586,7 @@ module Conflict = struct
            to their returned states. *)
         | KTree.Node (spec, children) -> begin
             match%bind Spec.is_valid zctx spec with
-            | true -> Ok ([], any, any_set)
+            | true -> Ok ([], any, Symbol.Set.empty)
             | false ->
               let%map child_ret = List.map children ~f:of_spec_tree' |> Or_error.all in
               let child_rules, child_states, child_state_sets = List.unzip3 child_ret in
@@ -569,6 +597,7 @@ module Conflict = struct
           end
       in
       let%map (rules, initial_state, states) = of_spec_tree' spec_tree in
+      let states = Symbol.Set.add states any in
       let module CA = Constrained in
       {
         any_state = any;
@@ -598,50 +627,78 @@ end
 
 module Synthesizer = struct
   exception SynthesisException of Hypothesis.t
+  exception ConflictException of Conflict.t
 
-  let synthesize : max_cost:int -> Component.Set.t -> Spec.t -> Hypothesis.t Option.t Or_error.t =
-    let module Let_syntax = Or_error.Let_syntax in
-    fun ~max_cost components spec ->
-      (* TODO: Should use our own cost model here. *)
-      let cost_model = V2_engine.cost_model in
-      let zctx = Z3.mk_context [] in
-      let space = Constrained.mk_any components |> Tuple.T2.get2 in
-      
-      let rec search_in_space space =
-        let gen = Constrained.to_generalizer zctx space cost_model |> Or_error.ok_exn in
-        let memo = Memoizer.create gen cost_model in
+  type search_state = {
+    zctx : Z3.context;
+    cost_model : CostModel.t;
+    space : Constrained.t;
+    spec : Spec.t;
+    type_ : Type.t;
+    max_cost : int;
+  }
 
-        (* TODO: Should use all initial states. *)
-        let hole =
-          Hole.create (Type.list (Type.free 1 1)) (Symbol.Set.choose_exn space.Constrained.initial_states)
-        in
-        
-        let rec search_at_cost : int -> unit = fun cost ->
-          if cost > max_cost then () else
-            let candidates = Memoizer.get memo hole Specification.Top ~cost in
-            List.iter candidates ~f:(fun (candidate, _) ->
-                let m_conflict =
-                  Conflict.of_skeleton zctx components (Hypothesis.skeleton candidate) spec
-                  |> Or_error.ok_exn
-                in
-                match m_conflict with
-                | Some conflict ->
-                  print_endline "Found conflict!";
-                  print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t] candidate));
-                  print_endline (Sexp.to_string_hum ([%sexp_of:Conflict.t] conflict));
-                  print_newline ();
-                  let space' = Constrained.intersect (Conflict.to_constrained_automaton conflict) space in
-                  print_endline "New space:";
-                  print_endline (Sexp.to_string_hum ([%sexp_of:Constrained.t] space'))
-                | None -> raise (SynthesisException candidate));
+  let rec search_at_cost : cost:int -> search_state -> Hole.t -> Memoizer.t -> unit =
+    fun ~cost search_state hole memoizer ->
+      let ss = search_state in
+      if cost > ss.max_cost then () else
+        let candidates = Memoizer.get memoizer hole Specification.Top ~cost in
+        List.iter candidates ~f:(fun (candidate, _) ->
+            let components = ss.space.Constrained.components in
+            let m_conflict =
+              Conflict.of_skeleton ss.zctx components (Hypothesis.skeleton candidate) ss.spec
+              |> Or_error.ok_exn
+            in
+            match m_conflict with
+            | Some conflict ->
+              print_newline ();
+              print_endline "Found conflict!";
+              print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t] candidate));
+              print_endline (Sexp.to_string_hum ([%sexp_of:Conflict.t] conflict));
+              raise (ConflictException conflict)
+            | None -> raise (SynthesisException candidate));
 
-            search_at_cost (cost + 1)
-        in
+      search_at_cost ~cost:(cost + 1) search_state hole memoizer
 
-        search_at_cost 0
-      in
+  let rec search_in_space : search_state -> unit = fun search_state ->
+    let ss = search_state in
+    let gen = Constrained.to_generalizer ss.zctx ss.space ss.cost_model |> Or_error.ok_exn in
+    let memo = Memoizer.create gen ss.cost_model in
+
+    (* TODO: Should use all initial states. *)
+    Symbol.Set.iter ss.space.Constrained.initial_states ~f:(fun init_state ->
+        let hole = Hole.create (Infer.instantiate 0 ss.type_) init_state in
+        try search_at_cost ~cost:0 search_state hole memo with
+        | ConflictException conflict ->
+          let c_conflict = Conflict.complement conflict in
+          print_newline ();
+          print_endline "Conflict complement:";
+          print_endline (Sexp.to_string_hum ([%sexp_of:Conflict.t] c_conflict));
+
+          let cc_conflict = Conflict.to_constrained_automaton c_conflict in
+          print_newline ();
+          print_endline "Conflict complement (constrained):";
+          print_endline (Sexp.to_string_hum ([%sexp_of:Constrained.t] cc_conflict));
+
+          let space' =
+            cc_conflict
+            |> Constrained.intersect ss.space
+          in
+          print_newline ();
+          print_endline "New space:";
+          print_endline (Sexp.to_string_hum ([%sexp_of:Constrained.t] space'));
+          search_in_space { search_state with space = space' })
+
+  let synthesize : max_cost:int -> Component.Set.t -> Spec.t -> Type.t -> Hypothesis.t Option.t Or_error.t =
+    fun ~max_cost components spec type_ ->
+      let search_state = {
+        zctx = Z3.mk_context [];        
+        cost_model = V2_engine.cost_model; (* TODO: Should use our own cost model here. *)
+        space = Constrained.mk_any components |> Tuple.T2.get2;
+        spec; type_; max_cost;
+      } in
 
       Or_error.try_with (fun () ->
-          try search_in_space space; None with
+          try search_in_space search_state; None with
           | SynthesisException ret -> Some ret)
 end

@@ -1,6 +1,7 @@
 open Core.Std
 
 open Hypothesis
+open Infer
 open Synthesis_common
 
 module Rule : sig
@@ -70,5 +71,6 @@ module Synthesizer : sig
     max_cost:int
     -> Component.Set.t
     -> Component.Specification.t
+    -> Type.t
     -> Hypothesis.t Option.t Or_error.t
 end

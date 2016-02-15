@@ -13,7 +13,7 @@ module Fresh = struct
     fun () ->
       incr count;
       let n = !count in
-      if n = -1 then failwith "Out of fresh integers." else n
+      if n < 0 then failwith "Out of fresh integers." else n
 
   (** Create a function for returning fresh names. These names will be
       of the form [a-z][0-9]*. *)
