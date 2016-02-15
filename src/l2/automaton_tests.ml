@@ -11,7 +11,7 @@ module CSpec = C.Specification
 
 let components = [
   C.create ~name:"cons" ~type_:"(a, list[a]) -> list[a]"
-    ~spec:"And(Eq(Add(Len(i2), 1), Len(r))) where i2: list, r: list";
+    ~spec:"Eq(Add(Len(i2), 1), Len(r)) where i2: list, r: list";
   C.create ~name:"nil" ~spec:"Eq(Len(r), 0) where r: list" ~type_:"list[a]";
   C.create ~name:"elem" ~spec:"#t" ~type_:"num";
 ] |> Or_error.all |> Or_error.ok_exn

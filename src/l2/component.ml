@@ -121,10 +121,12 @@ end
 module Term = struct
   module T = struct
     type t = Component0.term =
-        | Constant of Constant.t
-        | Variable of Variable.t
-        | Apply of string * t list
-    [@@deriving sexp, compare]
+      | Constant of Constant.t
+      | Variable of Variable.t
+      | Apply of string * t list
+      [@@deriving sexp, compare]
+
+    let equal t1 t2 = compare t1 t2 = 0
   end
 
   include T
@@ -168,6 +170,33 @@ module Term = struct
 
         | _ -> error "Unknown function." apply sexp_of_t
       end
+
+  include Comparable.Make(T)
+  
+  let rec simplify term =
+    match term with
+    | Apply (f, args) -> begin
+        let args = List.map args ~f:simplify in
+        match f, args with
+        | "And", clauses ->
+          let clause_set = Set.of_list clauses in
+
+          (* Eliminate all true clauses. *)
+          let clause_set = Set.remove clause_set (Constant (C.Bool true)) in
+
+          (* Check for contradiction (using syntactic equality). *)
+          let is_contra =
+            Set.exists clause_set ~f:(fun c -> Set.mem clause_set (Apply ("Not", [c])))
+          in
+          if is_contra then Constant (C.Bool false) else
+            begin match Set.to_list clause_set with
+              | [] -> Constant (C.Bool true)
+              | [x] -> x
+              | xs -> Apply ("And", xs)
+            end
+        | _ -> term
+      end
+    | _ -> term      
 
   let rec substitute m = function
     | (Constant _ as t)
@@ -243,8 +272,6 @@ module Term = struct
           end)
     in
     Or_error.tag_arg err "Term.to_z3" t [%sexp_of:t]
-
-    include Comparable.Make(T)
 end
 
   (* let to_z3 sorts zctx p = *)
@@ -451,7 +478,11 @@ module Specification = struct
               if Sort.equal sort1 sort2 then Some sort1 else
                 failwiths "Sorts are not compatible." (s1, s2) [%sexp_of:t * t]))
     in
-    { _constraint = Te.Apply ("And", clauses s1 @ clauses s2); sorts = merged_sorts }
+    let _constraint =
+      Te.Apply ("And", clauses s1 @ clauses s2)
+      |> Te.simplify
+    in
+    { _constraint; sorts = merged_sorts }
 
   let is_valid : Z3.context -> t -> bool Or_error.t = fun zctx s -> entails zctx top s
 

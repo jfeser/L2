@@ -475,13 +475,18 @@ module Conflict = struct
   let location_eq = Tuple.T2.equal ~eq1:(List.equal ~equal:Int.equal) ~eq2:Int.equal
 
   let filter_spec_tree spec_tree locs =
+    let spec_of_clauses spec = function
+      | [] -> S.top
+      | [clause] -> { spec with S._constraint = clause; }
+      | clauses -> { spec with S._constraint = T.Apply ("And", clauses); }
+    in
+    
     let rec filter loc = function
       | KTree.Leaf spec ->
         let clauses = List.filteri (S.clauses spec) ~f:(fun i _ ->
             List.mem ~equal:location_eq locs (loc, i))
         in
-        if (clauses = []) then KTree.Leaf S.top else
-          KTree.Leaf { spec with S._constraint = T.Apply ("And", clauses); }
+        KTree.Leaf (spec_of_clauses spec clauses)
 
       | KTree.Node (spec, children) ->
         let clauses = List.filteri (S.clauses spec) ~f:(fun i _ ->
@@ -492,7 +497,7 @@ module Conflict = struct
               let loc' = i :: loc in
               filter loc' ch)
           in
-          KTree.Node ({ spec with S._constraint = T.Apply ("And", clauses); }, children')
+          KTree.Node (spec_of_clauses spec clauses, children')
     in
     filter [0] spec_tree
 
