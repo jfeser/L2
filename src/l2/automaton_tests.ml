@@ -61,7 +61,7 @@ let reduce_tests = "reduce" >::: [
         let a' = CA.reduce zctx a |> Or_error.ok_exn in
         CA.invariants a;
         CA.invariants a';
-        assert_equal ~ctxt 0 (Symbol.Set.length a'.CA.initial_states));
+        assert_equal ~ctxt ~cmp:Int.equal ~printer:Int.to_string 0 (Symbol.Set.length a'.CA.initial_states));
   ]
 
 let generalize_tests = "generalize" >::: [

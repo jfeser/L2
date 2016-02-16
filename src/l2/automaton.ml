@@ -87,33 +87,51 @@ module Constrained = struct
       any_fits [] (Set.to_list a.components) |> Or_error.ok_exn
     in
 
-    let rec fix m =
-      let m' =
-        List.fold_left a.rules ~init:m ~f:(fun m' r ->
-            if List.for_all (Rule.end_states r) ~f:(Set.mem m') && any_component_fits (Rule.spec r)
-            then Set.add m' (Rule.start_state r)
+    (* Find the fixed point of f applied to s. *)
+    let rec fix ~cmp x f =
+      let x' = f x in
+      if cmp x x' = 0 then x else fix ~cmp x' f
+    in
+    
+    (* Collect the set of reachable states from a set of initial states going top-down. *)
+    let top_down (a, m) =
+      let m' = List.fold a.rules ~init:m ~f:(fun m' (q, spec, qq) ->
+          if Symbol.Set.mem m' q && any_component_fits spec then
+            List.fold qq ~init:m' ~f:Symbol.Set.add
             else m')
       in
-      if Set.equal m m' then m' else fix m'
+      (a, m')
     in
 
-    let m =
-      List.fold_left a.rules ~init:Symbol.Set.empty ~f:(fun m r ->
-          if Rule.is_terminal r && any_component_fits (Rule.spec r)
-          then Set.add m (Rule.start_state r)
-          else m)
+    (* Collect the set of reachable states from a set of initial states going bottom-up. *)
+    let rec bottom_up (a, m) =
+      let m' = List.fold a.rules ~init:m ~f:(fun m' (q, spec, qq) ->
+          if List.for_all qq ~f:(Symbol.Set.mem m') && any_component_fits spec then
+            Symbol.Set.add m' q
+          else m')
+      in
+      (a, m')
     in
 
     Or_error.try_with (fun () ->
-        let m = fix m in
-        {
+        let cmp (_, m1) (_, m2) = Symbol.Set.compare m1 m2 in
+        let (_, reachable) = fix ~cmp (a, a.initial_states) top_down in
+        let a' = {
           a with
-          states = m;
-          initial_states = Set.inter a.initial_states m;
-          rules = List.filter a.rules ~f:(fun r ->
-              Set.mem m (Rule.start_state r) &&
-              List.for_all (Rule.end_states r) ~f:(Set.mem m));
-        })
+          states = reachable;
+          rules = List.filter a.rules ~f:(fun (q, _, qq) ->
+              Symbol.Set.mem reachable q && List.for_all qq ~f:(Symbol.Set.mem reachable));
+        } in
+
+        let (_, reachable) = fix ~cmp (a', Symbol.Set.empty) bottom_up in
+        {
+          a' with
+          initial_states = Set.inter a'.initial_states reachable;
+          states = reachable;
+          rules = List.filter a.rules ~f:(fun (q, _, qq) ->
+              Symbol.Set.mem reachable q && List.for_all qq ~f:(Symbol.Set.mem reachable));
+        }
+      )
 
   let is_empty zctx a =
     let open Or_error.Monad_infix in
