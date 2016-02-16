@@ -85,6 +85,7 @@ module Skeleton : sig
   val to_expr_exn :
     ?ctx:string StaticDistance.Map.t -> ?fresh_name:(unit -> string) -> 'a t -> Expr.t
   val of_expr : 'a -> Expr.t -> 'a t
+  val of_string : 'a -> string -> 'a t Or_error.t
   val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
   val hash : 'a -> int
   val fill_hole : Hole.t -> parent:'a t -> child:'a t -> 'a t
@@ -145,6 +146,7 @@ module Specification : sig
 
   val hash : t -> int
   val compare : t -> t -> int
+  val equal : t -> t -> bool
   val to_string : t -> string
   val verify : t -> 'a Skeleton.t -> bool
   val increment_scope : t -> t

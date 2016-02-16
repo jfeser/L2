@@ -137,7 +137,6 @@ module Constrained = struct
           |> List.filter ~f:(fun c -> Int.equal c.C.arity (Rule.arity r))
         in
 
-        (* print_endline (Sexp.to_string_hum ([%sexp_of:Component.t list] components)); *)
         List.filter_map components ~f:(fun c ->
             match instantiate 0 c.C.type_ with
             | Type.Arrow_t (args_t, ret_t) ->
@@ -656,10 +655,10 @@ module Synthesizer = struct
             in
             match m_conflict with
             | Some conflict ->
-              print_newline ();
-              print_endline "Found conflict!";
-              print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t] candidate));
-              print_endline (Sexp.to_string_hum ([%sexp_of:Conflict.t] conflict));
+              (* print_newline (); *)
+              (* print_endline "Found conflict!"; *)
+              (* print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t] candidate)); *)
+              (* print_endline (Sexp.to_string_hum ([%sexp_of:Conflict.t] conflict)); *)
               raise (ConflictException conflict)
             | None -> raise (SynthesisException candidate));
 
@@ -676,22 +675,22 @@ module Synthesizer = struct
         try search_at_cost ~cost:0 search_state hole memo with
         | ConflictException conflict ->
           let c_conflict = Conflict.complement conflict in
-          print_newline ();
-          print_endline "Conflict complement:";
-          print_endline (Sexp.to_string_hum ([%sexp_of:Conflict.t] c_conflict));
+          (* print_newline (); *)
+          (* print_endline "Conflict complement:"; *)
+          (* print_endline (Sexp.to_string_hum ([%sexp_of:Conflict.t] c_conflict)); *)
 
           let cc_conflict = Conflict.to_constrained_automaton c_conflict in
-          print_newline ();
-          print_endline "Conflict complement (constrained):";
-          print_endline (Sexp.to_string_hum ([%sexp_of:Constrained.t] cc_conflict));
+          (* print_newline (); *)
+          (* print_endline "Conflict complement (constrained):"; *)
+          (* print_endline (Sexp.to_string_hum ([%sexp_of:Constrained.t] cc_conflict)); *)
 
           let space' =
             cc_conflict
             |> Constrained.intersect ss.space
           in
-          print_newline ();
-          print_endline "New space:";
-          print_endline (Sexp.to_string_hum ([%sexp_of:Constrained.t] space'));
+          (* print_newline (); *)
+          (* print_endline "New space:"; *)
+          (* print_endline (Sexp.to_string_hum ([%sexp_of:Constrained.t] space')); *)
           search_in_space { search_state with space = space' })
 
   let synthesize : max_cost:int -> Component.Set.t -> Spec.t -> Type.t -> Hypothesis.t Option.t Or_error.t =

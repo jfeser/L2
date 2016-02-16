@@ -5,9 +5,14 @@ open Synthesis_common
 open Hypothesis
 
 module H = Hypothesis
+module Sk = Skeleton
+
+module A = Automaton
+module CA = A.Constrained
+module CN = A.Conflict
+
 module C = Component
-module CA = Automaton.Constrained
-module CSpec = C.Specification
+module Spec = C.Specification
 
 let components = [
   C.create ~name:"cons" ~type_:"(a, list[a]) -> list[a]"
@@ -21,7 +26,7 @@ let create states initial_states components rules =
     (String.Set.of_list states)
     (String.Set.of_list initial_states)
     (C.Set.of_list components)
-    (List.map rules ~f:(fun (q, spec, qq) -> (q, CSpec.of_string spec |> Or_error.ok_exn, qq)))
+    (List.map rules ~f:(fun (q, spec, qq) -> (q, Spec.of_string spec |> Or_error.ok_exn, qq)))
 
 let zctx = Z3.mk_context []
 
@@ -113,7 +118,7 @@ let conflict_tests = "conflict" >::: [
     "of_skeleton" >::: [
       test_case (fun ctxt ->
           let zctx = Z3.mk_context [] in
-          let spec = CSpec.of_string "Eq(3, Len(r)) where r: list" |> Or_error.ok_exn in
+          let spec = Spec.of_string "Eq(3, Len(r)) where r: list" |> Or_error.ok_exn in
           let cm = CostModel.constant 1 in
           let top = Specification.Top in
           let skel = H.apply cm (H.id_name cm "cons" top) [
@@ -121,40 +126,37 @@ let conflict_tests = "conflict" >::: [
             ] top
                      |> H.skeleton
           in
-          let component_set = Component.Set.of_list components in
+          let component_set = C.Set.of_list components in
           let conflict =
             Option.value_exn
-              (Automaton.Conflict.of_skeleton zctx component_set skel spec
+              (CN.of_skeleton zctx component_set skel spec
                |> Or_error.ok_exn)
           in
-          Automaton.Conflict.invariants conflict;
+          CN.invariants conflict;
           let expected_rules =
             "((q1
-       ((_constraint
-         (Apply And
-          ((Apply Eq
-            ((Apply Add
-              ((Apply Len ((Variable (Input 2)))) (Constant (Int 1))))
-             (Apply Len ((Variable Output))))))))
-        (sorts (((Input 2) List) (Output List))))
-       (* q0))
-      (q0
-       ((_constraint
-         (Apply And
-          ((Apply Eq ((Apply Len ((Variable Output))) (Constant (Int 0)))))))
-        (sorts ((Output List))))
-       ()))"
+  ((_constraint
+    (Apply Eq
+     ((Apply Add ((Apply Len ((Variable (Input 2)))) (Constant (Int 1))))
+      (Apply Len ((Variable Output))))))
+   (sorts (((Input 2) List) (Output List))))
+  (* q0))
+ (q0
+  ((_constraint
+    (Apply Eq ((Apply Len ((Variable Output))) (Constant (Int 0)))))
+   (sorts ((Output List))))
+  ()))"
             |> Sexp.of_string
           in
           let actual_rules =
-            [%sexp_of:Automaton.Rule.t List.t] conflict.Automaton.Conflict.automaton.CA.rules
+            [%sexp_of:Automaton.Rule.t List.t] conflict.CN.automaton.CA.rules
           in
 
           assert_equal ~ctxt ~cmp:Sexp.equal ~printer:Sexp.to_string_hum expected_rules actual_rules);
 
       test_case (fun ctxt ->
           let zctx = Z3.mk_context [] in
-          let spec = CSpec.of_string "Eq(1, Len(r)) where r: list" |> Or_error.ok_exn in
+          let spec = Spec.of_string "Eq(1, Len(r)) where r: list" |> Or_error.ok_exn in
           let cm = CostModel.constant 1 in
           let top = Specification.Top in
           let skel = H.apply cm (H.id_name cm "cons" top) [
@@ -162,9 +164,9 @@ let conflict_tests = "conflict" >::: [
             ] top
                      |> H.skeleton
           in
-          let component_set = Component.Set.of_list components in
+          let component_set = C.Set.of_list components in
           let conflict =
-            Automaton.Conflict.of_skeleton zctx component_set skel spec |> Or_error.ok_exn
+            CN.of_skeleton zctx component_set skel spec |> Or_error.ok_exn
           in
           assert_bool "No conflict found." (Option.is_none conflict));
     ]
@@ -179,13 +181,17 @@ let mk_any_tests = "mk_any" >::: [
 let synthesizer_tests = "synthesizer" >::: [
     "synthesize" >::: [
       test_case (fun ctxt ->
-          let spec = CSpec.of_string "Eq(3, Len(r)) where r: list" |> Or_error.ok_exn in
+          let spec = Spec.of_string "Eq(3, Len(r)) where r: list" |> Or_error.ok_exn in
           let type_ = Infer.Type.of_string "list[a]" in
           let result =
-            Automaton.Synthesizer.synthesize ~max_cost:10 (Component.Set.of_list components) spec type_
-            |> Or_error.ok_exn
+            Option.value_exn
+            (Automaton.Synthesizer.synthesize ~max_cost:10 (C.Set.of_list components) spec type_
+             |> Or_error.ok_exn)
+            |> Hypothesis.skeleton
+            |> Sk.to_string_hum
           in
-          print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t Option.t] result)));
+          let expected = "(cons nil (cons nil (cons nil nil)))" in
+          assert_equal ~ctxt ~cmp:(String.equal) ~printer:(fun x -> x) expected result)
     ]
   ]
 

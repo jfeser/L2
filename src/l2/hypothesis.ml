@@ -244,6 +244,11 @@ module Skeleton = struct
     in
     of_expr String.Map.empty e
 
+  let of_string : 'a. 'a -> string -> 'a t Or_error.t = fun spec str ->
+    let module Let_syntax = Or_error.Let_syntax in
+    let%map expr = Expr.of_string str in
+    of_expr spec expr
+
   let compare = compare_t
   let hash = Hashtbl.hash
 
@@ -421,6 +426,7 @@ module Specification = struct
 
   let hash = Hashtbl.hash
   let compare = compare_t
+  let equal s1 s2 = compare s1 s2 = 0
 
   let to_string s = Sexp.to_string (sexp_of_t s)
 
