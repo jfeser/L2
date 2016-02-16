@@ -10,11 +10,11 @@ let get_json testcase runtime solution config : Json.json =
     | `NoSolution -> ""
   in
   let timers = [
-    "search", V1_engine.timer;
+    "search", V1_solver_engine.timer;
     (* "deduction", Deduction.timer; *)
   ] in
   let counters = [
-    "search", V1_engine.counter;
+    "search", V1_solver_engine.counter;
     "improved_search", V2_engine.counter;
     (* "deduction", Deduction.counter; *)
   ] in
@@ -34,9 +34,16 @@ let synthesize engine testcase =
     let config = !Config.config in
 
     begin match engine with
-      | `V1 -> 
+      | `V1 ->
+        let v1_config = {
+          V1_engine.verbosity = config.Config.verbosity;
+          V1_engine.untyped = config.Config.untyped;
+          V1_engine.deduction = config.Config.deduction;
+          V1_engine.infer_base = config.Config.infer_base;
+          V1_engine.max_exhaustive_depth = config.Config.max_exhaustive_depth;
+        } in
         let (solutions, runtime) = Util.with_runtime (fun () ->
-            V1_engine.solve ~init:V1_engine.extended_init ~config ~bk:bg exs)
+            V1_engine.solve ~init:V1_engine.default_init ~config:v1_config ~bk:bg exs)
         in
         let solution_str =
           Ctx.to_alist solutions
@@ -45,7 +52,19 @@ let synthesize engine testcase =
           |> String.concat ~sep:"\n"
         in
         (`Solution solution_str, runtime)
-        
+
+      | `V1_solver ->
+        let (solutions, runtime) = Util.with_runtime (fun () ->
+            V1_solver_engine.solve ~init:V1_solver_engine.extended_init ~config ~bk:bg exs)
+        in
+        let solution_str =
+          Ctx.to_alist solutions
+          |> List.map ~f:Tuple.T2.get2
+          |> List.map ~f:Expr.to_string
+          |> String.concat ~sep:"\n"
+        in
+        (`Solution solution_str, runtime)
+      
       | `V2 ->
         let open V2_engine in
         let open Hypothesis in
@@ -96,6 +115,7 @@ let synth_command =
 
       let%bind engine = match engine_str with
         | "v1" -> Ok `V1
+        | "v1_solver" -> Ok `V1_solver
         | "v2" -> Ok `V2
         | _ -> error "Unexpected engine parameter." engine_str [%sexp_of:string]
       in
