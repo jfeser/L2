@@ -152,6 +152,7 @@ module Memoizer = struct
               ~f:(fun hs (hole, spec) hole_cost ->
                   (* And select all hypotheses which could be used to fill them. *)
                   List.concat_map hs ~f:(fun (p, p_u) ->
+                      let hole = Hole.apply_unifier p_u hole in
                       let children = get m hole spec ~cost:hole_cost in
 
                       (* Fill in the hole and merge the unifiers. *)

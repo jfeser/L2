@@ -73,4 +73,10 @@ module Synthesizer : sig
     -> Component.Specification.t
     -> Type.t
     -> Hypothesis.t Option.t Or_error.t
+
+  val synthesize_from_examples :
+    max_cost:int
+    -> Component.Set.t
+    -> Example.t list
+    -> Hypothesis.t Option.t Or_error.t
 end

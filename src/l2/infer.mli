@@ -32,6 +32,7 @@ module Type : sig
   val nesting_depth : t -> int
   val normalize : t -> t
   val are_unifiable : t -> t -> bool
+  val arity : t -> int
   val of_string : string -> t
   val to_string : t -> string
 

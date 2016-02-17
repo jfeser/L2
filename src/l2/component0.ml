@@ -16,7 +16,7 @@ type variable =
 type constant =
   | Bool of bool
   | Int of int
-  | Nil
+  | Variant of string * constant list
 [@@deriving sexp, compare]
 
 type term =

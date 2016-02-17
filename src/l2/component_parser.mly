@@ -35,9 +35,6 @@ specification:
 term:
  | x = variable { Variable x }
  | x = constant { Constant x }
- | x = delimited(LBRACKET, separated_list(COMMA, term), RBRACKET) {
-       List.fold_right (fun e a -> Apply ("Cons", [e; a])) x (Constant Nil)
-   }
  | f = FUNC; args = delimited(LPAREN, separated_list(COMMA, term), RPAREN) { Apply (f, args) }
 
 sort_defs:
@@ -60,3 +57,6 @@ variable:
 constant:
  | x = BOOL { Bool x }
  | x = NUM { Int x }
+ | x = delimited(LBRACKET, separated_list(COMMA, constant), RBRACKET) {
+       List.fold_right (fun e a -> Variant ("Cons", [e; a])) x (Variant ("Nil", []))
+   }

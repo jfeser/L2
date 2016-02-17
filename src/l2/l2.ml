@@ -65,17 +65,29 @@ let synthesize engine testcase =
         in
         (`Solution solution_str, runtime)
       
-      | `V2 ->
-        let open V2_engine in
-        let open Hypothesis in
-        let (m_solution, runtime) = Util.with_runtime (fun () ->
-            let hypo = L2_Synthesizer.initial_hypothesis exs in
-            L2_Synthesizer.synthesize hypo ~cost:50)
-        in
-        match m_solution with
-        | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)
-        | Ok None -> (`NoSolution, runtime)
-        | Error err -> print_endline (Error.to_string_hum err); (`NoSolution, runtime)
+      | `V2 -> begin
+          let open V2_engine in
+          let open Hypothesis in
+          let (m_solution, runtime) = Util.with_runtime (fun () ->
+              let hypo = L2_Synthesizer.initial_hypothesis exs in
+              L2_Synthesizer.synthesize hypo ~cost:50)
+          in
+          match m_solution with
+          | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)
+          | Ok None -> (`NoSolution, runtime)
+          | Error err -> print_endline (Error.to_string_hum err); (`NoSolution, runtime)
+        end
+
+      | `Automata -> begin
+          let open Hypothesis in
+          let (m_solution, runtime) = Util.with_runtime (fun () ->
+              Automaton.Synthesizer.synthesize_from_examples ~max_cost:50 Component.stdlib exs)
+          in
+          match m_solution with
+          | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)
+          | Ok None -> (`NoSolution, runtime)
+          | Error err -> print_endline (Error.to_string_hum err); (`NoSolution, runtime)
+        end
     end
 
 let synth_command =
@@ -117,6 +129,7 @@ let synth_command =
         | "v1" -> Ok `V1
         | "v1_solver" -> Ok `V1_solver
         | "v2" -> Ok `V2
+        | "automata" -> Ok `Automata
         | _ -> error "Unexpected engine parameter." engine_str [%sexp_of:string]
       in
 

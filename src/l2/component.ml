@@ -87,7 +87,7 @@ module Variable = struct
       | Free of string
       | Input of int
       | Output
-    [@@deriving sexp, compare]
+      [@@deriving sexp, compare]
   end
 
   include T
@@ -103,11 +103,34 @@ module Variable = struct
 end
 
 module Constant = struct
-  type t = Component0.constant =
-    | Bool of bool
-    | Int of int
-    | Nil
-  [@@deriving sexp, compare]
+  module T = struct
+    type t = Component0.constant =
+      | Bool of bool
+      | Int of int
+      | Variant of string * t list
+      [@@deriving sexp, compare]
+  end
+
+  include T
+
+  let rec of_value = function
+    | `Num x -> Int x
+    | `Bool x -> Bool x
+    | `List x ->
+      List.map x ~f:of_value
+      |> List.fold_right ~init:(Variant ("Nil", [])) ~f:(fun e a -> Variant ("Cons", [e; a]))
+    | v -> failwiths "Unsupported value." v [%sexp_of:Ast.value]
+
+  let rec to_list_exn = function
+    | Variant ("Nil", []) -> []
+    | Variant ("Cons", [x; xs]) -> x::(to_list_exn xs)
+    | c -> failwiths "Expected Nil or Cons." c [%sexp_of:t]
+
+  let to_list c = Or_error.try_with (fun () -> to_list_exn c)
+
+  let rec of_list = function
+    | [] -> Variant ("Nil", [])
+    | x::xs -> Variant ("Cons", [x; of_list xs])
   
   let to_z3 zctx c =
     let err c = error "Unexpected constant in constraint." c sexp_of_t in
@@ -115,7 +138,9 @@ module Constant = struct
     | Bool true -> Ok (Z3.Boolean.mk_true zctx)
     | Bool false -> Ok (Z3.Boolean.mk_false zctx)
     | Int x -> Ok (Z3.Arithmetic.Integer.mk_numeral_i zctx x)
-    | Nil -> err Nil
+    | Variant _ -> err c
+
+  include Comparable.Make(T)
 end
 
 module Term = struct
@@ -152,15 +177,25 @@ module Term = struct
           | _ -> error "Unexpected arguments." (f, args) [%sexp_of:string * t list]
         in
 
-        match f, args with
-        | "Len", [x] -> 
-          let rec len = function
-            | Constant C.Nil -> Ok 0
-            | Apply ("Cons", [_; xs]) -> len xs >>| fun len_xs -> 1 + len_xs
-            | c -> error "Cannot take length of non-list." c sexp_of_t
-          in
-          len x >>| fun len_x -> Constant (C.Int len_x)
+        let list_list_bool t1 op t2 = match t1, t2 with
+          | Constant x1, Constant x2 ->
+            C.to_list x1 >>= fun x1_l ->
+            C.to_list x2 >>| fun x2_l ->
+            Constant (C.Bool (op x1_l x2_l))
+          | _ -> error "Unexpected arguments." (f, args) [%sexp_of:string * t list]
+        in
 
+        match f, args with
+        | "Len", [x] -> begin match x with
+            | Constant xc -> C.to_list xc >>| fun x_list -> Constant (C.Int (List.length x_list))
+            | _ -> failwith "Unexpected argument."
+          end
+        | "Superset", [t1; t2] ->
+          let superset l1 l2 = C.Set.subset (C.Set.of_list l2) (C.Set.of_list l1) in
+          list_list_bool t1 superset t2
+        | "Subset", [t1; t2] ->
+          let subset l1 l2 = C.Set.subset (C.Set.of_list l1) (C.Set.of_list l2) in
+          list_list_bool t1 subset t2
         | "Eq", [x1; x2] -> Ok (Constant (C.Bool (x1 = x2)))
         | "Neq", [x1; x2] -> Ok (Constant (C.Bool (x1 <> x2)))
         | "Gt", [t1; t2] -> int_int_bool t1 (>) t2
@@ -224,18 +259,35 @@ module Term = struct
       let args = List.map args ~f:(substitute_var m) in
       Apply (func, args)
 
-  let rec to_list = function
-    | Apply ("Cons", [x; xs]) -> to_list xs >>| fun xs -> x::xs
-    | Constant C.Nil -> Ok []
-    | c -> error "Not a list." c sexp_of_t
+  let rec of_value x = Constant (C.of_value x)
 
-  let rec of_value = function
-    | `Num x -> Constant (C.Int x)
-    | `Bool x -> Constant (C.Bool x)
-    | `List x ->
-      List.map x ~f:of_value
-      |> List.fold_right ~init:(Constant C.Nil) ~f:(fun e a -> Apply ("Cons", [e; a]))
-    | v -> failwiths "Unsupported value." v [%sexp_of:Ast.value]
+  let abstract : (V.t * t) list -> t list = fun terms ->
+    let predicates = [
+      "Len", 1;
+      "Superset", 2;
+      "Subset", 2;
+    ] in
+    let (list_terms, other_terms) =
+      List.partition_tf terms ~f:(fun (_, t) -> match t with
+          | Constant (C.Variant ("Nil", _)) | Constant (C.Variant ("Cons", _)) -> true
+          | _ -> false)
+    in
+    let abstract_list_terms =
+      List.concat_map predicates ~f:(fun (name, arity) -> 
+          Util.permutations_k list_terms arity
+          |> List.filter_map ~f:(fun args ->
+              let args_vars, args_values = List.unzip args in
+              match evaluate V.Map.empty (Apply (name, args_values)) with
+              | Ok (Constant _ as ret) ->
+                let args_names = List.map args_vars ~f:(fun v -> Variable v) in
+                Some (Apply ("Eq", [Apply (name, args_names); ret]))
+              | Ok c -> failwiths "BUG: Got a non-constant value from predicate." c [%sexp_of:t]
+              | Error err -> print_endline (Error.to_string_hum err); None))
+    in
+    let abstract_other_terms =
+      List.map other_terms ~f:(fun (v, t) -> Apply ("Eq", [Variable v; t]))
+    in
+    abstract_other_terms @ abstract_list_terms
 
   let rec to_z3 sorts zctx t =
     let z3_app = Z3.FuncDecl.apply in
@@ -256,7 +308,10 @@ module Term = struct
           begin match func, z3_args with
             | "Not", [x] -> Ok (Z3.Boolean.mk_not zctx x)
             | "And", xs -> Ok (Z3.Boolean.mk_and zctx xs)
+            | "Or", xs -> Ok (Z3.Boolean.mk_or zctx xs)
             | "Len", [x] -> Ok (z3_app (Z3_Defs.Functions.len zctx) [x])
+            | "Superset", [x1; x2] -> Ok (z3_app (Z3_Defs.Functions.superset zctx) [x1; x2])
+            | "Subset", [x1; x2] -> Ok (z3_app (Z3_Defs.Functions.subset zctx) [x1; x2])
             | "Sub", [x1; x2] -> Ok (Z3.Arithmetic.mk_sub zctx [x1; x2])
             | "Add", [x1; x2] -> Ok (Z3.Arithmetic.mk_add zctx [x1; x2])
             | "Eq", [x1; x2] ->
@@ -268,6 +323,9 @@ module Term = struct
                 error "Sorts are not equal."
                   (Z3.Sort.to_string s1, Z3.Sort.to_string s2) [%sexp_of:string * string]
             | "Gt", [x1; x2] -> Ok (Z3.Arithmetic.mk_gt zctx x1 x2)
+            | "Ge", [x1; x2] -> Ok (Z3.Arithmetic.mk_ge zctx x1 x2)
+            | "Lt", [x1; x2] -> Ok (Z3.Arithmetic.mk_lt zctx x1 x2)
+            | "Le", [x1; x2] -> Ok (Z3.Arithmetic.mk_le zctx x1 x2)
             | _ -> error "Unexpected function or arguments." (func, args) [%sexp_of:string * t list]
           end)
     in
@@ -365,40 +423,6 @@ module Specification = struct
           Ok (V.Map.add map ~key:var ~data:sort))
     in
     sorts >>| fun sorts -> { _constraint; sorts }
-  
-  (* let of_examples ?(predicates = two_arg_predicates) exs = *)
-  (*   let module H = Hypothesis in *)
-  (*   let module Sp = H.Specification in *)
-  (*   let module SD = H.StaticDistance in *)
-  (*   (\* Create a mapping from names in the example context to the set *)
-  (*      of values that the name takes. *\) *)
-  (*   let values_by_name = *)
-  (*     List.fold (Sp.Examples.to_list exs) ~init:SD.Map.empty ~f:(fun vals (in_ctx, out) -> *)
-  (*       SD.Map.merge in_ctx vals ~f:(fun ~key:_ x -> match x with *)
-  (*           | `Both (v, vs) -> Some ((v, out)::vs) *)
-  (*           | `Left v -> Some [(v, out)] *)
-  (*           | `Right vs -> Some vs)) *)
-  (*   in *)
-
-  (*   (\* Use predicates to summarize the values for each name *\) *)
-  (*   Or_error.try_with (fun () -> *)
-  (*       SD.Map.map values_by_name ~f:(fun values -> *)
-  (*           let constraints = *)
-  (*             List.fold values ~init:predicates ~f:(fun preds (inp, out) -> *)
-  (*                 let ctx = *)
-  (*                   V.Map.of_alist_exn [V.Input 1, T.of_value inp; V.Output, T.of_value out] *)
-  (*                 in *)
-  (*                 List.filter preds ~f:(fun p -> match P.evaluate ctx p with *)
-  (*                     | Ok (T.Constant (C.Bool true)) -> true *)
-  (*                     | Ok _ | Error _ -> false)) *)
-  (*           in *)
-
-  (*           let inputs, outputs = List.unzip values in *)
-  (*           let input_sort = Sort.of_values inputs |> ok_exn in *)
-  (*           let output_sort = Sort.of_values outputs |> ok_exn in *)
-  (*           { constraints; *)
-  (*             sorts = V.Map.of_alist_exn [V.Input 1, input_sort; V.Output, output_sort] *)
-  (*           })) *)
 
   let to_z3 zctx s =
     let z3_or_error =
@@ -504,68 +528,62 @@ let create ~name ~spec ~type_ =
   let open Or_error.Monad_infix in
   Specification.of_string spec >>| fun spec ->
   let t = Type.of_string type_ in
-  let arity = match t with
-    | Type.Arrow_t (args, _) -> List.length args
-    | _ -> 0
-  in
-  { name; spec; type_ = t; arity; }
+  { name; spec; type_ = t; arity = Type.arity t; }
 
 include Comparable.Make(T)
 
-let stdlib = String.Map.empty
-(*   create "drop" *)
-(*     "i2 >= 0 ^ Len(i1) >= i2 ^ Sub(Len(i1), i2) = Len(r) ^ i1 ⊃ r \ *)
-(*      where i1: list, i2: int, r: list" *)
-(*     "(list[a], int) -> list[a]"; *)
+let stdlib = Set.of_list ([
+    create "drop"
+      "And(Ge(i2, 0), Ge(Len(i1), i2), Eq(Sub(Len(i1), i2), Len(r)), Superset(i1, r)) where i1: list, i2: int, r: list"
+      "(list[a], num) -> list[a]";
 
-(*   create "take" *)
-(*     "i2 >= 0 ^ Len(i1) >= i2 ^ i2 = Len(r) ^ i1 ⊃ r where i1: list, i2: int, r: list" *)
-(*     "(list[a], int) -> list[a]"; *)
+    create "take"
+      "And(Ge(i2, 0), Ge(Len(i1), i2), Eq(i2, Len(r)), Superset(i1, r)) where i1: list, i2: int, r: list"
+      "(list[a], num) -> list[a]";
 
-(*   create "merge" *)
-(*     "r ⊃ i1 ^ r ⊃ i2 ^ Len(r) = Plus(Len(i1), Len(i2)) where i1: list, i2: list, r: list" *)
-(*     "(list[num], list[num]) -> list[num]"; *)
+    create "merge"
+      "And(Superset(r, i1), Superset(r, i2), Eq(Len(r), Add(Len(i1), Len(i2)))) where i1: list, i2: list, r: list"
+      "(list[num], list[num]) -> list[num]";
 
-(*   create "zip" *)
-(*     "Len(i1) = Len(i2) ^ Len(r) = Len(i1) where i1: list, i2: list, r: list" *)
-(*     "(list[a], list[a]) -> list[list[a]]"; *)
+    create "zip"
+      "And(Eq(Len(i1), Len(i2)), Eq(Len(r), Len(i1))) where i1: list, i2: list, r: list"
+      "(list[a], list[a]) -> list[list[a]]";
 
-(*   create "car" *)
-(*     "Len(i1) > 0 where i1: list" *)
-(*     "(list[a]) -> a"; *)
+    create "car"
+      "Gt(Len(i1), 0) where i1: list"
+      "(list[a]) -> a";
 
-(*   create ~name:"concat" "#t where r: list" "(list[list[a]]) -> list[a]" ~arity:1; *)
+    create ~name:"concat" ~spec:"#t where r: list" ~type_:"(list[list[a]]) -> list[a]";
 
-(*   create "cons" *)
-(*     "Plus(Len(i2), 1) = Len(r) ^ i2 ⊂ r where i2: list, r: list" *)
-(*     "(a, list[a]) -> list[a]"; *)
+    create "cons"
+      "And(Eq(Add(Len(i2), 1), Len(r)), Subset(i2, r)) where i2: list, r: list"
+      "(a, list[a]) -> list[a]";
 
-(*   create "rcons" *)
-(*     "Plus(Len(i1), 1) = Len(r) ^ i1 ⊂ r where i1: list, r: list" *)
-(*     "(list[a], a) -> list[a]"; *)
+    (* create "rcons" *)
+    (*   "Plus(Len(i1), 1) = Len(r) ^ i1 ⊂ r where i1: list, r: list" *)
+    (*   "(list[a], a) -> list[a]"; *)
 
-(*   create "cdr" *)
-(*     "Len(i1) > 0 ^ Sub(Len(i1), 1) = Len(r) ^ i1 ⊃ r where i1: list, r: list" *)
-(*     "(list[a]) -> list[a]"; *)
+    create "cdr"
+      "And(Gt(Len(i1), 0), Eq(Sub(Len(i1), 1), Len(r)), Superset(i1, r)) where i1: list, r: list"
+      "(list[a]) -> list[a]";
 
-(*   create "intersperse" *)
-(*     "Len(i1) <= Len(r) where i1: list, r: list" *)
-(*     "(list[a], a) -> list[a]"; *)
+    (* create "intersperse" *)
+    (*   "Len(i1) <= Len(r) where i1: list, r: list" *)
+    (*   "(list[a], a) -> list[a]"; *)
 
-(*   create "reverse" *)
-(*     "Len(i1) = Len(r) ^ i1 ⊂ r ^ i1 ⊃ r where i1: list, r: list" *)
-(*     "(list[a]) -> list[a]"; *)
+    create "reverse"
+      "And(Eq(Len(i1), Len(r)), Subset(i1, r), Superset(i1, r)) where i1: list, r: list"
+      "(list[a]) -> list[a]";
 
-(*   create "sort" *)
-(*     "Len(i1) = Len(r) ^ i1 ⊂ r ^ i1 ⊃ r where i1: list, r: list" *)
-(*     "(list[num]) -> list[num]"; *)
+    create "sort"
+      "And(Eq(Len(i1), Len(r)), Subset(i1, r), Superset(i1, r)) where i1: list, r: list"
+      "(list[num]) -> list[num]";
 
-(*   create "dedup" *)
-(*     "Len(i1) >= Len(r) ^ i1 ⊃ r where i1: list, r: list" *)
-(*     "(list[a]) -> list[a]"; *)
+    (* create "dedup" *)
+    (*   "Len(i1) >= Len(r) ^ i1 ⊃ r where i1: list, r: list" *)
+    (*   "(list[a]) -> list[a]"; *)
 
-(*   create "append" *)
-(*     "Plus(Len(i1), Len(i2)) = Len(r) ^ i1 ⊂ r ^ i2 ⊂ r where i1: list, i2: list, r: list" *)
-(*     "(list[a], list[a]) -> list[a]"; *)
-(* ] |> List.map ~f:(fun m_c -> let c = Or_error.ok_exn m_c in c.name, c) *)
-(*   |> String.Map.of_alist_exn *)
+    (* create "append" *)
+    (*   "Plus(Len(i1), Len(i2)) = Len(r) ^ i1 ⊂ r ^ i2 ⊂ r where i1: list, i2: list, r: list" *)
+    (*   "(list[a], list[a]) -> list[a]"; *)
+  ] |> Or_error.all |> Or_error.ok_exn)

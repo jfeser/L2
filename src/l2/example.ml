@@ -1,23 +1,22 @@
 open Core.Std
 
-open Ast
 open Collections
 open Infer
 open Util
 
-type t = example
+type t = Expr.t * Expr.t [@@deriving sexp, compare]
 
 (** Parse an example from a string. *)
 let of_string_exn (s: string) : t =
   let lexbuf = Lexing.from_string s in
   try Parser.example_eof Lexer.token lexbuf with
-  | Parser.Error -> raise (ParseError s)
-  | Lexer.SyntaxError _ -> raise (ParseError s)
-  | Parsing.Parse_error -> raise (ParseError s)
+  | Parser.Error -> raise (Ast.ParseError s)
+  | Lexer.SyntaxError _ -> raise (Ast.ParseError s)
+  | Parsing.Parse_error -> raise (Ast.ParseError s)
 
 let of_string (s: string) : t Or_error.t =
   try Ok (of_string_exn s) with
-  | ParseError s -> error "Parsing Example.t failed." s [%sexp_of:string]
+  | Ast.ParseError s -> error "Parsing Example.t failed." s [%sexp_of:string]
 
 (** Convert an example to a string. *)
 let to_string (ex: t) : string =
@@ -29,7 +28,7 @@ let to_triple = function
   | ex -> failwith (sprintf "Malformed example: %s" (to_string ex))
 
 (** Get the name of the target function from a list of examples. *)
-let name (exs: t list) : id =
+let name (exs: t list) : Ast.id =
   let names =
     List.map exs ~f:(fun ex -> let name, _, _ = to_triple ex in name)
     |> List.dedup ~compare:String.compare
@@ -53,14 +52,14 @@ let signature ?(ctx=Ctx.empty ()) (examples: t list) : Type.t =
   let _, inputs, results = List.map examples ~f:to_triple |> unzip3 in
   let res_typ =
     match TypedExpr.to_type (infer_exn ctx (`List results)) with
-    | App_t ("list", [t]) -> t
+    | Type.App_t ("list", [t]) -> t
     | t -> failwith (sprintf "Unexpected result type: %s" (Type.to_string t))
   in
   let typ =
     match inputs with
     | args::_ ->
        let num_args = List.length args in
-       Arrow_t (List.range 0 num_args |> List.map ~f:(fun _ -> Infer.fresh_free 0), res_typ)
+       Type.Arrow_t (List.range 0 num_args |> List.map ~f:(fun _ -> Infer.fresh_free 0), res_typ)
     | [] -> failwith "Example list is empty."
   in
   let ctx = Ctx.bind ctx (name examples) typ in
@@ -68,11 +67,11 @@ let signature ?(ctx=Ctx.empty ()) (examples: t list) : Type.t =
   List.iter inputs ~f:(fun input -> let _ = Infer.infer ctx (`Apply (`Id name', input)) in ());
   typ
 
-let to_vctx (example: t) (arg_names: string list) : expr Ctx.t =
+let to_vctx (example: t) (arg_names: string list) : Expr.t Ctx.t =
   let _, inputs, _ = to_triple example in
   List.zip_exn arg_names inputs |> Ctx.of_alist_exn
 
-let check (examples: (t * expr Ctx.t) list) : bool =
+let check (examples: (t * Expr.t Ctx.t) list) : bool =
   (* Is there a pair of examples such that the outer contexts and LHSs
   are equal, but the RHSs are not? *)
   not (List.exists

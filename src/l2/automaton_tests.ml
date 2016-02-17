@@ -21,6 +21,13 @@ let components = [
   C.create ~name:"elem" ~spec:"#t" ~type_:"num";
 ] |> Or_error.all |> Or_error.ok_exn
 
+let int_components = [
+  C.create ~name:"mod" ~type_:"(num, num) -> num"
+    ~spec:"Eq(r, Mod(i1, i2)) where r: int, i1: int, i2: int";
+  C.create ~name:"zero" ~type_:"num" ~spec:"Eq(r, 0) where r: int";
+  C.create ~name:"if" ~type_:"(bool, a, a) -> a" ~spec:"Eq(r, 0) where r: int";
+]
+
 let create states initial_states components rules =
   CA.create
     (String.Set.of_list states)

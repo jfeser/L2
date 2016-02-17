@@ -98,7 +98,7 @@ module Constrained = struct
       let m' = List.fold a.rules ~init:m ~f:(fun m' (q, spec, qq) ->
           if Symbol.Set.mem m' q && any_component_fits spec then
             List.fold qq ~init:m' ~f:Symbol.Set.add
-            else m')
+          else m')
       in
       (a, m')
     in
@@ -112,7 +112,7 @@ module Constrained = struct
       in
       (a, m')
     in
-
+    
     Or_error.try_with (fun () ->
         let cmp (_, m1) (_, m2) = Symbol.Set.compare m1 m2 in
         let (_, reachable) = fix ~cmp (a, a.initial_states) top_down in
@@ -660,12 +660,17 @@ module Synthesizer = struct
     max_cost : int;
   }
 
-  let rec search_at_cost : cost:int -> search_state -> Hole.t -> Memoizer.t -> unit =
-    fun ~cost search_state hole memoizer ->
+  type check = Hypothesis.t -> unit
+
+  let print_sexp x to_sexp = print_endline (Sexp.to_string_hum (to_sexp x))
+
+  let rec search_at_cost : cost:int -> check -> search_state -> Hole.t -> Memoizer.t -> unit =
+    fun ~cost check search_state hole memoizer ->
       let ss = search_state in
       if cost > ss.max_cost then () else
         let candidates = Memoizer.get memoizer hole Specification.Top ~cost in
         List.iter candidates ~f:(fun (candidate, _) ->
+            print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t] candidate));
             let components = ss.space.Constrained.components in
             let m_conflict =
               Conflict.of_skeleton ss.zctx components (Hypothesis.skeleton candidate) ss.spec
@@ -673,24 +678,23 @@ module Synthesizer = struct
             in
             match m_conflict with
             | Some conflict ->
-              (* print_newline (); *)
-              (* print_endline "Found conflict!"; *)
-              (* print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t] candidate)); *)
-              (* print_endline (Sexp.to_string_hum ([%sexp_of:Conflict.t] conflict)); *)
+              print_newline ();
+              print_endline "Found conflict!";
+              print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t] candidate));
+              print_endline (Sexp.to_string_hum ([%sexp_of:Conflict.t] conflict));
               raise (ConflictException conflict)
-            | None -> raise (SynthesisException candidate));
+            | None -> check candidate);
 
-      search_at_cost ~cost:(cost + 1) search_state hole memoizer
+      search_at_cost ~cost:(cost + 1) check search_state hole memoizer
 
-  let rec search_in_space : search_state -> unit = fun search_state ->
+  let rec search_in_space : check -> search_state -> unit = fun check search_state ->
     let ss = search_state in
     let gen = Constrained.to_generalizer ss.zctx ss.space ss.cost_model |> Or_error.ok_exn in
     let memo = Memoizer.create gen ss.cost_model in
 
-    (* TODO: Should use all initial states. *)
     Symbol.Set.iter ss.space.Constrained.initial_states ~f:(fun init_state ->
         let hole = Hole.create (Infer.instantiate 0 ss.type_) init_state in
-        try search_at_cost ~cost:0 search_state hole memo with
+        try search_at_cost ~cost:0 check search_state hole memo with
         | ConflictException conflict ->
           let c_conflict = Conflict.complement conflict in
           (* print_newline (); *)
@@ -705,22 +709,122 @@ module Synthesizer = struct
           let space' =
             cc_conflict
             |> Constrained.intersect ss.space
+            |> Constrained.reduce ss.zctx
+            |> Or_error.ok_exn
           in
-          (* print_newline (); *)
-          (* print_endline "New space:"; *)
-          (* print_endline (Sexp.to_string_hum ([%sexp_of:Constrained.t] space')); *)
-          search_in_space { search_state with space = space' })
+          print_newline ();
+          print_endline "New space:";
+          print_endline (Sexp.to_string_hum ([%sexp_of:Constrained.t] space'));
+          search_in_space check { search_state with space = space' })
 
   let synthesize : max_cost:int -> Component.Set.t -> Spec.t -> Type.t -> Hypothesis.t Option.t Or_error.t =
     fun ~max_cost components spec type_ ->
       let search_state = {
-        zctx = Z3.mk_context [];        
+        zctx = Z3.mk_context [];
         cost_model = V2_engine.cost_model; (* TODO: Should use our own cost model here. *)
         space = Constrained.mk_any components |> Tuple.T2.get2;
         spec; type_; max_cost;
       } in
 
+      print_sexp search_state.space [%sexp_of:Constrained.t];
+
       Or_error.try_with (fun () ->
-          try search_in_space search_state; None with
+          try search_in_space (fun h -> raise (SynthesisException h)) search_state; None with
+          | SynthesisException ret -> Some ret)
+
+  let synthesize_from_examples : max_cost:int -> Component.Set.t -> Example.t list -> Hypothesis.t Option.t Or_error.t =    
+    let module Exs = Specification.Examples in
+    let module T = Component.Term in
+    let module V = Component.Variable in
+    let module S = Component.Sort in
+    let module Spec = Component.Specification in
+    fun ~max_cost components examples ->
+      (* Get the type of the examples, so we have argument and return types. *)
+      let args_t, ret_t =
+        match Infer.Type.normalize (Example.signature examples) with
+        | Type.Arrow_t (args_t, ret_t) -> (args_t, ret_t)
+        | t -> failwiths "Unexpected type." t [%sexp_of:Type.t]
+      in
+
+      (* Assign each argument a name. This is how we will refer to the
+         arguments inside the hypothesis. *)
+      let names =
+        let fresh_name = Util.Fresh.mk_fresh_name_fun () in
+        List.init (List.length args_t) ~f:(fun _ -> fresh_name ())
+      in
+
+      (* Generate a constraint for each example which relates inputs
+         and outputs and a constraint for each example which determines
+         the valid inputs. *)
+      let constraints =
+        List.map examples ~f:(function
+            | (`Apply (_, args), ret) ->
+              let args_terms =
+                List.map ~f:(Eval.eval (Ctx.empty ())) args
+                |> List.map ~f:T.of_value
+                |> List.map2_exn names ~f:(fun n t -> V.Free n, t)
+              in
+              let ret_term = (V.Output, T.of_value (Eval.eval (Ctx.empty ()) ret)) in
+              let abstract_terms = T.abstract (ret_term::args_terms) in
+              T.Apply ("And", abstract_terms)
+            | ex -> failwiths "Unexpected example." ex [%sexp_of:Example.t])
+      in
+      let _constraint = T.Apply ("Or", constraints) in
+      let sorts =
+        List.map2_exn names args_t ~f:(fun n t -> V.Free n, S.of_type t |> Or_error.ok_exn)
+        |> V.Map.of_alist_exn
+        |> V.Map.add ~key:V.Output ~data:(S.of_type ret_t |> Or_error.ok_exn)
+      in
+      let spec = { Spec._constraint = _constraint; Spec.sorts = sorts; } in
+
+      let arg_components =
+        List.map2_exn args_t names ~f:(fun t n -> {
+              Component.arity = Type.arity t;
+              Component.type_ = t;
+              Component.name = n;
+              Component.spec = {
+                Spec._constraint = T.Apply ("Eq", [T.Variable (V.Free n); T.Variable V.Output]);
+                Spec.sorts = V.Map.of_alist_exn [
+                    V.Free n, S.of_type t |> Or_error.ok_exn;
+                    V.Output, S.of_type t |> Or_error.ok_exn;
+                  ]
+              };
+            })
+        |> Component.Set.of_list
+      in
+      let components = Component.Set.union components arg_components in
+      print_endline (Sexp.to_string_hum ([%sexp_of:Spec.t] spec));
+
+      let search_state = {
+        zctx = Z3.mk_context [];
+        cost_model = V2_engine.cost_model; (* TODO: Should use our own cost model here. *)
+        space = Constrained.mk_any components |> Tuple.T2.get2;
+        type_ = ret_t;
+        spec; max_cost;
+      } in
+
+      let io_ctx = List.map examples ~f:(function
+          | (`Apply (_, args), ret) ->
+            let ret = Eval.eval (Ctx.empty ()) ret in
+            let ctx =
+              List.map2_exn names args ~f:(fun n e -> (n, Eval.eval (Ctx.empty ()) e))
+              |> Ctx.of_alist_exn
+            in
+            (ctx, ret))
+      in
+      let check h =
+        let h_expr = Hypothesis.to_expr h in
+        let is_valid = List.for_all io_ctx ~f:(fun (ctx, ret) ->
+            try Eval.eval ctx h_expr = ret with
+            | Eval.RuntimeError msg -> false)
+        in
+        if is_valid then
+          raise (SynthesisException h)
+      in
+
+      print_sexp search_state.space [%sexp_of:Constrained.t];
+
+      Or_error.try_with (fun () ->
+          try search_in_space check search_state; None with
           | SynthesisException ret -> Some ret)
 end

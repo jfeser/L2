@@ -68,8 +68,8 @@ module Constant : sig
   type t =
     | Bool of bool
     | Int of int
-    | Nil
-  [@@deriving sexp, compare]
+    | Variant of string * t list
+    [@@deriving sexp, compare]
 
   val to_z3 : Z3.context -> t -> Z3.Expr.expr Or_error.t
 end
@@ -87,6 +87,8 @@ module Term : sig
       
   val substitute : t Map.t -> t -> t
   val substitute_var : Variable.t Variable.Map.t -> t -> t
+
+  val abstract : (Variable.t * t) list -> t list
     
   val of_value : Ast.value -> t
   val to_z3 : Sort.t Variable.Map.t -> Z3.context -> t -> Z3.Expr.expr Or_error.t
@@ -130,4 +132,4 @@ include Sexpable.S with type t := t
 include Comparable.S with type t := t
 
 val create : name:string -> spec:string -> type_:string -> t Or_error.t
-val stdlib : t String.Map.t
+val stdlib : Set.t

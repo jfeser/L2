@@ -79,6 +79,10 @@ module Type0 = struct
   let arrow1 arg body = Arrow_t ([arg], body)
   let arrow2 a1 a2 body = Arrow_t ([a1; a2], body)
 
+  let arity : t -> int = function
+    | Arrow_t (args, _) -> List.length args
+    | _ -> 0
+
   (** Parse a type from a string. *)
   let of_string (s: string) : t =
     let lexbuf = Lexing.from_string s in
