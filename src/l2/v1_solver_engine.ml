@@ -451,10 +451,10 @@ let solve_single
           List.for_all (List.zip_exn examples result_sterms)
             ~f:(fun ((input, result), result_sterm) ->
                 let expr =
-                  Eval.ExprValue.of_expr ((spec.Spec.target ctx) input)
+                  Value.ExprValue.of_expr ((spec.Spec.target ctx) input)
                 in
                 try
-                  let lhs : Eval.ExprValue.t =
+                  let lhs : Value.ExprValue.t =
                     run_with_time "partial_eval" (fun () ->
                         Eval.partial_eval
                           ~recursion_limit:100

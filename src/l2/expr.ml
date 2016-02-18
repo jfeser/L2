@@ -10,7 +10,8 @@ module Map = Core.Std.Map.Make(
     type t = expr [@@deriving compare, sexp]
   end)
 
-type t = expr [@@deriving compare, sexp]
+type t = Ast.expr [@@deriving compare, sexp]
+type id = Ast.id [@@deriving compare, sexp]
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
@@ -22,7 +23,30 @@ module Op = struct
       let compare = compare_op
     end)
 
-  type t = op [@@deriving compare, sexp]
+  type t = Ast.op =
+    | Plus
+    | Minus
+    | Mul
+    | Div
+    | Mod
+    | Eq
+    | Neq
+    | Lt
+    | Leq
+    | Gt
+    | Geq
+    | And
+    | Or
+    | Not
+    | If
+    | RCons
+    | Cons
+    | Car
+    | Cdr
+    | Tree
+    | Value
+    | Children
+    [@@deriving compare, sexp]
 
   (** Type for storing operator metadata. *)
   type metadata = {

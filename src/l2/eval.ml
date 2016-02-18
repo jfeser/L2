@@ -1,7 +1,6 @@
 open Core.Std
 open Printf
 
-open Ast
 open Collections
 
 (** Exceptions that can be thrown by the evaluation and type-checking functions. *)
@@ -101,7 +100,7 @@ let eval_ctx_of_alist =
         Ctx.update ctx' name value;
         Ctx.bind ctx name value)
 
-let (stdlib_vctx: value Ctx.t) = eval_ctx_of_alist stdlib
+let (stdlib_vctx: Value.t Ctx.t) = eval_ctx_of_alist stdlib
 
 (** Evaluate an expression in the provided context. *)
 let eval ?recursion_limit ctx expr =
@@ -124,7 +123,7 @@ let eval ?recursion_limit ctx expr =
       | `Id id  ->
         (match Ctx.lookup ctx id with
          | Some x -> x
-         | None -> raise @@ RuntimeError (Error.create "Unbound lookup." id sexp_of_id))
+         | None -> raise @@ RuntimeError (Error.create "Unbound lookup." id [%sexp_of:Expr.id]))
       | `Let (name, bound, body) ->
         let ctx = Ctx.bind ctx name `Unit in
         Ctx.update ctx name (eval limit ctx bound);
@@ -144,7 +143,9 @@ let eval ?recursion_limit ctx expr =
          | _ -> raise @@ RuntimeError
              (Error.create "Tried to apply a non-function." expr Expr.sexp_of_t))
 
-      | `Op (op, args) -> (match op with
+      | `Op (op, args) -> begin
+          let open Expr.Op in
+          match op with
           | Not -> (match eval_all args with
               | [`Bool x] -> `Bool (not x)
               | _ -> arg_error expr)
@@ -218,7 +219,8 @@ let eval ?recursion_limit ctx expr =
               | [ux; uy; uz] -> (match eval limit ctx ux with
                   | `Bool x -> if x then eval limit ctx uy else eval limit ctx uz
                   | _ -> arg_error expr)
-              | _ -> arg_error expr))
+              | _ -> arg_error expr)
+        end
   in
   let ctx = Ctx.merge stdlib_vctx ctx ~f:(fun ~key:_ value ->
       match value with
@@ -228,260 +230,207 @@ let eval ?recursion_limit ctx expr =
   | Some limit -> eval limit ctx expr
   | None -> eval (-1) ctx expr
 
-module ExprValue = struct
-  type t = [
-    | `Unit
-    | `Num of int
-    | `Bool of bool
-    | `List of t list
-    | `Tree of t Tree.t
-    | `Closure of t * (t Ctx.t)
-    | `Id of id
-    | `Let of id * t * t
-    | `Lambda of id list * t
-    | `Apply of t * (t list)
-    | `Op of op * (t list)
-  ] [@@deriving compare, sexp]
-
-  let rec to_string (e: t) : string =
-    let list_to_string l = String.concat ~sep:" " (List.map ~f:to_string l) in
-    match e with
-    | `Num x -> Int.to_string x
-    | `Bool true -> "#t"
-    | `Bool false -> "#f"
-    | `Id x -> x
-    | `List x -> sprintf "[%s]" (list_to_string x)
-    | `Tree x -> Tree.to_string x ~str:to_string
-    | `Op (op, args) -> sprintf "(%s %s)" (Expr.Op.to_string op) (list_to_string args)
-    | `Let (x, y, z) -> sprintf "(let %s %s %s)" x (to_string y) (to_string z)
-    | `Apply (x, y) -> sprintf "(%s %s)" (to_string x) (list_to_string y)
-    | `Lambda (args, body) ->
-      sprintf "(lambda (%s) %s)" (String.concat ~sep:" " args) (to_string body)
-    | `Closure _ -> "*closure*"
-    | `Unit -> "unit"
-
-  let rec of_expr (e: expr) : t = match e with
-    | `Num x -> `Num x
-    | `Bool x -> `Bool x
-    | `Id x -> `Id x
-    | `List x -> `List (List.map x ~f:of_expr)
-    | `Tree x -> `Tree (Tree.map x ~f:of_expr)
-    | `Op (op, args) -> `Op (op, List.map args ~f:of_expr)
-    | `Let (x, y, z) -> `Let (x, of_expr y, of_expr z)
-    | `Apply (x, y) -> `Apply (of_expr x, List.map y ~f:of_expr)
-    | `Lambda (x, y) -> `Lambda (x, of_expr y)
-
-  let rec of_value (e: value) : t = match e with
-    | `Num x -> `Num x
-    | `Bool x -> `Bool x
-    | `List x -> `List (List.map x ~f:of_value)
-    | `Tree x -> `Tree (Tree.map x ~f:of_value)
-    | `Closure (x, ctx) -> `Closure (of_expr x, Ctx.map ctx ~f:of_value)
-    | `Unit -> `Unit
-end
-
-let (stdlib_evctx: ExprValue.t Ctx.t) =
+let (stdlib_evctx: Value.ExprValue.t Ctx.t) =
   List.fold_left stdlib ~init:(Ctx.empty ())
     ~f:(fun ctx (name, lambda) ->
         let ctx' = Ctx.bind ctx name `Unit in
-        let value = `Closure (ExprValue.of_expr lambda, ctx') in
+        let value = `Closure (Value.ExprValue.of_expr lambda, ctx') in
         Ctx.update ctx' name value;
         Ctx.bind ctx name value)
 
-let partial_eval
-      ?recursion_limit:(limit = (-1))
-      ?(ctx = Ctx.empty ())
-      (expr: ExprValue.t)
-    : ExprValue.t =
-  let rec ev ctx lim (expr: ExprValue.t) : ExprValue.t =
-    let ev_all = List.map ~f:(ev ctx lim) in
-    if lim = 0 then raise HitRecursionLimit
-    else match expr with
-      | `Unit | `Closure _ | `Num _ | `Bool _ -> expr
-      | `List x -> `List (List.map x ~f:(ev ctx lim))
-      | `Tree x -> `Tree (Tree.map x ~f:(ev ctx lim))
-      | `Lambda _ as lambda -> `Closure (lambda, ctx)
-      | `Id id -> (match Ctx.lookup ctx id with
-          | Some e -> e
-          | None -> expr)
-      | `Let (name, bound, body) ->
-        let ctx' = Ctx.bind ctx name `Unit in
-        Ctx.update ctx' name (ev ctx' lim bound);
-        ev ctx' lim body
+let partial_eval : ?recursion_limit:int -> ?ctx:Value.ExprValue.t Ctx.t -> Value.ExprValue.t -> Value.ExprValue.t =
+  fun ?recursion_limit:(limit = (-1)) ?(ctx = Ctx.empty ()) expr ->
+    let rec ev ctx lim expr =
+      let ev_all = List.map ~f:(ev ctx lim) in
+      if lim = 0 then raise HitRecursionLimit
+      else match expr with
+        | `Unit | `Closure _ | `Num _ | `Bool _ -> expr
+        | `List x -> `List (List.map x ~f:(ev ctx lim))
+        | `Tree x -> `Tree (Tree.map x ~f:(ev ctx lim))
+        | `Lambda _ as lambda -> `Closure (lambda, ctx)
+        | `Id id -> (match Ctx.lookup ctx id with
+            | Some e -> e
+            | None -> expr)
+        | `Let (name, bound, body) ->
+          let ctx' = Ctx.bind ctx name `Unit in
+          Ctx.update ctx' name (ev ctx' lim bound);
+          ev ctx' lim body
 
-      | `Apply (func, raw_args) ->
-        let args = ev_all raw_args in
-        (match ev ctx lim func with
-         | `Closure (`Lambda (arg_names, body), enclosed_ctx) ->
-           (match List.zip arg_names args with
-            | Some bindings ->
-              let ctx' =
-                List.fold bindings ~init:(enclosed_ctx)
-                  ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value)
-              in
-              ev ctx' (lim - 1) body
-            | None -> argn_error expr ExprValue.sexp_of_t)
-         | e -> `Apply (e, args))
+        | `Apply (func, raw_args) ->
+          let args = ev_all raw_args in
+          (match ev ctx lim func with
+           | `Closure (`Lambda (arg_names, body), enclosed_ctx) ->
+             (match List.zip arg_names args with
+              | Some bindings ->
+                let ctx' =
+                  List.fold bindings ~init:(enclosed_ctx)
+                    ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value)
+                in
+                ev ctx' (lim - 1) body
+              | None -> argn_error expr [%sexp_of:Value.ExprValue.t])
+           | e -> `Apply (e, args))
 
-      | `Op (op, raw_args) ->
-        let args = lazy (List.map ~f:(ev ctx lim) raw_args) in
-        try
-          (match op with
-           | Plus -> (match Lazy.force args with
-               | [`Num x; `Num y] -> `Num (x + y)
-               | [`Num 0; x] | [x; `Num 0] -> x
-               | [`Op (Minus, [x; y]); z]
-               | [z; `Op (Minus, [x; y])] when y = z -> x
-               | _ -> `Op (op, Lazy.force args))
-           | Minus -> (match Lazy.force args with
-               | [`Num x; `Num y] -> `Num (x - y)
-               | [x; `Num 0] -> x
-               | [`Op (Plus, [x; y]); z] when x = z -> y
-               | [`Op (Plus, [x; y]); z] when y = z -> x
-               | [z; `Op (Plus, [x; y])] when x = z -> `Op (Minus, [`Num 0; y])
-               | [z; `Op (Plus, [x; y])] when y = z -> `Op (Minus, [`Num 0; x])
-               | [x; y] when x = y -> `Num 0
-               | _ -> `Op (op, Lazy.force args))
-           | Mul -> (match Lazy.force args with
-               | [`Num x; `Num y] -> `Num (x * y)
-               | [`Num 0; _] | [_; `Num 0] -> `Num 0
-               | [`Num 1; x] | [x; `Num 1] -> x
-               | [x; `Op (Div, [y; z])]
-               | [`Op (Div, [y; z]); x] when x = z -> y
-               | _ -> `Op (op, Lazy.force args))
-           | Div -> (match Lazy.force args with
-               | [_; `Num 0] -> divide_by_zero_error ()
-               | [`Num x; `Num y] -> `Num (x / y)
-               | [`Num 0; _] -> `Num 0
-               | [x; `Num 1] -> x
-               | [x; y] when x = y -> `Num 1
-               | _ -> `Op (op, Lazy.force args))
-           | Mod -> (match Lazy.force args with
-               | [_; `Num 0] -> divide_by_zero_error ()
-               | [`Num x; `Num y] -> `Num (x mod y)
-               | [`Num 0; _] | [_; `Num 1] -> `Num 0
-               | [x; y] when x = y -> `Num 0
-               | _ -> `Op (op, Lazy.force args))
-           | Eq -> (match Lazy.force args with
-               | [`Bool true; x] | [x; `Bool true] -> x
-               | [`Bool false; x] | [x; `Bool false] -> ev ctx (lim - 1) (`Op (Not, [x]))
-               | [x; `Op (Cdr, [y])] | [`Op (Cdr, [y]); x] when x = y -> `Bool false
-               | [x; y] -> `Bool (x = y)
-               | _ -> `Op (op, Lazy.force args))
-           | Neq -> (match Lazy.force args with
-               | [`Bool true; x] | [x; `Bool true] -> ev ctx (lim - 1) (`Op (Not, [x]))
-               | [`Bool false; x] | [x; `Bool false] -> x
-               | [x; `Op (Cdr, [y])] | [`Op (Cdr, [y]); x] when x = y -> `Bool true
-               | [x; y] -> `Bool (x <> y)
-               | _ -> `Op (op, Lazy.force args))
-           | Lt -> (match Lazy.force args with
-               | [`Num x; `Num y] -> `Bool (x < y)
-               | [`Id "inf"; _] -> `Bool false
-               | [x; y] when x = y -> `Bool false
-               | _ -> `Op (op, Lazy.force args))
-           | Gt -> (match Lazy.force args with
-               | [`Num x; `Num y] -> `Bool (x > y)
-               | [_; `Id "inf"] -> `Bool false
-               | [x; y] when x = y -> `Bool false
-               | _ -> `Op (op, Lazy.force args))
-           | Leq -> (match Lazy.force args with
-               | [`Num x; `Num y] -> `Bool (x <= y)
-               | [_; `Id "inf"] -> `Bool true
-               | [x; y] when x = y -> `Bool true
-               | _ -> `Op (op, Lazy.force args))
-           | Geq -> (match Lazy.force args with
-               | [`Num x; `Num y] -> `Bool (x >= y)
-               | [`Id "inf"; _] -> `Bool true
-               | [x; y] when x = y -> `Bool true
-               | _ -> `Op (op, Lazy.force args))
-           | And -> (match Lazy.force args with
-               | [`Bool x; `Bool y] -> `Bool (x && y)
-               | [`Bool true; x] | [x; `Bool true] -> x
-               | [`Bool false; _] | [_; `Bool false] -> `Bool false
-               | [x; `Op (And, [y; z])] when x = y -> `Op (And, [x; z])
-               | [x; `Op (And, [y; z])] when x = z -> `Op (And, [x; y])
-               | [x; `Op (Not, [y])]
-               | [`Op (Not, [y]); x] when x = y -> `Bool false
-               (* DeMorgan's law. *)
-               | [`Op (Not, [x]); `Op (Not, [y])] -> `Op (Not, [`Op (Or, [x; y])])
-               (* Distributivity. *)
-               | [`Op (Or, [a; b]); `Op (Or, [c; d])] when a = c ->
-                 `Op (Or, [a; `Op (And, [b; d])])
-               | [x; y] when x = y -> x
-               | _ -> `Op (op, Lazy.force args))
-           | Or -> (match Lazy.force args with
-               | [`Bool x; `Bool y] -> `Bool (x || y)
-               | [`Bool false; x] | [x; `Bool false] -> x
-               | [`Bool true; _] | [_; `Bool true] -> `Bool true
-               | [x; `Op (Or, [y; z])] when x = y -> `Op (Or, [x; z])
-               | [x; `Op (Or, [y; z])] when x = z -> `Op (Or, [x; y])
-               | [x; `Op (Not, [y])]
-               | [`Op (Not, [y]); x] when x = y -> `Bool true
-               (* DeMorgan's law. *)
-               | [`Op (Not, [x]); `Op (Not, [y])] ->
-                 `Op (Not, [`Op (And, [x; y])])
-               (* Distributivity. *)
-               | [`Op (And, [a; b]); `Op (And, [c; d])] when a = c ->
-                 `Op (And, [a; `Op (Or, [b; d])])
-               | [x; y] when x = y -> x
-               | _ -> `Op (op, Lazy.force args))
-           | Not -> (match Lazy.force args with
-               | [`Bool x] -> `Bool (not x)
-               | [`Op (Not, [x])] -> x
-               | [`Op (Lt, [x; y])] -> `Op (Geq, [x; y])
-               | [`Op (Gt, [x; y])] -> `Op (Leq, [x; y])
-               | [`Op (Leq, [x; y])] -> `Op (Gt, [x; y])
-               | [`Op (Geq, [x; y])] -> `Op (Lt, [x; y])
-               | [`Op (Eq, [x; y])] -> `Op (Neq, [x; y])
-               | [`Op (Neq, [x; y])] -> `Op (Eq, [x; y])
-               | _ -> `Op (op, Lazy.force args))
-           | Cons -> (match Lazy.force args with
-               | [x; `List y] -> `List (x :: y)
-               | [`Op (Car, [x]); `Op (Cdr, [y])] when x = y -> x
-               | _ -> `Op (op, Lazy.force args))
-           | RCons -> (match Lazy.force args with
-               | [`List y; x] -> `List (x :: y)
-               | [`Op (Cdr, [y]); `Op (Car, [x])] when x = y -> x
-               | _ -> `Op (RCons, Lazy.force args))
-           | Car -> (match Lazy.force args with
-               | [`List (x::_)] -> x
-               | [`List []] -> raise (RuntimeError (Error.of_string "Car of empty list."))
-               | [`Op (Cons, [x; _])] -> x
-               | [`Op (RCons, [_; x])] -> x
-               | _ -> `Op (op, Lazy.force args))
-           | Cdr -> (match Lazy.force args with
-               | [`List (_::xs)] -> `List xs
-               | [`List []] -> raise (RuntimeError (Error.of_string "Cdr of empty list."))
-               | [`Op (Cons, [_; x])]
-               | [`Op (RCons, [x; _])] -> x
-               | _ -> `Op (op, Lazy.force args))
-           | If -> (match raw_args with
-               | [ux; uy; uz] -> (match ev ctx lim ux with
-                   | `Bool x -> if x then ev ctx lim uy else ev ctx lim uz
-                   | `Op (Not, [x]) -> `Op (If, [x; uz; uy])
-                   | x -> `Op (If, [x; uy; uz]))
-               | _ -> expr)
-           | Value -> (match Lazy.force args with
-               | [`Tree Tree.Empty] -> raise (RuntimeError (Error.of_string "Value of empty tree."))
-               | [`Tree (Tree.Node (x, _))] -> x
-               | [`Op (Tree, [x; _])] -> x
-               | _ -> `Op (op, Lazy.force args))
-           | Children -> (match Lazy.force args with
-               | [`Tree Tree.Empty] -> `List []
-               | [`Tree (Tree.Node (_, x))] ->
-                 `List (List.map x ~f:(fun e -> `Tree e))
-               | [`Op (Tree, [_; x])] -> x
-               | _ -> `Op (op, Lazy.force args))
-           | Tree -> (match Lazy.force args with
-               | [x; `List y] ->
-                 let y' =
-                   List.map y ~f:(fun e -> match e with
-                       | `Tree t -> t
-                       | _ -> Tree.Node (e, []))
-                 in
-                 `Tree (Tree.Node (x, y'))
-               | _ -> `Op (op, Lazy.force args)))
+        | `Op (op, raw_args) ->
+          let args = lazy (List.map ~f:(ev ctx lim) raw_args) in
+          try begin
+            let open Expr.Op in
+            match op with
+            | Plus -> (match Lazy.force args with
+                | [`Num x; `Num y] -> `Num (x + y)
+                | [`Num 0; x] | [x; `Num 0] -> x
+                | [`Op (Minus, [x; y]); z]
+                | [z; `Op (Minus, [x; y])] when y = z -> x
+                | _ -> `Op (op, Lazy.force args))
+            | Minus -> (match Lazy.force args with
+                | [`Num x; `Num y] -> `Num (x - y)
+                | [x; `Num 0] -> x
+                | [`Op (Plus, [x; y]); z] when x = z -> y
+                | [`Op (Plus, [x; y]); z] when y = z -> x
+                | [z; `Op (Plus, [x; y])] when x = z -> `Op (Minus, [`Num 0; y])
+                | [z; `Op (Plus, [x; y])] when y = z -> `Op (Minus, [`Num 0; x])
+                | [x; y] when x = y -> `Num 0
+                | _ -> `Op (op, Lazy.force args))
+            | Mul -> (match Lazy.force args with
+                | [`Num x; `Num y] -> `Num (x * y)
+                | [`Num 0; _] | [_; `Num 0] -> `Num 0
+                | [`Num 1; x] | [x; `Num 1] -> x
+                | [x; `Op (Div, [y; z])]
+                | [`Op (Div, [y; z]); x] when x = z -> y
+                | _ -> `Op (op, Lazy.force args))
+            | Div -> (match Lazy.force args with
+                | [_; `Num 0] -> divide_by_zero_error ()
+                | [`Num x; `Num y] -> `Num (x / y)
+                | [`Num 0; _] -> `Num 0
+                | [x; `Num 1] -> x
+                | [x; y] when x = y -> `Num 1
+                | _ -> `Op (op, Lazy.force args))
+            | Mod -> (match Lazy.force args with
+                | [_; `Num 0] -> divide_by_zero_error ()
+                | [`Num x; `Num y] -> `Num (x mod y)
+                | [`Num 0; _] | [_; `Num 1] -> `Num 0
+                | [x; y] when x = y -> `Num 0
+                | _ -> `Op (op, Lazy.force args))
+            | Eq -> (match Lazy.force args with
+                | [`Bool true; x] | [x; `Bool true] -> x
+                | [`Bool false; x] | [x; `Bool false] -> ev ctx (lim - 1) (`Op (Not, [x]))
+                | [x; `Op (Cdr, [y])] | [`Op (Cdr, [y]); x] when x = y -> `Bool false
+                | [x; y] -> `Bool (x = y)
+                | _ -> `Op (op, Lazy.force args))
+            | Neq -> (match Lazy.force args with
+                | [`Bool true; x] | [x; `Bool true] -> ev ctx (lim - 1) (`Op (Not, [x]))
+                | [`Bool false; x] | [x; `Bool false] -> x
+                | [x; `Op (Cdr, [y])] | [`Op (Cdr, [y]); x] when x = y -> `Bool true
+                | [x; y] -> `Bool (x <> y)
+                | _ -> `Op (op, Lazy.force args))
+            | Lt -> (match Lazy.force args with
+                | [`Num x; `Num y] -> `Bool (x < y)
+                | [`Id "inf"; _] -> `Bool false
+                | [x; y] when x = y -> `Bool false
+                | _ -> `Op (op, Lazy.force args))
+            | Gt -> (match Lazy.force args with
+                | [`Num x; `Num y] -> `Bool (x > y)
+                | [_; `Id "inf"] -> `Bool false
+                | [x; y] when x = y -> `Bool false
+                | _ -> `Op (op, Lazy.force args))
+            | Leq -> (match Lazy.force args with
+                | [`Num x; `Num y] -> `Bool (x <= y)
+                | [_; `Id "inf"] -> `Bool true
+                | [x; y] when x = y -> `Bool true
+                | _ -> `Op (op, Lazy.force args))
+            | Geq -> (match Lazy.force args with
+                | [`Num x; `Num y] -> `Bool (x >= y)
+                | [`Id "inf"; _] -> `Bool true
+                | [x; y] when x = y -> `Bool true
+                | _ -> `Op (op, Lazy.force args))
+            | And -> (match Lazy.force args with
+                | [`Bool x; `Bool y] -> `Bool (x && y)
+                | [`Bool true; x] | [x; `Bool true] -> x
+                | [`Bool false; _] | [_; `Bool false] -> `Bool false
+                | [x; `Op (And, [y; z])] when x = y -> `Op (And, [x; z])
+                | [x; `Op (And, [y; z])] when x = z -> `Op (And, [x; y])
+                | [x; `Op (Not, [y])]
+                | [`Op (Not, [y]); x] when x = y -> `Bool false
+                (* DeMorgan's law. *)
+                | [`Op (Not, [x]); `Op (Not, [y])] -> `Op (Not, [`Op (Or, [x; y])])
+                (* Distributivity. *)
+                | [`Op (Or, [a; b]); `Op (Or, [c; d])] when a = c ->
+                  `Op (Or, [a; `Op (And, [b; d])])
+                | [x; y] when x = y -> x
+                | _ -> `Op (op, Lazy.force args))
+            | Or -> (match Lazy.force args with
+                | [`Bool x; `Bool y] -> `Bool (x || y)
+                | [`Bool false; x] | [x; `Bool false] -> x
+                | [`Bool true; _] | [_; `Bool true] -> `Bool true
+                | [x; `Op (Or, [y; z])] when x = y -> `Op (Or, [x; z])
+                | [x; `Op (Or, [y; z])] when x = z -> `Op (Or, [x; y])
+                | [x; `Op (Not, [y])]
+                | [`Op (Not, [y]); x] when x = y -> `Bool true
+                (* DeMorgan's law. *)
+                | [`Op (Not, [x]); `Op (Not, [y])] ->
+                  `Op (Not, [`Op (And, [x; y])])
+                (* Distributivity. *)
+                | [`Op (And, [a; b]); `Op (And, [c; d])] when a = c ->
+                  `Op (And, [a; `Op (Or, [b; d])])
+                | [x; y] when x = y -> x
+                | _ -> `Op (op, Lazy.force args))
+            | Not -> (match Lazy.force args with
+                | [`Bool x] -> `Bool (not x)
+                | [`Op (Not, [x])] -> x
+                | [`Op (Lt, [x; y])] -> `Op (Geq, [x; y])
+                | [`Op (Gt, [x; y])] -> `Op (Leq, [x; y])
+                | [`Op (Leq, [x; y])] -> `Op (Gt, [x; y])
+                | [`Op (Geq, [x; y])] -> `Op (Lt, [x; y])
+                | [`Op (Eq, [x; y])] -> `Op (Neq, [x; y])
+                | [`Op (Neq, [x; y])] -> `Op (Eq, [x; y])
+                | _ -> `Op (op, Lazy.force args))
+            | Cons -> (match Lazy.force args with
+                | [x; `List y] -> `List (x :: y)
+                | [`Op (Car, [x]); `Op (Cdr, [y])] when x = y -> x
+                | _ -> `Op (op, Lazy.force args))
+            | RCons -> (match Lazy.force args with
+                | [`List y; x] -> `List (x :: y)
+                | [`Op (Cdr, [y]); `Op (Car, [x])] when x = y -> x
+                | _ -> `Op (RCons, Lazy.force args))
+            | Car -> (match Lazy.force args with
+                | [`List (x::_)] -> x
+                | [`List []] -> raise (RuntimeError (Error.of_string "Car of empty list."))
+                | [`Op (Cons, [x; _])] -> x
+                | [`Op (RCons, [_; x])] -> x
+                | _ -> `Op (op, Lazy.force args))
+            | Cdr -> (match Lazy.force args with
+                | [`List (_::xs)] -> `List xs
+                | [`List []] -> raise (RuntimeError (Error.of_string "Cdr of empty list."))
+                | [`Op (Cons, [_; x])]
+                | [`Op (RCons, [x; _])] -> x
+                | _ -> `Op (op, Lazy.force args))
+            | If -> (match raw_args with
+                | [ux; uy; uz] -> (match ev ctx lim ux with
+                    | `Bool x -> if x then ev ctx lim uy else ev ctx lim uz
+                    | `Op (Not, [x]) -> `Op (If, [x; uz; uy])
+                    | x -> `Op (If, [x; uy; uz]))
+                | _ -> expr)
+            | Value -> (match Lazy.force args with
+                | [`Tree Tree.Empty] -> raise (RuntimeError (Error.of_string "Value of empty tree."))
+                | [`Tree (Tree.Node (x, _))] -> x
+                | [`Op (Tree, [x; _])] -> x
+                | _ -> `Op (op, Lazy.force args))
+            | Children -> (match Lazy.force args with
+                | [`Tree Tree.Empty] -> `List []
+                | [`Tree (Tree.Node (_, x))] ->
+                  `List (List.map x ~f:(fun e -> `Tree e))
+                | [`Op (Tree, [_; x])] -> x
+                | _ -> `Op (op, Lazy.force args))
+            | Tree -> (match Lazy.force args with
+                | [x; `List y] ->
+                  let y' =
+                    List.map y ~f:(fun e -> match e with
+                        | `Tree t -> t
+                        | _ -> Tree.Node (e, []))
+                  in
+                  `Tree (Tree.Node (x, y'))
+                | _ -> `Op (op, Lazy.force args))
+            end
 
-        (* Invalid_argument is thrown when comparing functional values (closures). *)
-        with Invalid_argument _ -> `Op (op, Lazy.force args)
-  in ev ctx limit expr
+          (* Invalid_argument is thrown when comparing functional values (closures). *)
+          with Invalid_argument _ -> `Op (op, Lazy.force args)
+    in ev ctx limit expr

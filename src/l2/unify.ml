@@ -31,7 +31,7 @@ let rec sterm_to_string (s: sterm) : string =
   | U (x, _) -> x
 
 (* Convert an expression to a unifiable term. *)
-let sterm_of_expr_value (e: Eval.ExprValue.t) : sterm option =
+let sterm_of_expr_value : Value.ExprValue.t -> sterm option = fun e ->
   let rec f e = match e with
     | `Unit -> K "unit"
     | `Num x -> K (Int.to_string x)
@@ -41,7 +41,7 @@ let sterm_of_expr_value (e: Eval.ExprValue.t) : sterm option =
     | `Id x -> V x
     | `Op (RCons, [xs; x])
     | `Op (Ast.Cons, [x; xs]) -> Cons (f x, f xs)
-    | `Apply _ -> V (Eval.ExprValue.to_string e)
+    | `Apply _ -> V (Value.ExprValue.to_string e)
     | `Closure _
     | `Let _
     | `Tree _
