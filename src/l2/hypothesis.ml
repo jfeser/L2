@@ -168,53 +168,62 @@ module Skeleton = struct
     | Lambda_h ((num_args, body), _) -> sprintf "(lambda *%d* %s)" num_args (ts body)
     | Hole_h (h, _) -> sprintf "?%d" h.Hole.id
 
-  let to_expr ?(ctx = StaticDistance.Map.empty) ?(fresh_name) (f: Hole.t -> Expr.t) (s: 'a t) : Expr.t =
-    let fresh_name = match fresh_name with
-      | Some fresh -> fresh
-      | None -> Fresh.mk_fresh_name_fun ()
-    in
-    let rec to_expr ctx s =
-      match s with
-      | Num_h (x, _) -> `Num x
-      | Bool_h (x, _) -> `Bool x
-      | Id_h (Id.StaticDistance x, _) ->
-        (match StaticDistance.Map.find ctx x with
-         | Some name -> `Id name
-         | None ->
-           failwiths "Context does not contain coordinate." (s, x, ctx)
-             (Tuple.T3.sexp_of_t
-                (sexp_of_t (fun _ -> Sexp.Atom "?"))
-                StaticDistance.sexp_of_t
-                (StaticDistance.Map.sexp_of_t String.sexp_of_t)))
-      | Id_h (Id.Name x, _) -> `Id x
-      | List_h (elems, _) -> `List (List.map elems ~f:(to_expr ctx))
-      | Tree_h (elems, _) -> `Tree (Tree.map elems ~f:(to_expr ctx))
-      | Let_h ((bound, body), _) ->
-        let name = fresh_name () in
-        let ctx =
-          StaticDistance.map_increment_scope ctx
-          |> StaticDistance.Map.add ~key:(StaticDistance.create ~distance:1 ~index:1) ~data:name
-        in
-        `Let (name, to_expr ctx bound, to_expr ctx body)
-      | Lambda_h ((num_args, body), _) ->
-        let ctx = StaticDistance.map_increment_scope ctx in
-        let arg_names = List.init num_args ~f:(fun _ -> fresh_name ()) in
-        let ctx = List.fold (List.zip_exn arg_names (StaticDistance.args num_args)) ~init:ctx
-            ~f:(fun ctx (name, sd) -> Map.add ctx ~key:sd ~data:name)
-        in
-        `Lambda (arg_names, to_expr ctx body)
-      | Apply_h ((func, args), _) -> `Apply (to_expr ctx func, List.map ~f:(to_expr ctx) args)
-      | Op_h ((op, args), _) -> `Op (op, List.map ~f:(to_expr ctx) args)
-      | Hole_h (x, _) -> f x
-    in
-    to_expr ctx s
+  let to_expr :
+    ?ctx:string StaticDistance.Map.t
+    -> ?fresh_name:(unit -> string)
+    -> ?of_hole:(Hole.t -> Expr.t)
+    -> 'a t
+    -> Expr.t =
+    fun ?(ctx = StaticDistance.Map.empty) ?fresh_name ?of_hole s ->
+      let of_hole = match of_hole with
+        | Some f -> f
+        | None -> fun _ -> failwiths "Unexpected hole." s (fun s -> [%sexp_of:string] (to_string_hum s))
+      in
+      let fresh_name = match fresh_name with
+        | Some fresh -> fresh
+        | None -> Fresh.mk_fresh_name_fun ()
+      in
+      let rec to_expr ctx s =
+        match s with
+        | Num_h (x, _) -> `Num x
+        | Bool_h (x, _) -> `Bool x
+        | Id_h (Id.StaticDistance x, _) ->
+          (match StaticDistance.Map.find ctx x with
+           | Some name -> `Id name
+           | None ->
+             failwiths "Context does not contain coordinate." (s, x, ctx)
+               (Tuple.T3.sexp_of_t
+                  (sexp_of_t (fun _ -> Sexp.Atom "?"))
+                  StaticDistance.sexp_of_t
+                  (StaticDistance.Map.sexp_of_t String.sexp_of_t)))
+        | Id_h (Id.Name x, _) -> `Id x
+        | List_h (elems, _) -> `List (List.map elems ~f:(to_expr ctx))
+        | Tree_h (elems, _) -> `Tree (Tree.map elems ~f:(to_expr ctx))
+        | Let_h ((bound, body), _) ->
+          let name = fresh_name () in
+          let ctx =
+            StaticDistance.map_increment_scope ctx
+            |> StaticDistance.Map.add ~key:(StaticDistance.create ~distance:1 ~index:1) ~data:name
+          in
+          `Let (name, to_expr ctx bound, to_expr ctx body)
+        | Lambda_h ((num_args, body), _) ->
+          let ctx = StaticDistance.map_increment_scope ctx in
+          let arg_names = List.init num_args ~f:(fun _ -> fresh_name ()) in
+          let ctx = List.fold (List.zip_exn arg_names (StaticDistance.args num_args)) ~init:ctx
+              ~f:(fun ctx (name, sd) -> Map.add ctx ~key:sd ~data:name)
+          in
+          `Lambda (arg_names, to_expr ctx body)
+        | Apply_h ((func, args), _) -> `Apply (to_expr ctx func, List.map ~f:(to_expr ctx) args)
+        | Op_h ((op, args), _) -> `Op (op, List.map ~f:(to_expr ctx) args)
+        | Hole_h (x, _) -> of_hole x
+      in
+      to_expr ctx s
 
   let to_expr_exn ?(ctx = StaticDistance.Map.empty) ?(fresh_name) s =
     match fresh_name with
     | Some fresh ->
-      to_expr ~ctx ~fresh_name:fresh
-        (fun _ -> failwith "Tried to convert skeleton with holes to expression.") s
-    | None -> to_expr ~ctx (fun _ -> failwith "Tried to convert skeleton with holes to expression.") s
+      to_expr ~ctx ~fresh_name:fresh s
+    | None -> to_expr ~ctx s
 
   let of_expr spec e =
     let rec of_expr ctx = function

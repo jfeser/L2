@@ -3,6 +3,8 @@ open Core.Std
 open Hypothesis
 open Infer
 
+let print_sexp x s = print_endline (Sexp.to_string_hum (s x))
+
 module Generalizer = struct
   type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
   
@@ -18,6 +20,13 @@ module Generalizer = struct
           List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
               apply_unifier (fill_hole cost_model hole ~parent:p ~child:c) u))
           |> List.concat)
+
+  let compose : t -> t -> t = fun g1 g2 hole spec ->
+    (g1 hole spec) @ (g2 hole spec)
+
+  let compose_all_exn : t list -> t = function
+    | [] -> failwith "Expected a non-empty list."
+    | g::gs -> List.fold gs ~init:g ~f:compose
 end
 
 (** Maps (hole, spec) pairs to the hypotheses that can fill in the hole and match the spec.
@@ -196,6 +205,7 @@ module Memoizer = struct
             List.concat_map (Lazy.force state.S.generalizations) ~f:(fun (p, p_u) ->
               List.map (fill_holes_in_hypothesis m p cost) ~f:(fun (filled_p, filled_u) ->
                     (filled_p, Unifier.compose filled_u p_u)))
+            |> List.dedup
           in
 
           (* Save the computed result, so we can use it later. *)

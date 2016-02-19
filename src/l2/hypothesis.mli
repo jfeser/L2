@@ -80,8 +80,11 @@ module Skeleton : sig
   val equal : equal:('a -> 'a -> bool) -> 'a t -> 'a t -> bool
   val to_string_hum : 'a t -> string
   val to_expr :
-    ?ctx:string StaticDistance.Map.t -> ?fresh_name:(unit -> string) -> (Hole.t -> Expr.t) ->
-    'a t -> Expr.t
+    ?ctx:string StaticDistance.Map.t
+    -> ?fresh_name:(unit -> string)
+    -> ?of_hole:(Hole.t -> Expr.t)
+    -> 'a t
+    -> Expr.t
   val to_expr_exn :
     ?ctx:string StaticDistance.Map.t -> ?fresh_name:(unit -> string) -> 'a t -> Expr.t
   val of_expr : 'a -> Expr.t -> 'a t

@@ -5,6 +5,8 @@ open Hypothesis
 module Generalizer : sig
   type t = Hole.t -> Specification.t -> (Hypothesis.t * Infer.Unifier.t) list
   val generalize_all : t -> CostModel.t -> Hypothesis.t -> Hypothesis.t list
+  val compose : t -> t -> t
+  val compose_all_exn : t list -> t
 end
 
 module Memoizer : sig

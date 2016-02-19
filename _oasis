@@ -30,6 +30,21 @@ Executable l2
   ByteOpt: -thread
   NativeOpt: -thread -g
 
+Executable gen
+  Path: src/l2
+  MainIs: generate_values.ml
+  CompiledObject: native
+  BuildTools:
+    menhir,
+    ocamllex
+  BuildDepends:
+    core,
+    yojson,
+    hashcons,
+    Z3
+  ByteOpt: -thread
+  NativeOpt: -thread -g
+
 Executable timeout
   Build$: system(macosx)
   Path: src/timeout
