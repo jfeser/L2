@@ -9,15 +9,7 @@ val counter : Collections.Counter.t
 
 val cost_model : CostModel.t
 
-module type Deduction_intf = sig
-  (** Attempt to push all specifications towards the leaves of the
-      skeleton. If, in the process, any specification goes to bottom,
-      return None. *)
-  val push_specifications : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
-  val push_specifications_unification : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
-end
-
-module L2_Deduction : Deduction_intf
+module L2_Deduction : Deduction.S
 
 module L2_Generalizer : sig
   module type S = sig

@@ -45,12 +45,7 @@ let cost_model : CostModel.t =
       | Sk.Id.StaticDistance sd -> 1;
   }
 
-module type Deduction_intf = sig
-  val push_specifications : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
-  val push_specifications_unification : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
-end
-
-module L2_Deduction : Deduction_intf = struct
+module L2_higher_order_deduction : Deduction.S = struct
   module Sp = Specification
   module Sk = Skeleton
 
@@ -255,7 +250,7 @@ module L2_Deduction : Deduction_intf = struct
       (num_args, Sk.map_annotation body ~f:(fun _ -> child_spec))
     else lambda
   
-  let rec push_specifications (skel: Specification.t Skeleton.t) : Specification.t Skeleton.t Option.t =
+  let rec push_specs (skel: Specification.t Skeleton.t) : Specification.t Skeleton.t Option.t =
     let open Option.Monad_infix in
     match skel with
     | Sk.Num_h (_, s)
@@ -263,21 +258,21 @@ module L2_Deduction : Deduction_intf = struct
     | Sk.Id_h (_, s)
     | Sk.Hole_h (_, s) -> if s = Sp.Bottom then None else Some skel
     | Sk.List_h (l, s) ->
-      let m_l = List.map l ~f:push_specifications |> Option.all in
+      let m_l = List.map l ~f:push_specs |> Option.all in
       m_l >>| fun l -> Sk.List_h (l, s)
     | Sk.Tree_h (t, s) ->
-      let m_t = Tree.map t ~f:push_specifications |> Tree.all in
+      let m_t = Tree.map t ~f:push_specs |> Tree.all in
       m_t >>| fun t -> Sk.Tree_h (t, s)
     | Sk.Let_h ((bound, body), s) ->
-      let m_bound = push_specifications bound in
-      let m_body = push_specifications body in
+      let m_bound = push_specs bound in
+      let m_body = push_specs body in
       m_bound >>= fun bound -> m_body >>| fun body -> Sk.Let_h ((bound, body), s)
     | Sk.Lambda_h (lambda, s) ->
       let (num_args, body) = deduce_lambda lambda s in
-      let m_body = push_specifications body in
+      let m_body = push_specs body in
       m_body >>| fun body -> Sk.Lambda_h ((num_args, body), s)
     | Sk.Op_h ((op, args), s) ->
-      let m_args = List.map args ~f:push_specifications |> Option.all in
+      let m_args = List.map args ~f:push_specs |> Option.all in
       m_args >>| fun args -> Sk.Op_h ((op, args), s)
     | Sk.Apply_h ((func, args), s) ->
       let args = match func with
@@ -291,12 +286,16 @@ module L2_Deduction : Deduction_intf = struct
       in
       let m_args =
         if List.exists args ~f:(fun a -> Sk.annotation a = Sp.Bottom) then None else
-          Option.all (List.map args ~f:push_specifications)
+          Option.all (List.map args ~f:push_specs)
       in
-      let m_func = push_specifications func in
+      let m_func = push_specs func in
       m_args >>= fun args -> m_func >>| fun func -> Sk.Apply_h ((func, args), s)
+end
 
-    let recursion_limit = 100
+module L2_unification_deduction : Deduction.S = struct
+  module Sk = Skeleton
+
+  let recursion_limit = 100
 
   let sterm_of_result r =
     let fresh_name = Util.Fresh.mk_fresh_name_fun () in
@@ -346,8 +345,8 @@ module L2_Deduction : Deduction_intf = struct
         | _ -> failwith "Translation error"
       end
     | _ -> failwith "Translation error"
-      
-  let push_specifications_unification s =
+
+  let push_specs s =
     if (!Config.config).Config.deduction then
       let module SE = Symbolic_execution in
       let module Sp = Specification in
@@ -359,7 +358,7 @@ module L2_Deduction : Deduction_intf = struct
               Option.bind m_exs (fun exs -> 
                   try
                     Counter.incr counter "symb_exec_tried";
-                    
+
                     (* Try symbolically executing the candidate in the example context. *)
                     let out_a = SE.partially_evaluate ~recursion_limit
                         ~ctx:(StaticDistance.Map.map ins ~f:SE.result_of_value) s
@@ -430,6 +429,8 @@ module L2_Deduction : Deduction_intf = struct
       | _ -> Some s
     else Some s
 end
+
+module L2_Deduction = Deduction.Compose(L2_higher_order_deduction) (L2_unification_deduction)
 
 module L2_Generalizer = struct
   (* This generalizer generates programs of the following form. Each
@@ -735,7 +736,7 @@ module Make_L2_synthesizer (Search: Search_intf) = struct
                skeleton and filter skeletons with Bottom
                specifications. *)
             |> List.filter_map ~f:(fun h ->
-                Option.map (L2_Deduction.push_specifications (H.skeleton h))
+                Option.map (L2_Deduction.push_specs (H.skeleton h))
                   (Hypothesis.of_skeleton cost_model))
               
             |> List.map ~f:(fun h -> (h, ref 0)))

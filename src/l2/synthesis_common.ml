@@ -236,3 +236,17 @@ module Synthesizer = struct
     val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t Or_error.t
   end
 end
+
+module Deduction = struct
+  module Sp = Specification
+  module Sk = Skeleton
+    
+  module type S = sig
+    val push_specs : Sp.t Sk.t -> Sp.t Sk.t Option.t
+  end
+
+  module Compose (D1: S) (D2: S) : S = struct
+    let push_specs : Sp.t Sk.t -> Sp.t Sk.t Option.t =
+      fun skel -> Option.bind (D1.push_specs skel) D2.push_specs
+  end
+end

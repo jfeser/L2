@@ -26,3 +26,11 @@ module Synthesizer : sig
     val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t Or_error.t
   end
 end
+
+module Deduction : sig
+  module type S = sig
+    val push_specs : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
+  end
+
+  module Compose : functor (D1: S) -> functor (D2: S) -> S
+end
