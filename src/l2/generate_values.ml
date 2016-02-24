@@ -104,16 +104,16 @@ module Value_generalizer = struct
       else if (Symbol.to_string hole.Hole.symbol) = "list" then
         match Schema.args_of schema hole.Hole.symbol with
         | Some [elem_sym] -> generate_list hole.Hole.symbol elem_sym hole spec
-        | _ -> failwiths "Bad schema." schema [%sexp_of:Schema.t]
-      else failwiths "Unknown symbol." hole.Hole.symbol [%sexp_of:Symbol.t]
+        | _ -> (* failwiths "Bad schema." schema [%sexp_of:Schema.t] *) []
+      else (* failwiths "Unknown symbol." hole.Hole.symbol [%sexp_of:Symbol.t] *) []
     in
     let init = H.hole cost_model (Hole.create (Type.free 0 0) (KTree.value schema)) Sp.Top in
     (gen, init)
 end
 
-let generate_examples : num:int -> Expr.t -> Type.t -> (Value.ExprValue.t list * Value.ExprValue.t) list =
+let generate_examples : max_cost:int -> Expr.t -> Type.t -> (Value.ExprValue.t list * Value.ExprValue.t) Sequence.t =
   let module IT = ImmutableType in
-  fun ~num func type_ ->
+  fun ~max_cost func type_ ->
     let func_ev = Value.ExprValue.of_expr func in
     match IT.of_type type_ with
     | ImmutableType.Arrow_i (args_t, _) ->
@@ -124,28 +124,49 @@ let generate_examples : num:int -> Expr.t -> Type.t -> (Value.ExprValue.t list *
       let gen = Generalizer.compose_all_exn gens in
       let init = H.list cost_model inits Sp.Top in
       let memo = Memoizer.create gen cost_model in
-      let seq = Memoizer.to_flat_sequence memo init 0 in
-      Sequence.take seq num
-      |> Sequence.map ~f:(fun (args, _) -> match H.skeleton args with
+      Memoizer.to_flat_sequence memo ~max_cost init
+      |> Sequence.filter_map ~f:(fun (args, _) -> match H.skeleton args with
           | Sk.List_h (args_sk, _) ->
             let args_exprv =
               List.map args_sk ~f:Sk.to_expr
               |> List.map ~f:Value.ExprValue.of_expr
             in
-            let ret_ev = Eval.partial_eval ~ctx:Eval.stdlib_evctx (`Apply (func_ev, args_exprv)) in
-            (args_exprv, ret_ev)
+            begin try
+                let ret_ev = Eval.partial_eval ~ctx:Eval.stdlib_evctx (`Apply (func_ev, args_exprv)) in
+                Some (args_exprv, ret_ev)
+              with Eval.RuntimeError _ -> None
+            end
           | sk -> failwiths "Unexpected skeleton." sk [%sexp_of:Sp.t Sk.t])
-      |> Sequence.to_list
     | t -> failwiths "Unexpected type." t [%sexp_of:IT.t]
 
+let save_examples : file:string -> (Value.ExprValue.t list * Value.ExprValue.t) list -> unit =
+  fun ~file exs ->
+    [%sexp_of:(Value.ExprValue.t list * Value.ExprValue.t) list] exs
+    |> Sexp.save_mach file 
+
+let load_examples : file:string -> (Value.ExprValue.t list * Value.ExprValue.t) list =
+  fun ~file ->
+    Sexp.load_sexp file
+    |> [%of_sexp:(Value.ExprValue.t list * Value.ExprValue.t) list]
+
+let generate_for_func : max_cost:int -> file:string -> verbose:bool -> Expr.t -> Type.t -> unit =
+  fun ~max_cost ~file ~verbose func type_ ->
+    let exs = generate_examples ~max_cost func type_ in
+    if verbose then begin
+      printf "Generating %s\n" file;
+      Sequence.iter exs ~f:(fun (ins, out) ->
+          printf "(%s) -> %s\n"
+            (List.map ins ~f:Value.ExprValue.to_string |> String.concat ~sep:", ")
+            (Value.ExprValue.to_string out));
+      print_newline ()
+    end;
+    save_examples ~file (Sequence.to_list exs)
+
 let () =
-  let num_examples = Sys.argv.(1) |> Int.of_string in
-  let func = "(lambda (l)
-  (if (= l []) []
-    (append (car l) (concat (cdr l)))))" |> Expr.of_string_exn in
-  let type_ = "(list[list[a]]) -> list[a]" |> Type.of_string in
-  let exs = generate_examples ~num:num_examples func type_ in
-  List.iter exs ~f:(fun (ins, out) ->
-      printf "(%s) -> %s\n"
-        (List.map ins ~f:Value.ExprValue.to_string |> String.concat ~sep:", ")
-        (Value.ExprValue.to_string out))
+  let max_cost = Sys.argv.(1) |> Int.of_string in
+  let excluded = ["map"; "foldl"; "foldr"; "foldt"; "filter"; "inf"; "mapt"; "dedup"] in
+  List.iter Eval.stdlib ~f:(fun (name, func) ->
+      if not (List.mem excluded name) then
+        let type_ = Ctx.lookup_exn Infer.stdlib_tctx name in
+        let file = name ^ "-examples.sexp" in
+        generate_for_func ~max_cost ~file ~verbose:true func type_)

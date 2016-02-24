@@ -213,14 +213,22 @@ module Memoizer = struct
       in
       List.map ret ~f:(fun (h, u) -> (h, denormalize_unifier u map))
 
-  let to_sequence m initial_hypo initial_cost =
-    Sequence.unfold ~init:initial_cost ~f:(fun cost ->
-        Some (fill_holes_in_hypothesis m initial_hypo cost, cost + 1))
+  let to_sequence : t -> ?min_cost:int -> ?max_cost:int -> Hypothesis.t -> (Hypothesis.t * Unifier.t) list Sequence.t =
+    fun m ?(min_cost = 0) ?max_cost hypo ->
+      match max_cost with
+      | Some max_cost -> 
+        Sequence.unfold ~init:min_cost ~f:(fun cost ->
+            if cost > max_cost then None else
+              Some (fill_holes_in_hypothesis m hypo cost, cost + 1))
+      | None ->
+        Sequence.unfold ~init:min_cost ~f:(fun cost ->
+            Some (fill_holes_in_hypothesis m hypo cost, cost + 1))
 
-  let to_flat_sequence m initial_hypo initial_cost =
-    to_sequence m initial_hypo initial_cost
-    |> Sequence.map ~f:Sequence.of_list
-    |> Sequence.concat
+  let to_flat_sequence : t -> ?min_cost:int -> ?max_cost:int -> Hypothesis.t -> (Hypothesis.t * Unifier.t) Sequence.t =
+    fun m ?(min_cost = 0) ?max_cost hypo  ->
+      to_sequence m ~min_cost ?max_cost hypo
+      |> Sequence.map ~f:Sequence.of_list
+      |> Sequence.concat
 end
 
 module Synthesizer = struct
