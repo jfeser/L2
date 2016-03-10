@@ -45,7 +45,7 @@ let cost_model : CostModel.t =
       | Sk.Id.StaticDistance sd -> 1;
   }
 
-module L2_higher_order_deduction : Deduction.S = struct
+module L2_higher_order_deduction = struct
   module Sp = Specification
   module Sk = Skeleton
 
@@ -292,7 +292,7 @@ module L2_higher_order_deduction : Deduction.S = struct
       m_args >>= fun args -> m_func >>| fun func -> Sk.Apply_h ((func, args), s)
 end
 
-module L2_unification_deduction : Deduction.S = struct
+module L2_unification_deduction = struct
   module Sk = Skeleton
 
   let recursion_limit = 100
@@ -430,7 +430,7 @@ module L2_unification_deduction : Deduction.S = struct
     else Some s
 end
 
-module L2_Deduction = Deduction.Compose(L2_higher_order_deduction) (L2_unification_deduction)
+let push_specs = Deduction.compose L2_higher_order_deduction.push_specs Example_deduction.push_specs
 
 module L2_Generalizer = struct
   (* This generalizer generates programs of the following form. Each
@@ -685,7 +685,7 @@ module type Search_intf = sig
   val search : check_cost:(int -> bool) -> found:(Hypothesis.t -> never_returns) -> Hypothesis.t -> int -> int
 end
 
-let create_memoizer () = Memoizer.create L2_Generalizer.No_lambdas.generalize cost_model
+let create_memoizer () = Memoizer.create ~deduce:push_specs L2_Generalizer.No_lambdas.generalize cost_model
 
 module Memoized_search : Search_intf = struct
   let memoizer = create_memoizer ()
@@ -736,7 +736,7 @@ module Make_L2_synthesizer (Search: Search_intf) = struct
                skeleton and filter skeletons with Bottom
                specifications. *)
             |> List.filter_map ~f:(fun h ->
-                Option.map (L2_Deduction.push_specs (H.skeleton h))
+                Option.map (push_specs (H.skeleton h))
                   (Hypothesis.of_skeleton cost_model))
               
             |> List.map ~f:(fun h -> (h, ref 0)))

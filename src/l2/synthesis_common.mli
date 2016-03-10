@@ -10,9 +10,14 @@ module Generalizer : sig
   val compose_all_exn : t list -> t
 end
 
+module Deduction : sig
+  type t = Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
+  val compose : t -> t -> t
+end
+
 module Memoizer : sig
   type t
-  val create : Generalizer.t -> CostModel.t -> t
+  val create : ?deduce:Deduction.t -> Generalizer.t -> CostModel.t -> t
   val to_string : t -> string
   val fill_holes_in_hypothesis : t -> Hypothesis.t -> int -> (Hypothesis.t * Unifier.t) list
   val get : t -> Hole.t -> Specification.t -> cost:int -> (Hypothesis.t * Unifier.t) list
@@ -25,12 +30,4 @@ module Synthesizer : sig
   module type S = sig
     val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t Or_error.t
   end
-end
-
-module Deduction : sig
-  module type S = sig
-    val push_specs : Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
-  end
-
-  module Compose : functor (D1: S) -> functor (D2: S) -> S
 end

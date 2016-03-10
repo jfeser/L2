@@ -119,24 +119,28 @@ end
 module Specification : sig
   module Examples : sig
     type t
+    type example = Value.t StaticDistance.Map.t * Value.t
 
     include Sexpable.S with type t := t
 
-    val of_list : (Ast.value StaticDistance.Map.t * Ast.value) list -> t Or_error.t
-    val of_list_exn : (Ast.value StaticDistance.Map.t * Ast.value) list -> t
-    val to_list : t -> (Ast.value StaticDistance.Map.t * Ast.value) list
+    val of_list : example list -> t Or_error.t
+    val of_list_exn : example list -> t
+    val to_list : t -> example list
+    val singleton : example -> t
 
     val context : t -> StaticDistance.t list
   end
 
   module FunctionExamples : sig
     type t
+    type example = (Value.t StaticDistance.Map.t * Value.t list) * Value.t
 
     include Sexpable.S with type t := t
     
-    val of_list : ((Ast.value StaticDistance.Map.t * Ast.value list) * Ast.value) list -> t Or_error.t
-    val of_list_exn : ((Ast.value StaticDistance.Map.t * Ast.value list) * Ast.value) list -> t
-    val to_list : t -> ((Ast.value StaticDistance.Map.t * Ast.value list) * Ast.value) list
+    val of_list : example list -> t Or_error.t
+    val of_list_exn : example list -> t
+    val to_list : t -> example list
+    val singleton : example -> t
   end
   
   type t =
@@ -194,5 +198,5 @@ module Hypothesis : sig
   val _let : CostModel.t -> t -> t -> Specification.t -> t
   val lambda : CostModel.t -> int -> t -> Specification.t -> t
   val apply : CostModel.t -> t -> t list -> Specification.t -> t
-  val op : CostModel.t -> Ast.op -> t list -> Specification.t -> t
+  val op : CostModel.t -> Expr.Op.t -> t list -> Specification.t -> t
 end

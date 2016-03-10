@@ -467,6 +467,9 @@ module Tree = struct
     | Empty -> true
     | Node (x, children) -> (f x) && (List.for_all children ~f:(for_all ~f))
 
+  let exists : 'a t -> f:('a -> bool) -> bool = fun t ~f ->
+    not (for_all t ~f:(fun x -> not (f x)))
+
   let rec zip (t1: 'a t) (t2: 'b t) : ('a * 'b) t Option.t = match t1, t2 with
     | Empty, Empty -> Some Empty
     | Node _, Empty | Empty, Node _ -> None

@@ -129,3 +129,6 @@ let with_runtime (thunk: unit -> 'a) : ('a * Time.Span.t) =
 
 let add_time (t1: Time.Span.t ref) (t2: Time.Span.t) : unit =
   t1 := Time.Span.(+) !t1 t2
+
+let print_sexp x s = print_endline (Sexp.to_string_hum (s x))
+

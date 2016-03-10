@@ -2,7 +2,9 @@ open Core.Std
 
 open Collections
 
-type t = Ast.value [@@deriving compare, sexp]
+module Value = struct
+  type t = Ast.value [@@deriving compare, sexp]
+end
 
 module ExprValue = struct
   type t = [
@@ -47,12 +49,33 @@ module ExprValue = struct
     | `Apply (x, y) -> `Apply (of_expr x, List.map y ~f:of_expr)
     | `Lambda (x, y) -> `Lambda (x, of_expr y)
 
-  let rec of_value e = match e with
+  let rec of_value : Value.t -> t = function
     | `Num x -> `Num x
     | `Bool x -> `Bool x
     | `List x -> `List (List.map x ~f:of_value)
     | `Tree x -> `Tree (Tree.map x ~f:of_value)
     | `Closure (x, ctx) -> `Closure (of_expr x, Ctx.map ctx ~f:of_value)
     | `Unit -> `Unit
+
+  let rec to_expr_exn : t -> Expr.t = function
+    | `Num x -> `Num x
+    | `Bool x -> `Bool x
+    | `List x -> `List (List.map x ~f:to_expr_exn)
+    | `Tree x -> `Tree (Tree.map x ~f:to_expr_exn)
+    | `Op (op, args) -> `Op (op, List.map args ~f:to_expr_exn)
+    | `Let (x, y, z) -> `Let (x, to_expr_exn y, to_expr_exn z)
+    | `Apply (x, y) -> `Apply (to_expr_exn x, List.map y ~f:to_expr_exn)
+    | `Lambda (x, y) -> `Lambda (x, to_expr_exn y)
+    | e -> failwiths "Cannot convert to value." e [%sexp_of:t]
+  
+  let rec to_value_exn : t -> Value.t = function
+    | `Num x -> `Num x
+    | `Bool x -> `Bool x
+    | `List x -> `List (List.map x ~f:to_value_exn)
+    | `Tree x -> `Tree (Tree.map x ~f:to_value_exn)
+    | `Closure (x, ctx) -> `Closure (to_expr_exn x, Ctx.map ~f:to_value_exn ctx)
+    | `Unit -> `Unit
+    | e -> failwiths "Cannot convert to value." e [%sexp_of:t]
 end
 
+include Value

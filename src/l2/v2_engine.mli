@@ -9,8 +9,6 @@ val counter : Collections.Counter.t
 
 val cost_model : CostModel.t
 
-module L2_Deduction : Deduction.S
-
 module L2_Generalizer : sig
   module type S = sig
     val generalize : Generalizer.t

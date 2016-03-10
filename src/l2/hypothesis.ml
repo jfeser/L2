@@ -387,8 +387,8 @@ module Specification = struct
       |> ignore
       >>| fun () -> List.dedup ~compare:compare_example exs
 
+    let singleton : example -> t = fun ex -> [ex]
     let of_list_exn exs = of_list exs |> Or_error.ok_exn
-
     let to_list t = t
 
     let context = function
@@ -421,8 +421,8 @@ module Specification = struct
       |> ignore
       >>| fun () -> List.dedup ~compare:compare_example exs
 
-    let of_list_exn exs = of_list exs |> Or_error.ok_exn
-    
+    let singleton : example -> t = fun ex -> [ex]
+    let of_list_exn exs = of_list exs |> Or_error.ok_exn    
     let to_list t = t
   end
              

@@ -29,6 +29,18 @@ module Generalizer = struct
     | g::gs -> List.fold gs ~init:g ~f:compose
 end
 
+module Deduction = struct
+  module Sp = Specification
+  module Sk = Skeleton
+
+  type t = Sp.t Sk.t -> Sp.t Sk.t Option.t
+
+  let no_op : t = Option.return
+
+  let compose : t -> t -> t = fun d1 d2 ->
+    fun skel -> Option.bind (d1 skel) d2
+end
+
 (** Maps (hole, spec) pairs to the hypotheses that can fill in the hole and match the spec.
 
     The memoizer can be queried with a hole, a spec and a cost.
@@ -41,12 +53,6 @@ end
     their free type variables.
 *)
 module Memoizer = struct
-  module type S = sig
-    type t
-    val create : unit -> t
-    val get : t -> Hole.t -> Specification.t -> cost:int -> (Hypothesis.t * Unifier.t) list
-  end
-
   let denormalize_unifier u map =
     Unifier.to_alist u
     |> List.filter_map ~f:(fun (k, v) -> Option.map (Int.Map.find map k) ~f:(fun k' -> k', v))
@@ -112,13 +118,16 @@ module Memoizer = struct
     hole_table : HoleState.t HoleTable.t;
     generalize : Generalizer.t;
     cost_model : CostModel.t;
+    deduction : Deduction.t;
   }
 
-  let create g cm = {
-    generalize = g;
-    cost_model = cm;
-    hole_table = HoleTable.create ();
-  }
+  let create : ?deduce:Deduction.t -> Generalizer.t -> CostModel.t -> t =
+    fun ?(deduce = Deduction.no_op) g cm -> {
+        generalize = g;
+        cost_model = cm;
+        deduction = deduce;
+        hole_table = HoleTable.create ();
+      }
 
   let to_string m = Sexp.to_string_hum ([%sexp_of:HoleState.t HoleTable.t] m.hole_table)
 
@@ -169,6 +178,11 @@ module Memoizer = struct
                           let u = Unifier.compose c_u p_u in
                           let h = H.fill_hole m.cost_model hole ~parent:p ~child:c in
                           h, u))))
+
+        |> List.filter_map ~f:(fun (h, u) ->
+            let sk = Hypothesis.skeleton h in
+            Option.map (m.deduction sk) (fun sk' ->
+                (Hypothesis.of_skeleton m.cost_model sk', u)))
           
         (* Only return concrete hypotheses which match the specification. *)
         |> List.filter ~f:(fun (h, _) -> match H.kind h with
@@ -234,19 +248,5 @@ end
 module Synthesizer = struct
   module type S = sig
     val synthesize : Hypothesis.t -> cost:int -> Hypothesis.t Option.t Or_error.t
-  end
-end
-
-module Deduction = struct
-  module Sp = Specification
-  module Sk = Skeleton
-    
-  module type S = sig
-    val push_specs : Sp.t Sk.t -> Sp.t Sk.t Option.t
-  end
-
-  module Compose (D1: S) (D2: S) : S = struct
-    let push_specs : Sp.t Sk.t -> Sp.t Sk.t Option.t =
-      fun skel -> Option.bind (D1.push_specs skel) D2.push_specs
   end
 end
