@@ -24,11 +24,12 @@ Executable l2
     ocamllex
   BuildDepends:
     core,
+    core_extended,
     yojson,
     hashcons,
     Z3
-  ByteOpt: -thread
-  NativeOpt: -thread -g
+  ByteOpt: -thread -custom -cclib -lz3
+  NativeOpt: -thread -g 
 
 Executable gen
   Path: src/l2
@@ -69,6 +70,7 @@ Executable test_l2
   BuildDepends:
     oUnit,
     core,
+    core_extended,
     yojson,
     hashcons,
     Z3

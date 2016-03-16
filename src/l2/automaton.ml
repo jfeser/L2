@@ -810,7 +810,8 @@ module Synthesizer = struct
               List.map2_exn names args ~f:(fun n e -> (n, Eval.eval (Ctx.empty ()) e))
               |> Ctx.of_alist_exn
             in
-            (ctx, ret))
+            (ctx, ret)
+          | e -> failwiths "Unexpected example." e [%sexp_of:Example.t])
       in
       let check h =
         let h_expr = Hypothesis.to_expr h in

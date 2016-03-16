@@ -111,10 +111,10 @@ module Value_generalizer = struct
     (gen, init)
 end
 
-let generate_examples : max_cost:int -> Expr.t -> Type.t -> (Value.ExprValue.t list * Value.ExprValue.t) Sequence.t =
+let generate_examples : max_cost:int -> Expr.t -> Type.t -> (ExprValue.t list * ExprValue.t) Sequence.t =
   let module IT = ImmutableType in
   fun ~max_cost func type_ ->
-    let func_ev = Value.ExprValue.of_expr func in
+    let func_ev = ExprValue.of_expr func in
     match IT.of_type type_ with
     | ImmutableType.Arrow_i (args_t, _) ->
       let gens, inits =
@@ -129,7 +129,7 @@ let generate_examples : max_cost:int -> Expr.t -> Type.t -> (Value.ExprValue.t l
           | Sk.List_h (args_sk, _) ->
             let args_exprv =
               List.map args_sk ~f:Sk.to_expr
-              |> List.map ~f:Value.ExprValue.of_expr
+              |> List.map ~f:ExprValue.of_expr
             in
             begin try
                 let ret_ev = Eval.partial_eval ~ctx:Eval.stdlib_evctx (`Apply (func_ev, args_exprv)) in
@@ -139,15 +139,15 @@ let generate_examples : max_cost:int -> Expr.t -> Type.t -> (Value.ExprValue.t l
           | sk -> failwiths "Unexpected skeleton." sk [%sexp_of:Sp.t Sk.t])
     | t -> failwiths "Unexpected type." t [%sexp_of:IT.t]
 
-let save_examples : file:string -> (Value.ExprValue.t list * Value.ExprValue.t) list -> unit =
+let save_examples : file:string -> (ExprValue.t list * ExprValue.t) list -> unit =
   fun ~file exs ->
-    [%sexp_of:(Value.ExprValue.t list * Value.ExprValue.t) list] exs
+    [%sexp_of:(ExprValue.t list * ExprValue.t) list] exs
     |> Sexp.save_mach file 
 
-let load_examples : file:string -> (Value.ExprValue.t list * Value.ExprValue.t) list =
+let load_examples : file:string -> (ExprValue.t list * ExprValue.t) list =
   fun ~file ->
     Sexp.load_sexp file
-    |> [%of_sexp:(Value.ExprValue.t list * Value.ExprValue.t) list]
+    |> [%of_sexp:(ExprValue.t list * ExprValue.t) list]
 
 let generate_for_func : max_cost:int -> file:string -> verbose:bool -> Expr.t -> Type.t -> unit =
   fun ~max_cost ~file ~verbose func type_ ->
@@ -156,8 +156,8 @@ let generate_for_func : max_cost:int -> file:string -> verbose:bool -> Expr.t ->
       printf "Generating %s\n" file;
       Sequence.iter exs ~f:(fun (ins, out) ->
           printf "(%s) -> %s\n"
-            (List.map ins ~f:Value.ExprValue.to_string |> String.concat ~sep:", ")
-            (Value.ExprValue.to_string out));
+            (List.map ins ~f:ExprValue.to_string |> String.concat ~sep:", ")
+            (ExprValue.to_string out));
       print_newline ()
     end;
     save_examples ~file (Sequence.to_list exs)

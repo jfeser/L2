@@ -193,6 +193,7 @@ docs/content/release-notes.md
 *.annot
 *.o
 *.native
+*.byte
 *.depends
 _build/
 setup.data

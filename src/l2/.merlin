@@ -4,6 +4,7 @@ B ../../_build/src/l2
 S .
 
 PKG core
+PKG core_extended
 PKG Z3
 PKG hashcons
 PKG yojson

@@ -230,15 +230,15 @@ let eval ?recursion_limit ctx expr =
   | Some limit -> eval limit ctx expr
   | None -> eval (-1) ctx expr
 
-let (stdlib_evctx: Value.ExprValue.t Ctx.t) =
+let (stdlib_evctx: ExprValue.t Ctx.t) =
   List.fold_left stdlib ~init:(Ctx.empty ())
     ~f:(fun ctx (name, lambda) ->
         let ctx' = Ctx.bind ctx name `Unit in
-        let value = `Closure (Value.ExprValue.of_expr lambda, ctx') in
+        let value = `Closure (ExprValue.of_expr lambda, ctx') in
         Ctx.update ctx' name value;
         Ctx.bind ctx name value)
 
-let partial_eval : ?recursion_limit:int -> ?ctx:Value.ExprValue.t Ctx.t -> Value.ExprValue.t -> Value.ExprValue.t =
+let partial_eval : ?recursion_limit:int -> ?ctx:ExprValue.t Ctx.t -> ExprValue.t -> ExprValue.t =
   fun ?recursion_limit:(limit = (-1)) ?(ctx = Ctx.empty ()) expr ->
     let rec ev ctx lim expr =
       let ev_all = List.map ~f:(ev ctx lim) in
@@ -267,7 +267,7 @@ let partial_eval : ?recursion_limit:int -> ?ctx:Value.ExprValue.t Ctx.t -> Value
                     ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value)
                 in
                 ev ctx' (lim - 1) body
-              | None -> argn_error expr [%sexp_of:Value.ExprValue.t])
+              | None -> argn_error expr [%sexp_of:ExprValue.t])
            | e -> `Apply (e, args))
 
         | `Op (op, raw_args) ->
