@@ -425,13 +425,16 @@ module Specification = struct
     let of_list_exn exs = of_list exs |> Or_error.ok_exn    
     let to_list t = t
   end
-             
-  type t =
-    | Bottom
-    | Top
-    | Examples of Examples.t
-    | FunctionExamples of FunctionExamples.t
-  [@@deriving compare, sexp]
+
+  module T = struct 
+    type t =
+      | Bottom
+      | Top
+      | Examples of Examples.t
+      | FunctionExamples of FunctionExamples.t
+      [@@deriving compare, sexp]
+  end
+  include T
 
   let hash = Hashtbl.hash
   let compare = compare_t
@@ -506,6 +509,8 @@ module Specification = struct
             ((in_ctx, in_args), out))
       in
       FunctionExamples exs
+
+  include Comparable.Make(T)
 end
 
 module Hypothesis = struct

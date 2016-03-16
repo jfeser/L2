@@ -444,6 +444,11 @@ module Tree = struct
     | Empty -> Empty
     | Node (x, children) -> Node (f x, List.map children ~f:(map ~f:f))
 
+  let rec iter : 'a t -> f:('a -> unit) -> unit = fun t ~f ->
+    match t with
+    | Empty -> ()
+    | Node (x, children) -> f x; List.iter children ~f:(iter ~f:f)
+  
   let rec fold t ~f ~init = match t with
     | Empty -> init
     | Node (x, children) -> f x (List.map ~f:(fold ~f:f ~init:init) children)

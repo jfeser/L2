@@ -430,7 +430,9 @@ module L2_unification_deduction = struct
     else Some s
 end
 
-let push_specs = Deduction.compose L2_higher_order_deduction.push_specs Example_deduction.push_specs
+let push_specs =
+  Deduction.compose L2_higher_order_deduction.push_specs
+    (Deduction.compose Example_deduction.push_specs Recursive_spec_deduction.push_specs)
 
 module L2_Generalizer = struct
   (* This generalizer generates programs of the following form. Each

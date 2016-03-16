@@ -150,6 +150,7 @@ module Specification : sig
     | FunctionExamples of FunctionExamples.t
 
   include Sexpable.S with type t := t
+  include Comparable.S with type t := t
 
   val hash : t -> int
   val compare : t -> t -> int
