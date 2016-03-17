@@ -169,7 +169,7 @@ module Skeleton = struct
     | Hole_h (h, _) -> sprintf "?%d" h.Hole.id
 
   let to_expr :
-    ?ctx:string StaticDistance.Map.t
+    ?ctx:Expr.t StaticDistance.Map.t
     -> ?fresh_name:(unit -> string)
     -> ?of_hole:(Hole.t -> Expr.t)
     -> 'a t
@@ -177,7 +177,8 @@ module Skeleton = struct
     fun ?(ctx = StaticDistance.Map.empty) ?fresh_name ?of_hole s ->
       let of_hole = match of_hole with
         | Some f -> f
-        | None -> fun _ -> failwiths "Unexpected hole." s (fun s -> [%sexp_of:string] (to_string_hum s))
+        | None -> fun _ ->
+          failwiths "Unexpected hole." s (fun s -> [%sexp_of:string] (to_string_hum s))
       in
       let fresh_name = match fresh_name with
         | Some fresh -> fresh
@@ -189,13 +190,13 @@ module Skeleton = struct
         | Bool_h (x, _) -> `Bool x
         | Id_h (Id.StaticDistance x, _) ->
           (match StaticDistance.Map.find ctx x with
-           | Some name -> `Id name
+           | Some expr -> expr
            | None ->
-             failwiths "Context does not contain coordinate." (s, x, ctx)
+             failwiths "Context does not contain coordinate." (s, x, ctx) 
                (Tuple.T3.sexp_of_t
                   (sexp_of_t (fun _ -> Sexp.Atom "?"))
-                  StaticDistance.sexp_of_t
-                  (StaticDistance.Map.sexp_of_t String.sexp_of_t)))
+                  [%sexp_of:StaticDistance.t]
+                  [%sexp_of:Expr.t StaticDistance.Map.t]))
         | Id_h (Id.Name x, _) -> `Id x
         | List_h (elems, _) -> `List (List.map elems ~f:(to_expr ctx))
         | Tree_h (elems, _) -> `Tree (Tree.map elems ~f:(to_expr ctx))
@@ -203,14 +204,16 @@ module Skeleton = struct
           let name = fresh_name () in
           let ctx =
             StaticDistance.map_increment_scope ctx
-            |> StaticDistance.Map.add ~key:(StaticDistance.create ~distance:1 ~index:1) ~data:name
+            |> StaticDistance.Map.add
+              ~key:(StaticDistance.create ~distance:1 ~index:1)
+              ~data:(`Id name)
           in
           `Let (name, to_expr ctx bound, to_expr ctx body)
         | Lambda_h ((num_args, body), _) ->
           let ctx = StaticDistance.map_increment_scope ctx in
           let arg_names = List.init num_args ~f:(fun _ -> fresh_name ()) in
           let ctx = List.fold (List.zip_exn arg_names (StaticDistance.args num_args)) ~init:ctx
-              ~f:(fun ctx (name, sd) -> Map.add ctx ~key:sd ~data:name)
+              ~f:(fun ctx (name, sd) -> Map.add ctx ~key:sd ~data:(`Id name))
           in
           `Lambda (arg_names, to_expr ctx body)
         | Apply_h ((func, args), _) -> `Apply (to_expr ctx func, List.map ~f:(to_expr ctx) args)
@@ -451,7 +454,8 @@ module Specification = struct
          List.for_all exs ~f:(fun (in_ctx, out) ->
              let fresh_name = Fresh.mk_fresh_name_fun () in
              let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
-             let expr = Skeleton.to_expr_exn ~ctx:name_ctx ~fresh_name skel in
+             let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
+             let expr = Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel in
              let value_ctx =
                StaticDistance.Map.to_alist in_ctx
                |> List.map ~f:(fun (k, v) -> StaticDistance.Map.find_exn name_ctx k, v)
@@ -467,8 +471,9 @@ module Specification = struct
          List.for_all exs ~f:(fun ((in_ctx, in_args), out) ->
              let fresh_name = Fresh.mk_fresh_name_fun () in
              let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
+             let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
              let expr =
-               `Apply (Skeleton.to_expr_exn ~ctx:name_ctx ~fresh_name skel,
+               `Apply (Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel,
                        List.map in_args ~f:Expr.of_value)
              in
              let value_ctx =

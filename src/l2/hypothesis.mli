@@ -35,6 +35,7 @@ module Hole : sig
     include Sexpable.S with type t := t
     include Comparable.S with type t := t
     include Stringable.S with type t := t
+    module Table : Hashtbl.S with type key := t
   end
   
   type t = {
@@ -80,13 +81,13 @@ module Skeleton : sig
   val equal : equal:('a -> 'a -> bool) -> 'a t -> 'a t -> bool
   val to_string_hum : 'a t -> string
   val to_expr :
-    ?ctx:string StaticDistance.Map.t
+    ?ctx:Expr.t StaticDistance.Map.t
     -> ?fresh_name:(unit -> string)
     -> ?of_hole:(Hole.t -> Expr.t)
     -> 'a t
     -> Expr.t
   val to_expr_exn :
-    ?ctx:string StaticDistance.Map.t -> ?fresh_name:(unit -> string) -> 'a t -> Expr.t
+    ?ctx:Expr.t StaticDistance.Map.t -> ?fresh_name:(unit -> string) -> 'a t -> Expr.t
   val of_expr : 'a -> Expr.t -> 'a t
   val of_string : 'a -> string -> 'a t Or_error.t
   val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int

@@ -177,12 +177,15 @@ module Memoizer = struct
                       List.map children ~f:(fun (c, c_u) ->
                           let u = Unifier.compose c_u p_u in
                           let h = H.fill_hole m.cost_model hole ~parent:p ~child:c in
-                          h, u))))
-
-        |> List.filter_map ~f:(fun (h, u) ->
-            let sk = Hypothesis.skeleton h in
-            Option.map (m.deduction sk) (fun sk' ->
-                (Hypothesis.of_skeleton m.cost_model sk', u)))
+                          h, u)
+                        
+                      |> List.filter_map ~f:(fun (h, u) ->
+                          match H.kind h with
+                          | H.Concrete -> Some (h, u)
+                          | H.Abstract -> 
+                            let sk = Hypothesis.skeleton h in
+                            Option.map (m.deduction sk) (fun sk' ->
+                                (Hypothesis.of_skeleton m.cost_model sk', u))))))
           
         (* Only return concrete hypotheses which match the specification. *)
         |> List.filter ~f:(fun (h, _) -> match H.kind h with

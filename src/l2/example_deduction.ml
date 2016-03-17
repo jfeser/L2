@@ -10,6 +10,8 @@ module Sp = Specification
 
 exception Bottom
 
+type example = ExprValue.t list * ExprValue.t
+
 let load_examples : file:string -> (ExprValue.t list * ExprValue.t) list =
   fun ~file ->
     Sexp.load_sexp file
@@ -29,25 +31,6 @@ let rec occurs : ExprValue.t -> id:string -> bool = fun e ~id ->
   | `Op (_, args) -> List.exists args ~f:(occurs ~id)
   | e -> failwiths "Unexpected expr." e [%sexp_of:ExprValue.t]
 
-let unify_exn : ExprValue.t -> ExprValue.t -> ExprValue.t String.Map.t =
-  let module Ctx = String.Map in
-  let rec unify_exn ctx e1 e2 =
-    match e1, e2 with
-    | `Id v1, `Id v2 ->
-      if v1 = v2 then Ctx.empty else Ctx.add ctx ~key:v1 ~data:e2
-    | `List l1, `List l2 ->
-      if List.length l1 = List.length l2 then
-        List.fold2_exn l1 l2 ~init:ctx ~f:unify_exn
-      else raise Non_unifiable
-    | `Num x1, `Num x2 -> if x1 = x2 then ctx else raise Non_unifiable
-    | `Bool x1, `Bool x2 -> if x1 = x2 then ctx else raise Non_unifiable
-    | `Id v, e | e, `Id v ->
-      if occurs e ~id:v then raise Non_unifiable else
-        Ctx.add ctx ~key:v ~data:e
-    | es -> failwiths "Unexpected exprs." es [%sexp_of: ExprValue.t * ExprValue.t]
-  in
-  unify_exn String.Map.empty
-
 let rec apply_unifier : ExprValue.t String.Map.t -> ExprValue.t -> ExprValue.t =
   let module Ctx = String.Map in
   fun ctx e -> match e with
@@ -64,6 +47,40 @@ let rec apply_unifier : ExprValue.t String.Map.t -> ExprValue.t -> ExprValue.t =
     | `Op (op, args) -> `Op (op, List.map args ~f:(apply_unifier ctx))
     | e -> failwiths "Unexpected expr." e [%sexp_of:ExprValue.t]
 
+let compose : ExprValue.t String.Map.t -> ExprValue.t String.Map.t -> ExprValue.t String.Map.t =
+  fun u1 u2 ->
+  let merge outer inner =
+    String.Map.fold ~f:(fun ~key:name ~data:typ m ->
+        String.Map.add ~key:name ~data:typ m) ~init:outer inner
+  in
+  merge u1 (String.Map.map ~f:(fun t -> apply_unifier u1 t) u2)
+
+let rec unify_exn : ExprValue.t -> ExprValue.t -> ExprValue.t String.Map.t =
+  let module Ctx = String.Map in
+  fun e1 e2 -> match e1, e2 with
+    | `Id v1, `Id v2 when v1 = v2 -> Ctx.empty
+    | `Id v1, `Id v2 when v1 <> v2 -> Ctx.singleton v1 e2
+    | `List [], `List [] -> Ctx.empty
+    | `List [], `List (_::_)
+    | `List [], `Op (Expr.Op.Cons, _)
+    | `List (_::_), `List []
+    | `Op (Expr.Op.Cons, _), `List [] -> raise Non_unifiable
+    | `List (hd::tl), `List (hd'::tl') ->
+      let u = unify_exn hd hd' in
+      let u' = unify_exn (`List tl) (`List tl') in
+      compose u u'
+    | `List (hd::tl), `Op (Expr.Op.Cons, [hd'; tl'])
+    | `Op (Expr.Op.Cons, [hd'; tl']), `List (hd::tl) ->
+      let u = unify_exn hd hd' in
+      let u' = unify_exn (`List tl) tl' in
+      compose u u'
+    | `Num x1, `Num x2 -> if x1 = x2 then Ctx.empty else raise Non_unifiable
+    | `Bool x1, `Bool x2 -> if x1 = x2 then Ctx.empty else raise Non_unifiable
+    | `Id v, e | e, `Id v ->
+      if occurs e ~id:v then raise Non_unifiable else
+        Ctx.singleton v e
+    | es -> failwiths "Unexpected exprs." es [%sexp_of: ExprValue.t * ExprValue.t]
+
 let unify : ExprValue.t -> ExprValue.t -> ExprValue.t String.Map.t Option.t =
   fun e1 e2 ->
     try Some (unify_exn e1 e2)
@@ -74,38 +91,78 @@ let rec unify_with : ExprValue.t -> ExprValue.t -> ExprValue.t Option.t =
     try Some (apply_unifier (unify_exn e1 e2) e1)
     with Non_unifiable -> None
 
-let infer_example :
-  specs:(ExprValue.t list * ExprValue.t) list
-  -> arity:int
-  -> Sp.Examples.example
-  -> Sp.t list =
-  fun ~specs ~arity ex ->
-    let (ctx, out) = ex in
-    let out = ExprValue.of_value out in
-    let arg_specs =
-      List.filter_map specs ~f:(fun (ins', out') ->
-          Option.map (unify out' out) ~f:(fun unifier ->
-              List.map ins' ~f:(apply_unifier unifier)))
-      |> List.map ~f:(List.filter_map ~f:(fun i ->
-          match ExprValue.to_value i with
-          | Ok v -> Some (Sp.Examples (Sp.Examples.singleton (ctx, v)))
-          | Error _ -> None))
+let unify_example : example -> example -> example Option.t =
+  let module Let_syntax = Option.Let_syntax in
+  fun (args1, ret1) (args2, ret2) ->
+    let%bind args = List.zip args1 args2 in
+    let%bind args_u = List.fold args ~init:(Some String.Map.empty) ~f:(fun u (a1, a2) ->
+        let%bind u = u in
+        let%map u' = unify a1 a2 in
+        compose u' u)
     in
-    match arg_specs with
+    let%map ret_u = unify ret1 ret2 in
+    let u = compose ret_u args_u in
+    (List.map args1 ~f:(apply_unifier u), apply_unifier u ret1)
+
+let infer_example :
+  specs:example list
+  -> ctx:Value.t StaticDistance.Map.t
+  -> example
+  -> Sp.t list =
+  let module Let_syntax = Option.Let_syntax in
+  fun ~specs ~ctx ex ->
+    let possible_specs =
+      List.filter_map specs ~f:(unify_example ex)
+      |> List.dedup
+    in
+    let (args, _) = ex in
+    let arity = List.length args in
+    match possible_specs with
     | [] -> List.repeat arity Sp.Bottom
-    | [specs] -> specs
+    | [(args', _)] ->
+      List.map args' ~f:(fun a ->
+          match ExprValue.to_value a with
+          | Ok v -> Sp.Examples (Sp.Examples.singleton (ctx, v))
+          | Error _ -> Sp.Top)
     | _ -> List.repeat arity Sp.Top
 
 let infer_examples :
-  specs:((ExprValue.t list * ExprValue.t) list) String.Map.t
+  specs:(example list) String.Map.t
   -> op:string
-  -> arity:int
+  -> args:Sp.t Sk.t list
   -> Sp.Examples.example list
   -> Sp.t list =
-  fun ~specs ~op ~arity exs ->
+  fun ~specs ~op ~args exs ->
+    let arity = List.length args in
     match String.Map.find specs op with
     | Some op_specs -> begin
-        match List.map exs ~f:(infer_example ~specs:op_specs ~arity) |> List.transpose with
+        let m_arg_specs =
+          List.map exs ~f:(fun (ctx, ret) ->
+              try
+                let expr_ctx = StaticDistance.Map.map ctx ~f:Expr.of_value in
+                let fresh_name = Util.Fresh.mk_fresh_name_fun () in
+                let hole_names = Hole.Id.Table.create () in
+                let arg_evals =
+                  List.map args ~f:(Sk.to_expr ~ctx:expr_ctx ~of_hole:(fun hole ->
+                      match Hole.Id.Table.find hole_names hole.Hole.id with
+                      | Some name -> `Id name
+                      | None ->
+                        let name = fresh_name () in
+                        Hole.Id.Table.add_exn hole_names ~key:hole.Hole.id ~data:name;
+                        `Id name
+                    ))
+                  |> List.map ~f:ExprValue.of_expr
+                  |> List.map ~f:(fun ev ->
+                      try Eval.partial_eval ~ctx:Eval.stdlib_evctx ~recursion_limit:100 ev with
+                      | Eval.HitRecursionLimit -> `Id (fresh_name ()))
+                in
+                let ret_eval = ExprValue.of_value ret in
+                infer_example ~specs:op_specs ~ctx (arg_evals, ret_eval)
+              with Eval.RuntimeError _ -> List.repeat arity Sp.Bottom)
+          |> List.transpose
+        in
+        
+        match m_arg_specs with
         | Some arg_specs -> List.map arg_specs ~f:(fun arg_spec ->
             if List.exists arg_spec ~f:(fun sp -> sp = Sp.Bottom) then Sp.Bottom else
               let arg_exs =
@@ -128,14 +185,14 @@ let infer_examples :
 let memoized_infer_examples :
   specs:((ExprValue.t list * ExprValue.t) list) String.Map.t
   -> op:string
-  -> arity:int
+  -> args:Sp.t Sk.t list
   -> Sp.Examples.example list
   -> Sp.t list =
   let memoized =
-    Cache.memoize (fun (specs, op, arity, exs) ->
-        infer_examples ~specs ~op ~arity exs)
+    Cache.memoize (fun (specs, op, args, exs) ->
+        infer_examples ~specs ~op ~args exs)
   in
-  fun ~specs ~op ~arity exs -> memoized (specs, op, arity, exs)
+  fun ~specs ~op ~args exs -> memoized (specs, op, args, exs)
 
 let push_specs_exn' :
   specs:((ExprValue.t list * ExprValue.t) list) String.Map.t
@@ -157,11 +214,12 @@ let push_specs_exn' :
       | Sk.Apply_h ((func, args), s) ->
         begin match s, func with
           | Sp.Examples exs, Sk.Id_h (Sk.Id.Name func_name, _) ->
-            let arity = Infer.Type.arity (Ctx.lookup_exn Infer.stdlib_tctx func_name) in
             let arg_specs =
-              memoized_infer_examples ~specs ~op:func_name ~arity (Sp.Examples.to_list exs)
+              memoized_infer_examples ~specs ~op:func_name ~args (Sp.Examples.to_list exs)
             in
             printf "Pushing specifications for %s.\n" func_name;
+            print_endline "Args:";
+            Util.print_sexp args [%sexp_of:Sp.t Sk.t list];
             print_endline "Parent spec:";
             Util.print_sexp s [%sexp_of:Sp.t];
             print_endline "Arg specs:";
