@@ -13,7 +13,7 @@ type t = [
   | `Lambda of Expr.id list * t
   | `Apply of t * (t list)
   | `Op of Expr.Op.t * (t list)
-] [@@deriving compare, sexp]
+] [@@deriving compare, sexp, bin_io]
 
 let rec to_string (e: t) : string =
   let list_to_string l = String.concat ~sep:" " (List.map ~f:to_string l) in

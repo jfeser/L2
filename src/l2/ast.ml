@@ -4,7 +4,7 @@ open Collections
 
 exception ParseError of string
 
-type id = string [@@deriving compare, sexp]
+type id = string [@@deriving compare, sexp, bin_io]
 
 (** Represents the type of a value or expression. *)
 type typ =

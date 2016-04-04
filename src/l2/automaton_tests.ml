@@ -86,6 +86,7 @@ let generalize_tests = "generalize" >::: [
         let hypo = Hypothesis.hole cm hole Specification.Top in
         let out =
           Memoizer.fill_holes_in_hypothesis memo hypo 1
+          |> Sequence.to_list
           |> List.map ~f:Tuple.T2.get1
           |> [%sexp_of: Hypothesis.t list]
         in
@@ -108,6 +109,7 @@ let generalize_tests = "generalize" >::: [
         let hypo = Hypothesis.hole cm hole Specification.Top in
         let out =
           Memoizer.fill_holes_in_hypothesis memo hypo 4
+          |> Sequence.to_list
           |> List.map ~f:Tuple.T2.get1
           |> [%sexp_of: Hypothesis.t list]
         in

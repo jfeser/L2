@@ -1,21 +1,24 @@
 open Core.Std
 open Printf
 
+open Synthesis_common
 open Collections
 
 (** Get a JSON object containing all captured information from a single run. *)
-let get_json testcase runtime solution config : Json.json =
+let get_json testcase runtime solution config engine deduction : Json.json =
   let solution_str = match solution with
     | `Solution s -> s
     | `NoSolution -> ""
   in
   let timers = [
     "search", V1_solver_engine.timer;
+    "memoizer", Synthesis_common.timer;
     (* "deduction", Deduction.timer; *)
   ] in
   let counters = [
     "search", V1_solver_engine.counter;
-    "improved_search", V2_engine.counter;
+    "unification_deduction", Unification_deduction.counter;
+    "memoizer", Synthesis_common.counter;
     (* "deduction", Deduction.counter; *)
   ] in
   `Assoc [
@@ -25,9 +28,11 @@ let get_json testcase runtime solution config : Json.json =
     "solution", `String solution_str;
     "runtime", `Float runtime;
     "config", `String (Config.to_string config);
+    "engine", `String engine;
+    "deduction", `List (List.map deduction ~f:(fun d -> `String d));
   ]
 
-let synthesize engine testcase =
+let synthesize engine deduction testcase =
   let module T = Testcase in
   match testcase.T.case with
   | T.Examples (exs, bg) ->
@@ -68,9 +73,17 @@ let synthesize engine testcase =
       | `V2 -> begin
           let open V2_engine in
           let open Hypothesis in
+          let deduce = List.fold_left deduction ~init:Deduction.no_op ~f:(fun d -> function
+              | `None -> Deduction.no_op
+              | `Higher_order -> Deduction.compose d Higher_order_deduction.push_specs
+              | `Unification -> Deduction.compose d Unification_deduction.push_specs
+              | `Example -> Deduction.compose d Example_deduction.push_specs
+              | `Random -> Deduction.compose d Random_deduction.push_specs
+              | `Recursive_spec -> Deduction.compose d Recursive_spec_deduction.push_specs)
+          in
           let (m_solution, runtime) = Util.with_runtime (fun () ->
               let hypo = L2_Synthesizer.initial_hypothesis exs in
-              L2_Synthesizer.synthesize hypo ~cost:50)
+              L2_Synthesizer.synthesize deduce hypo ~cost:50)
           in
           match m_solution with
           | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)
@@ -90,20 +103,56 @@ let synthesize engine testcase =
         end
     end
 
+let parse_symbol_exn symbols s =
+  if not (List.mem symbols s) then
+    Error.createf "Unexpected parameter '%s'. Expected one of: %s."
+      s ([%sexp_of:string list] symbols |> Sexp.to_string_hum)
+    |> Error.raise;
+  s
+
+let parse_symbol_list_exn symbols str =
+  String.split str ~on:','
+  |> List.filter ~f:(fun s -> not (String.is_empty s))
+  |> List.map ~f:(parse_symbol_exn symbols)
+
+let symbol : string list -> string Command.Arg_type.t = fun symbols ->
+  Command.Arg_type.create
+    ~complete:(fun _ ~part -> List.filter symbols ~f:(String.is_prefix ~prefix:part))
+    (parse_symbol_exn symbols)
+
+let nonempty_symbol_list : string list -> string list Command.Arg_type.t = fun symbols ->
+  Command.Arg_type.create
+    ~complete:(fun _ ~part ->
+        let last_part = Option.value_exn (String.split part ~on:' ' |> List.last) in
+        List.filter symbols ~f:(String.is_prefix ~prefix:last_part))
+    (fun str -> 
+       match parse_symbol_list_exn symbols str with
+       | [] ->
+         Error.createf "No parameters provided. Expected one of: %s."
+           ([%sexp_of:string list] symbols |> Sexp.to_string_hum)
+         |> Error.raise;
+       | l -> l)
+
 let synth_command =
   let spec =
     let open Command.Spec in
     empty
-    +> flag "-c" ~aliases:["--config"] (optional string) ~doc:" read configuration from file"
-    +> flag "-d" ~aliases:["--debug"] (optional string) ~doc:" write debugging information to file in JSON format"
-    +> flag "-e" ~aliases:["--engine"] (optional_with_default "v1" string) ~doc:" the synthesis algorithm to use"
+    +> flag "-c" ~aliases:["--config"] (optional file) ~doc:" read configuration from file"
+    +> flag "-d" ~aliases:["--debug"] (optional file) ~doc:" write debugging information to file in JSON format"
+    +> flag "-dd"
+      (optional_with_default ["higher_order"]
+         (nonempty_symbol_list ["higher_order"; "recursive_spec"; "unification"; "example"; "random"; "none"]))
+      ~doc:" the deduction routines to use during synthesis"
+    +> flag "-e" ~aliases:["--engine"]
+      (optional_with_default "v1" (symbol ["v1"; "v1_solver"; "v2"; "automata"]))
+      ~doc:" the synthesis algorithm to use"
     +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
     +> flag "-V" ~aliases:["--very-verbose"] no_arg ~doc:" print many progress messages while searching"
     +> flag "-z" ~aliases:["--use-z3"] no_arg ~doc:" use Z3 for pruning"
     +> anon (maybe ("testcase" %: string))
   in
 
-  let run config_file json_file engine_str verbose very_verbose use_solver m_testcase_name () =
+  let run config_file json_file deduction_methods engine_str verbose very_verbose use_solver m_testcase_name () =
     let initial_config = 
       match config_file with
       | Some file -> In_channel.read_all file |> Config.of_string
@@ -118,22 +167,32 @@ let synth_command =
       Config.use_solver;
     };
 
-    let module Let_syntax = Or_error.Let_syntax in
     let err = 
+      let module Let_syntax = Or_error.Let_syntax.Let_syntax in
       let%bind testcase = match m_testcase_name with
         | Some testcase_name -> Testcase.from_file ~filename:testcase_name
         | None -> Testcase.from_channel In_channel.stdin
       in
 
-      let%bind engine = match engine_str with
-        | "v1" -> Ok `V1
-        | "v1_solver" -> Ok `V1_solver
-        | "v2" -> Ok `V2
-        | "automata" -> Ok `Automata
-        | _ -> error "Unexpected engine parameter." engine_str [%sexp_of:string]
+      let engine = match engine_str with
+        | "v1" -> `V1
+        | "v1_solver" -> `V1_solver
+        | "v2" -> `V2
+        | "automata" -> `Automata
+        | _ -> failwiths "BUG: Failed to validate argument." engine_str [%sexp_of:string]
       in
 
-      let m_solution, solve_time = synthesize engine testcase in
+      let deduction = List.map deduction_methods ~f:(function
+          | "higher_order" -> `Higher_order
+          | "recursive_spec" -> `Recursive_spec
+          | "example" -> `Example
+          | "random" -> `Random
+          | "none" -> `None
+          | "unification" -> `Unification
+          | m -> failwiths "BUG: Failed to validate argument." m [%sexp_of:string])
+      in
+
+      let m_solution, solve_time = synthesize engine deduction testcase in
 
       printf "Runtime: %s\n" (Time.Span.to_short_string solve_time);
       begin
@@ -146,7 +205,13 @@ let synth_command =
       begin
         match json_file with
         | Some file -> 
-          get_json testcase (Time.Span.to_sec solve_time) m_solution !Config.config
+          get_json
+            testcase
+            (Time.Span.to_sec solve_time)
+            m_solution
+            !Config.config
+            engine_str
+            deduction_methods
           |> Json.to_file ~std:true file
         | None -> ()
       end;

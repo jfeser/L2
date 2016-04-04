@@ -37,6 +37,16 @@ module ListExt = struct
 end
 module List = ListExt
 
+module ArrayExt = struct
+  include Array
+
+  let to_string : 'a Array.t -> ('a -> string) -> string = fun a ts ->
+    let elems = to_list a |> List.map ~f:ts in
+    let elems_str = String.concat elems ~sep:", " in
+    "[" ^ elems_str ^ "]"
+end
+module Array = ArrayExt
+
 module StreamExt = struct
   include Stream
 
@@ -272,7 +282,7 @@ end
 module Ctx = struct
   type 'a t =
     'a String.Map.t ref
-  [@@deriving compare, sexp]
+  [@@deriving compare, sexp, bin_io]
     
   exception UnboundError of string
 
@@ -427,7 +437,7 @@ module Tree = struct
   type 'a t =
     | Empty
     | Node of 'a * 'a t list
-  [@@deriving compare, sexp]
+  [@@deriving compare, sexp, bin_io]
 
   let rec to_string t ~str =
     match t with

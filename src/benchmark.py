@@ -1,36 +1,37 @@
 #!/usr/bin/env python3
 
-import multiprocessing
+'''
+Usage: benchmark.py [options] (--l2 <file>) (--timeout <file>) <benchmark>...
+
+Options:
+  -h --help               Show this screen.
+  --l2 <file>
+  --timeout <file>
+  --l2-args <args>
+  --max-memory <mem>      Maximum memory (Mb) [default: 500].
+  --max-runtime <time>    Maximum runtime (seconds) [default: 600].
+'''
+
+from docopt import docopt
+import os
+import json
+import subprocess
 from subprocess import Popen, PIPE
 
-L2_PATH = '../src/timing.native'
-TIMEOUT_PATH = 'timeout'
-
-MAX_MEMORY = 500
-
-BENCHMARKS = [
-    "dupli", "add", "Reverse", "droplast", "last", "length", "max", "multfirst",
-    "multlast", "append", "concat", "sum", "incrs", "sums", "join",
-    "incrt", "leaves", "count_leaves", "membert", "maxt", "flatten", "height",
-    "prependt", "appendt", "replacet", "sumnodes", "flattenl", "sumtrees", "dropmax",
-    "shiftl", "shiftr", "Dedup", "searchnodes", "selectnodes", "dropmins", "cprod",
-    "tconcat", "count_nodes", "largest_n", "evens", "intersect", "member", "sumt"
-]
+args = docopt(__doc__)
 
 def run_benchmark(name):
-    cmd = [ TIMEOUT_PATH, "-m", str(MAX_MEMORY), "-q", "--", L2_PATH, "-i", name ]
-    proc = Popen(cmd, stdout=PIPE, stderr=PIPE)
-    outs, errs = proc.communicate()
-    return "Ran {}:\n{}\n{}".format(name, outs.decode('utf-8'), errs.decode('utf-8'))
-
-def print_output(out):
-    print(out)
+    out_file = os.path.splitext(os.path.basename(name))[0] + '-bench.json'
+    cmd = '{--timeout} -m {--max-memory} -t {--max-runtime} -q -- {--l2} synth -d {out_file} {--l2-args} {name}'.format(out_file=out_file, name=name, **args)
+    os.system(cmd)
+    if not os.path.isfile(out_file):
+        with open(out_file, 'w') as f:
+            f.write(json.dumps({'testcase': name, 'solution': None}))
 
 if __name__ == '__main__':
-    with multiprocessing.Pool() as pool:
-        print("Running benchmarks...")
-        results = []
-        for name in BENCHMARKS:
-            print(run_benchmark(name))
-            # results.append(pool.apply_async(run_benchmark, args=(name,)))
+    print("Running benchmarks...")
+    for name in args['<benchmark>']:
+        print("\nRunning {}".format(name))
+        run_benchmark(name)
+        print()
             

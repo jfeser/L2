@@ -43,7 +43,7 @@ Executable gen
     yojson,
     hashcons,
     Z3
-  ByteOpt: -thread
+  ByteOpt: -thread -custom -cclib -lz3
   NativeOpt: -thread -g
 
 Executable timeout

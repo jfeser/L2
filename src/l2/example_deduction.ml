@@ -10,12 +10,12 @@ module Sp = Specification
 
 exception Bottom
 
-type example = ExprValue.t list * ExprValue.t
+type example = ExprValue.t list * ExprValue.t [@@deriving sexp]
 
-let load_examples : file:string -> (ExprValue.t list * ExprValue.t) list =
+let load_examples : file:string -> example list =
   fun ~file ->
-    Sexp.load_sexp file
-    |> [%of_sexp:(ExprValue.t list * ExprValue.t) list]
+    Sexp.load_sexps file
+    |> List.map ~f:[%of_sexp:example]
 
 exception Non_unifiable
 
@@ -92,7 +92,7 @@ let rec unify_with : ExprValue.t -> ExprValue.t -> ExprValue.t Option.t =
     with Non_unifiable -> None
 
 let unify_example : example -> example -> example Option.t =
-  let module Let_syntax = Option.Let_syntax in
+  let module Let_syntax = Option.Let_syntax.Let_syntax in
   fun (args1, ret1) (args2, ret2) ->
     let%bind args = List.zip args1 args2 in
     let%bind args_u = List.fold args ~init:(Some String.Map.empty) ~f:(fun u (a1, a2) ->
@@ -105,20 +105,25 @@ let unify_example : example -> example -> example Option.t =
     (List.map args1 ~f:(apply_unifier u), apply_unifier u ret1)
 
 let infer_example :
-  specs:example list
+  op:string
+  -> specs:example list
   -> ctx:Value.t StaticDistance.Map.t
   -> example
   -> Sp.t list =
-  let module Let_syntax = Option.Let_syntax in
-  fun ~specs ~ctx ex ->
+  let module Let_syntax = Option.Let_syntax.Let_syntax in
+  fun ~op ~specs ~ctx ex ->
     let possible_specs =
       List.filter_map specs ~f:(unify_example ex)
       |> List.dedup
     in
-    let (args, _) = ex in
+    let (args, ret) = ex in
     let arity = List.length args in
     match possible_specs with
-    | [] -> List.repeat arity Sp.Bottom
+    | [] ->
+      (* printf "No examples found. (%s)\n" op; *)
+      (* printf "%s\n" (Sexp.to_string_hum ([%sexp_of:example] ex)); *)
+      (* print_newline (); *)
+      List.repeat arity Sp.Bottom
     | [(args', _)] ->
       List.map args' ~f:(fun a ->
           match ExprValue.to_value a with
@@ -157,11 +162,13 @@ let infer_examples :
                       | Eval.HitRecursionLimit -> `Id (fresh_name ()))
                 in
                 let ret_eval = ExprValue.of_value ret in
-                infer_example ~specs:op_specs ~ctx (arg_evals, ret_eval)
-              with Eval.RuntimeError _ -> List.repeat arity Sp.Bottom)
+                infer_example ~op:op ~specs:op_specs ~ctx (arg_evals, ret_eval)
+              with Eval.RuntimeError err ->
+                (* printf "ERROR: %s\n" (Error.to_string_hum err); *)
+                List.repeat arity Sp.Bottom)
           |> List.transpose
         in
-        
+
         match m_arg_specs with
         | Some arg_specs -> List.map arg_specs ~f:(fun arg_spec ->
             if List.exists arg_spec ~f:(fun sp -> sp = Sp.Bottom) then Sp.Bottom else
@@ -205,7 +212,7 @@ let push_specs_exn' :
       | Sk.Num_h (_, s)
       | Sk.Bool_h (_, s)
       | Sk.Id_h (_, s)
-      | Sk.Hole_h (_, s) as sk -> if s = Sp.Bottom then raise Bottom else sk
+      | Sk.Hole_h (_, s) as sk -> sk
       | Sk.List_h (l, s) -> Sk.List_h (List.map l ~f:push_specs_exn, s)
       | Sk.Tree_h (t, s) -> Sk.Tree_h (Tree.map t ~f:push_specs_exn, s)
       | Sk.Let_h ((bound, body), s) -> Sk.Let_h ((push_specs_exn bound, push_specs_exn body), s)
@@ -214,17 +221,18 @@ let push_specs_exn' :
       | Sk.Apply_h ((func, args), s) ->
         begin match s, func with
           | Sp.Examples exs, Sk.Id_h (Sk.Id.Name func_name, _) ->
-            let arg_specs =
-              memoized_infer_examples ~specs ~op:func_name ~args (Sp.Examples.to_list exs)
+            let (arg_specs, runtime) = Util.with_runtime (fun () ->
+                memoized_infer_examples ~specs ~op:func_name ~args (Sp.Examples.to_list exs))
             in
-            printf "Pushing specifications for %s.\n" func_name;
-            print_endline "Args:";
-            Util.print_sexp args [%sexp_of:Sp.t Sk.t list];
-            print_endline "Parent spec:";
-            Util.print_sexp s [%sexp_of:Sp.t];
-            print_endline "Arg specs:";
-            Util.print_sexp arg_specs [%sexp_of:Sp.t list];
-            print_newline ();
+            (* printf "Runtime %s.\n" (Time.Span.to_string_hum runtime); *)
+            (* printf "Pushing specifications for %s.\n" func_name; *)
+            (* print_endline "Args:"; *)
+            (* Util.print_sexp args [%sexp_of:Sp.t Sk.t list]; *)
+            (* print_endline "Parent spec:"; *)
+            (* Util.print_sexp s [%sexp_of:Sp.t]; *)
+            (* print_endline "Arg specs:"; *)
+            (* Util.print_sexp arg_specs [%sexp_of:Sp.t list]; *)
+            (* print_newline (); *)
             let args = List.map2_exn args arg_specs ~f:(fun arg sp ->
                 Sk.map_annotation arg ~f:(fun _ -> sp))
             in
@@ -250,7 +258,7 @@ let of_spec_files : string list -> (Sp.t Sk.t -> Sp.t Sk.t Option.t) = fun spec_
   in
   push_specs' ~specs:name_to_examples
 
-let spec_dir = "component-specs"
+let spec_dir = "/Users/jack/Documents/l2/repo/component-specs"
 let spec_files =
   Sys.ls_dir spec_dir
   |> List.map ~f:(fun f -> spec_dir ^ "/" ^ f)

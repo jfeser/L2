@@ -433,7 +433,7 @@ module Specification = struct
     Or_error.all z3_or_error
 
   let substitute_var m s =
-    let module Let_syntax = Or_error.Let_syntax in
+    let module Let_syntax = Or_error.Let_syntax.Let_syntax in
     let _constraint = Te.substitute_var m s._constraint in
 
     let%map sorts =
@@ -494,7 +494,7 @@ module Specification = struct
     | Z3.Solver.UNKNOWN -> error "Solver returned unknown." (s1, s2) [%sexp_of:t * t]
                  
   let conjoin : t -> t -> t Or_error.t = fun s1 s2 ->
-    let module Let_syntax = Or_error.Let_syntax in
+    let module Let_syntax = Or_error.Let_syntax.Let_syntax in
     let%map merged_sorts = Or_error.try_with (fun () ->
         Variable.Map.merge s1.sorts s2.sorts ~f:(fun ~key -> function
             | `Left sort | `Right sort -> Some sort

@@ -520,7 +520,7 @@ module Conflict = struct
 
   let prune_spec_tree : Spec.t -> Spec.t KTree.t -> Spec.t KTree.t Option.t Or_error.t =
     fun spec spec_tree ->
-      let module Let_syntax = Or_error.Let_syntax in
+      let module Let_syntax = Or_error.Let_syntax.Let_syntax in
 
       let (renamed_spec_tree, ret_var) = rename_spec_tree spec_tree in
       let%bind renamed_spec = S.substitute_var (V.Map.singleton V.Output ret_var) spec in
@@ -585,7 +585,7 @@ module Conflict = struct
   (** Generates a conflict automaton from a tree of specifications. *)
   let of_spec_tree : Z3.context -> Component.Set.t -> Spec.t KTree.t -> t Or_error.t =
     fun zctx components spec_tree ->
-      let module Let_syntax = Or_error.Let_syntax in
+      let module Let_syntax = Or_error.Let_syntax.Let_syntax in
       let fresh_state = mk_fresh_state () in
       let any = Symbol.create "*" in
 
@@ -632,7 +632,7 @@ module Conflict = struct
       }
 
   let of_skeleton zctx components sk spec =
-    let module Let_syntax = Or_error.Let_syntax in
+    let module Let_syntax = Or_error.Let_syntax.Let_syntax in
     let spec_map =
       Component.Set.to_list components
       |> List.map ~f:(fun c -> (c.Component.name, c.Component.spec))

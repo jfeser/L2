@@ -5,8 +5,6 @@ open Synthesis_common
 open Hypothesis
 open Infer
 
-val counter : Collections.Counter.t
-
 val cost_model : CostModel.t
 
 module L2_Generalizer : sig
@@ -34,9 +32,7 @@ module L2_Generalizer : sig
   module No_lambdas : S
 end
 
-val create_memoizer : unit -> Memoizer.t
-
 module L2_Synthesizer : sig
-  include Synthesizer.S
+  val synthesize : cost:int -> Deduction.t -> Hypothesis.t -> Hypothesis.t Option.t Or_error.t
   val initial_hypothesis : Example.t list -> Hypothesis.t
 end

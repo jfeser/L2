@@ -4,9 +4,11 @@
   "kind": "examples",
   "contents": {
     "examples": [
-      "(concat [] []) -> []", "(concat [0] []) -> [0]",
-      "(concat [] [0]) -> [0]", "(concat [1 0] [0]) -> [1 0 0]",
-      "(concat [1 0 2] [3 4]) -> [1 0 2 3 4]"
+        "(concat [] []) -> []",
+        "(concat [0] []) -> [0]",
+        "(concat [] [0]) -> [0]",
+        "(concat [1 0] [0]) -> [1 0 0]",
+        "(concat [1 0 2] [3 4]) -> [1 0 2 3 4]"
     ],
     "background": []
   }

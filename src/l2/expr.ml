@@ -11,7 +11,7 @@ module Map = Core.Std.Map.Make(
   end)
 
 type t = Ast.expr [@@deriving compare, sexp]
-type id = Ast.id [@@deriving compare, sexp]
+type id = Ast.id [@@deriving compare, sexp, bin_io]
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
@@ -46,7 +46,7 @@ module Op = struct
     | Tree
     | Value
     | Children
-    [@@deriving compare, sexp]
+    [@@deriving compare, sexp, bin_io]
 
   (** Type for storing operator metadata. *)
   type metadata = {
