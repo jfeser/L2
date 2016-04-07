@@ -4,6 +4,19 @@ open Printf
 open Synthesis_common
 open Collections
 
+let deduction_timer =
+  let t = Timer.empty () in
+  let n = Timer.add_zero t in
+  n "higher_order" "Total time in higher-order deduction.";
+  n "example" "Total time in example deduction.";
+  t
+  
+let higher_order_deduction = fun sk ->
+  Timer.run_with_time deduction_timer "higher_order" (fun () -> Higher_order_deduction.push_specs sk)
+
+let example_deduction = fun sk ->
+  Timer.run_with_time deduction_timer "example" (fun () -> Example_deduction.push_specs sk)
+
 (** Get a JSON object containing all captured information from a single run. *)
 let get_json testcase runtime solution config engine deduction : Json.json =
   let solution_str = match solution with
@@ -13,6 +26,8 @@ let get_json testcase runtime solution config engine deduction : Json.json =
   let timers = [
     "search", V1_solver_engine.timer;
     "memoizer", Synthesis_common.timer;
+    "deduction", deduction_timer;
+    "example_deduction", Example_deduction.timer;
     (* "deduction", Deduction.timer; *)
   ] in
   let counters = [
@@ -21,9 +36,13 @@ let get_json testcase runtime solution config engine deduction : Json.json =
     "memoizer", Synthesis_common.counter;
     (* "deduction", Deduction.counter; *)
   ] in
+  let sexp_logs = [
+    "memoizer", Synthesis_common.sexp_log;
+  ] in
   `Assoc [
     "timers", `List (List.map timers ~f:(fun (name, timer) -> `Assoc [name, Timer.to_json timer]));
     "counters", `List (List.map counters ~f:(fun (name, counter) -> `Assoc [name, Counter.to_json counter]));
+    "sexp_logs", `List (List.map sexp_logs ~f:(fun (name, sexp_log) -> `Assoc [name, SexpLog.to_json sexp_log]));
     "testcase", Testcase.to_json testcase;
     "solution", `String solution_str;
     "runtime", `Float runtime;
@@ -75,9 +94,9 @@ let synthesize engine deduction testcase =
           let open Hypothesis in
           let deduce = List.fold_left deduction ~init:Deduction.no_op ~f:(fun d -> function
               | `None -> Deduction.no_op
-              | `Higher_order -> Deduction.compose d Higher_order_deduction.push_specs
+              | `Higher_order -> Deduction.compose d higher_order_deduction
               | `Unification -> Deduction.compose d Unification_deduction.push_specs
-              | `Example -> Deduction.compose d Example_deduction.push_specs
+              | `Example -> Deduction.compose d example_deduction
               | `Random -> Deduction.compose d Random_deduction.push_specs
               | `Recursive_spec -> Deduction.compose d Recursive_spec_deduction.push_specs)
           in
@@ -204,7 +223,8 @@ let synth_command =
       (* Write debug information to a file, if requested. *)
       begin
         match json_file with
-        | Some file -> 
+        | Some file ->
+          let ch = Out_channel.create file in
           get_json
             testcase
             (Time.Span.to_sec solve_time)
@@ -212,7 +232,7 @@ let synth_command =
             !Config.config
             engine_str
             deduction_methods
-          |> Json.to_file ~std:true file
+          |> Json.pretty_to_channel ~std:true ch
         | None -> ()
       end;
       

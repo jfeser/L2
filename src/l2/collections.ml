@@ -390,8 +390,12 @@ module Counter = struct
   let add_zero (t: t) (name: string) (desc: string) : unit =
     Ctx.update t name { count = 0; desc; }
 
-  let find_exn (t: t) (name: string) : int =
+  let get (t: t) (name: string) : int =
     (Ctx.lookup_exn t name).count
+
+  let set : t -> string -> int -> unit = fun t name v ->
+    let info = Ctx.lookup_exn t name in
+    Ctx.update t name { info with count = v }
 
   let incr (t: t) (name: string) : unit =
     let info = Ctx.lookup_exn t name in
@@ -408,6 +412,78 @@ module Counter = struct
         "count", `Int v.count;
         "description", `String v.desc;
       ])))
+end
+
+module SexpLog = struct
+  type v = {
+    value : Sexp.t option;
+    desc : string;
+  }
+  
+  type t = v String.Table.t
+
+  let empty : unit -> t = String.Table.create
+
+  let add : t -> string -> string -> unit = fun t name desc ->
+    String.Table.add_exn t ~key:name ~data:{ value = None; desc }
+
+  let set : t -> string -> Sexp.t -> unit = fun t name value ->
+    String.Table.update t name ~f:(function
+        | Some v -> { v with value = (Some value) }
+        | None -> raise Not_found)
+
+  let rec sexp_to_json : Sexp.t -> Json.json = function
+    | Sexp.Atom str -> `String str
+    | Sexp.List lst -> `List (List.map lst ~f:sexp_to_json)
+  
+  let to_json : t -> Json.json = fun t ->
+    `Assoc (
+      String.Table.to_alist t
+      |> List.map ~f:(fun (k, v) -> (k, `Assoc [
+          "value", begin
+            match v.value with
+            | Some vv -> `String (Sexp.to_string_hum vv)
+            | None -> `Null
+          end;
+          "description", `String v.desc
+        ]))
+    )
+end
+
+module SortedList = struct
+  type ('a, 'cmp) t = 'a list
+
+  module SortedList0 = struct
+    let of_list : comparator:('a, 'cmp) Comparator.t -> 'a list -> ('a, 'cmp) t =
+      fun ~comparator -> List.sort ~cmp:comparator.Comparator.compare
+
+    let to_list : ('a, 'cmp) t -> 'a list = fun l -> l
+
+    let length : ('a, 'cmp) t -> int = List.length
+
+    let append : comparator:('a, 'cmp) Comparator.t -> ('a, 'cmp) t -> ('a, 'cmp) t -> ('a, 'cmp) t = fun ~comparator ->
+      List.merge ~cmp:comparator.Comparator.compare
+
+    let map : comparator:('a, 'cmp) Comparator.t -> f:('a -> 'a) -> ('a, 'cmp) t -> ('a, 'cmp) t = fun ~comparator ~f l ->
+      List.map ~f l |> List.sort ~cmp:comparator.Comparator.compare
+
+    let filter : f:('a -> bool) -> ('a, 'cmp) t -> ('a, 'cmp) t = fun ~f l ->
+      List.filter ~f l
+  end
+
+  module Make_using_comparator (Cmp : Comparator.S) = struct
+    type ('a, 'b) lst = ('a, 'b) t
+    type t = (Cmp.t, Cmp.comparator_witness) lst
+
+    let of_list : Cmp.t list -> t = fun l -> SortedList0.of_list ~comparator:Cmp.comparator l
+    let to_list : t -> Cmp.t list = fun l -> SortedList0.to_list l
+    let append : t -> t -> t =
+      fun l1 l2 -> SortedList0.append ~comparator:Cmp.comparator l1 l2
+    let map : f:(Cmp.t -> Cmp.t) -> t -> t =
+      fun ~f l -> SortedList0.map ~comparator:Cmp.comparator ~f l
+    let filter : f:(Cmp.t -> bool) -> t -> t = SortedList0.filter
+    let length = SortedList0.length
+  end
 end
 
 module KTree = struct

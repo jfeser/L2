@@ -93,12 +93,15 @@ module Hole = struct
   } [@@deriving sexp, compare]
 
   let counter = ref 0
+
+  let equal h1 h2 = compare h1 h2 = 0
+  let equal_id h1 h2 = Id.equal h1.id h2.id
   
-  let equal h1 h2 = h1.id = h2.id
   let to_string h = Sexp.to_string_hum (sexp_of_t h)
 
   let create ?ctx:(ctx = StaticDistance.Map.empty) type_ symbol = begin
     incr counter;
+    if !counter < 0 then failwith "Hole id counter overflowed.";
     { id = !counter; ctx; type_; symbol }
   end
 
@@ -303,7 +306,7 @@ module Skeleton = struct
 
   let rec fill_hole hole ~parent:p ~child:c =
     map_hole p ~f:(fun (hole', spec) ->
-        if Hole.equal hole hole' then (map_annotation c ~f:(fun _ -> spec))
+        if Hole.equal_id hole hole' then (map_annotation c ~f:(fun _ -> spec))
         else Hole_h (hole', spec))
 
   let rec holes = function
@@ -524,16 +527,26 @@ module Hypothesis = struct
     
   type skeleton = Sp.t Sk.t
 
+  let compare_skel : skeleton -> skeleton -> int = Sk.compare Sp.compare
+  
   module Table = Hashcons.Make(struct
       type t = skeleton
-      let equal h1 h2 = Sk.compare Sp.compare h1 h2 = 0
+      let equal h1 h2 = compare_skel h1 h2 = 0
       let hash = Sk.hash
     end)
 
   type kind =
     | Abstract
     | Concrete
-  [@@deriving sexp]
+    [@@deriving sexp]
+
+  (* module HoleList = SortedList.Make_using_comparator(struct *)
+  (*     type t = Hole.t * Sp.t *)
+  (*     include Comparator.Make (struct *)
+  (*         type t = Hole.t * Sp.t [@@deriving sexp] *)
+  (*         let compare (h1, _) (h2, _) = Hole.compare h1 h2 *)
+  (*       end) *)
+  (*   end) *)
 
   type t = {
     skeleton : skeleton Hashcons.hash_consed;
@@ -579,6 +592,7 @@ module Hypothesis = struct
       }
     | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
 
+  let compare_skeleton h1 h2 = compare_skel h1.skeleton.Hashcons.node h2.skeleton.Hashcons.node
   let compare_cost h1 h2 = Int.compare h1.cost h2.cost
 
   let to_expr (h: t) : Expr.t =
@@ -599,10 +613,10 @@ module Hypothesis = struct
     }
 
   let fill_hole cm hole ~parent:p ~child:c = begin
-    if not (List.exists p.holes ~f:(fun (h, _) -> Hole.equal h hole)) then
+    if not (List.exists p.holes ~f:(fun (h, _) -> Hole.equal_id h hole)) then
       failwith "Hypothesis does not contain the specified hole.";
     let holes =
-      (List.filter p.holes ~f:(fun (h, _) -> not (Hole.equal h hole))) @ c.holes
+      (List.filter p.holes ~f:(fun (h, _) -> not (Hole.equal_id h hole))) @ c.holes
     in
     {
       skeleton = Table.hashcons table

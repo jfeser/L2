@@ -29,8 +29,6 @@ let cost_model =
   }
 
 module Value_generalizer = struct
-  type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
-
   module Symbols = struct
     let num = Symbol.create "num"
     let bool = Symbol.create "bool"
@@ -65,49 +63,49 @@ module Value_generalizer = struct
 
   let name_of_int n = "v" ^ (Int.to_string n)
 
-  let generate_bool hole spec = [
+  let generate_bool ctx type_ symbol spec = [
     (H.bool cost_model true spec, Unifier.empty);
     (H.bool cost_model false spec, Unifier.empty);
   ]
 
-  let generate_int hole spec =
+  let generate_int ctx type_ symbol spec =
     List.init 20 ~f:(fun x -> H.num cost_model x spec, Unifier.empty)
 
-  let generate_var hole spec =
+  let generate_var ctx type_ symbol spec =
     [H.id_name cost_model "v" spec, Unifier.empty]
 
-  let generate_list_var hole spec =
+  let generate_list_var ctx type_ symbol spec =
     let max_length = 50 in
     let vars =
       List.repeat max_length (H.id_name cost_model "v" spec)
     in
     List.init (max_length + 1) ~f:(fun i -> (H.list cost_model (List.take vars i) spec, Unifier.empty))
   
-  let generate_list list_sym elem_sym hole spec = [
+  let generate_list list_sym elem_sym ctx type_ symbol spec = [
     (H.op cost_model Expr.Op.Cons [
-        H.hole cost_model (Hole.create ~ctx:hole.Hole.ctx (Type.free 0 0) elem_sym) Sp.Top;
-        H.hole cost_model (Hole.create ~ctx:hole.Hole.ctx (Type.free 0 0) list_sym) Sp.Top;
+        H.hole cost_model (Hole.create ~ctx:ctx (Type.free 0 0) elem_sym) Sp.Top;
+        H.hole cost_model (Hole.create ~ctx:ctx (Type.free 0 0) list_sym) Sp.Top;
     ] Sp.Top, Unifier.empty);
     (H.list cost_model [] Sp.Top, Unifier.empty);
   ]
 
-  let of_type : ImmutableType.t -> (t * Hypothesis.t) = fun t ->
+  let of_type : ImmutableType.t -> (Generalizer.t * Hypothesis.t) = fun t ->
     let schema = Schema.of_type t in
     print_sexp schema [%sexp_of:Schema.t];
-    let gen = fun hole spec ->
-      if hole.Hole.symbol = Symbols.num then
-        generate_int hole spec
-      else if hole.Hole.symbol = Symbols.bool then
-        generate_bool hole spec
-      else if hole.Hole.symbol = Symbols.var then
-        generate_var hole spec
-      else if hole.Hole.symbol = Symbols.list_var then
-        generate_list_var hole spec
-      else if (Symbol.to_string hole.Hole.symbol) = "list" then
-        match Schema.args_of schema hole.Hole.symbol with
-        | Some [elem_sym] -> generate_list hole.Hole.symbol elem_sym hole spec
+    let gen = fun ctx type_ symbol spec ->
+      if symbol = Symbols.num then
+        generate_int ctx type_ symbol spec
+      else if symbol = Symbols.bool then
+        generate_bool ctx type_ symbol spec
+      else if symbol = Symbols.var then
+        generate_var ctx type_ symbol spec
+      else if symbol = Symbols.list_var then
+        generate_list_var ctx type_ symbol spec
+      else if (Symbol.to_string symbol) = "list" then
+        match Schema.args_of schema symbol with
+        | Some [elem_sym] -> generate_list symbol elem_sym ctx type_ symbol spec
         | _ -> (* failwiths "Bad schema." schema [%sexp_of:Schema.t] *) []
-      else (* failwiths "Unknown symbol." hole.Hole.symbol [%sexp_of:Symbol.t] *) []
+      else (* failwiths "Unknown symbol." symbol [%sexp_of:Symbol.t] *) []
     in
     let init = H.hole cost_model (Hole.create (Type.free 0 0) (KTree.value schema)) Sp.Top in
     (gen, init)
@@ -199,25 +197,36 @@ let spec =
   let open Command.Spec in
   empty
   +> flag "--cost" (required int) ~doc:" the maximum specification cost"
-  +> anon (maybe ("function" %: string))
+  +> anon (sequence ("function" %: string))
 
-let run max_cost m_function () =
-  let func_names = match m_function with
-    | Some fn -> [fn]
-    | None -> Eval.stdlib |> List.unzip |> Tuple.T2.get1
+let run max_cost names () =
+  let functions =
+    stdlib_tctx |> Ctx.to_alist |> List.map ~f:(fun (name, type_) ->
+        let args_names = List.init (Type.arity type_) ~f:(fun i -> Int.to_string i) in
+        let args_ids = List.map args_names ~f:(fun n -> `Id n) in
+      (name, type_, `Lambda (args_names, `Apply (`Id name, args_ids))))
+  in
+  let operators = Expr.Op.all |> List.map ~f:(fun op ->
+      let name = Expr.Op.to_string op in
+      let type_ = Expr.Op.typ op in
+      let args_names = List.init (Expr.Op.arity op) ~f:(fun i -> Int.to_string i) in
+      let args_ids = List.map args_names ~f:(fun n -> `Id n) in
+      (name, type_, `Lambda (args_names, `Op (op, args_ids))))
   in
   let excluded = ["map"; "foldl"; "foldr"; "foldt"; "filter"; "inf"; "mapt"; "dedup"] in
-  List.iter func_names ~f:(fun name ->
-      if not (List.mem excluded name) then
-        let m_func =
-          List.find_map Eval.stdlib ~f:(fun (name', expr) -> if name = name' then Some expr else None)
-        in
-        match m_func with
-        | Some func ->
-          let type_ = Ctx.lookup_exn Infer.stdlib_tctx name in
-          let file = name ^ "-examples.sexp" in
-          generate_for_func ~max_cost ~file ~verbose:true func type_
-        | None -> failwiths "Failed to look up function." name [%sexp_of:string])
+  
+  let selected = match names with
+    | [] ->
+      functions @ operators
+      |> List.filter ~f:(fun (n, _, _) -> not (List.mem excluded n))
+    | names ->
+      List.filter functions ~f:(fun (n, _, _) -> List.mem names n) @
+      List.filter operators ~f:(fun (n, _, _) -> List.mem names n)
+  in
+
+  List.iter selected ~f:(fun (name, type_, expr) ->
+      let file = name ^ "-examples.sexp" in
+      generate_for_func ~max_cost ~file ~verbose:true expr type_)
 
 let cmd = Command.basic ~summary:"Generate specifications for functions." spec run
     

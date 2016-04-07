@@ -5,7 +5,7 @@ open Hypothesis
 open Infer
 
 module Generalizer : sig
-  type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
+  type t = Type.t StaticDistance.Map.t -> Type.t -> Symbol.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
   val generalize_all : t -> CostModel.t -> Hypothesis.t -> Hypothesis.t list
   val compose : t -> t -> t
   val compose_all_exn : t list -> t
@@ -19,6 +19,7 @@ end
 
 val counter : Counter.t
 val timer : Timer.t
+val sexp_log : SexpLog.t
 
 module Memoizer : sig
   type t

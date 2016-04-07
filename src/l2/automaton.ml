@@ -137,7 +137,7 @@ module Constrained = struct
     let open Or_error.Monad_infix in
     reduce zctx a >>| fun a' -> (Set.is_empty a'.initial_states, a')
 
-  let generalize rules matching_components cost_model hole spec =
+  let generalize rules matching_components cost_model ctx type_ symbol spec =
     let module H = Hypothesis in
     let module Sp = Specification in
     let open Option.Monad_infix in
@@ -145,7 +145,7 @@ module Constrained = struct
     let cm = cost_model in
 
     (* Select all rules which match the hole symbol. *)
-    List.filter rules ~f:(fun r -> Symbol.equal hole.Hole.symbol (Rule.start_state r)) |>
+    List.filter rules ~f:(fun r -> Symbol.equal symbol (Rule.start_state r)) |>
 
     (* For each matching rule, select each matching component and expand. *)
     List.map ~f:(fun r ->
@@ -159,16 +159,16 @@ module Constrained = struct
             match instantiate 0 c.C.type_ with
             | Type.Arrow_t (args_t, ret_t) ->
               (* Try to unify the return type of the operator with the type of the hole. *)
-              (Unifier.of_types hole.Hole.type_ ret_t) >>| fun u ->
+              (Unifier.of_types type_ ret_t) >>| fun u ->
 
               (* If unification succeeds, apply the unifier to the rest of the type. *)
               let args_t = List.map args_t ~f:(Unifier.apply u) in
               let arg_holes = List.map2_exn args_t (Rule.end_states r) ~f:(fun t sym ->
-                  H.hole cm (Hole.create ~ctx:hole.Hole.ctx t sym) Sp.Top)
+                  H.hole cm (Hole.create ~ctx:ctx t sym) Sp.Top)
               in
               (H.apply cm (H.id_name cm c.C.name Sp.Top) arg_holes spec, u)
             | type_ ->
-              Unifier.of_types hole.Hole.type_ type_ >>| fun u ->
+              Unifier.of_types type_ type_ >>| fun u ->
               (H.id_name cm c.C.name Sp.Top, u)))
     |> List.concat_no_order
 

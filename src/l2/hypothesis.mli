@@ -120,7 +120,7 @@ end
 module Specification : sig
   module Examples : sig
     type t
-    type example = Value.t StaticDistance.Map.t * Value.t
+    type example = Value.t StaticDistance.Map.t * Value.t [@@deriving sexp]
 
     include Sexpable.S with type t := t
 
@@ -134,7 +134,7 @@ module Specification : sig
 
   module FunctionExamples : sig
     type t
-    type example = (Value.t StaticDistance.Map.t * Value.t list) * Value.t
+    type example = (Value.t StaticDistance.Map.t * Value.t list) * Value.t [@@deriving sexp]
 
     include Sexpable.S with type t := t
     
@@ -183,6 +183,8 @@ module Hypothesis : sig
   val to_string_hum : t -> string
   
   val compare_cost : t -> t -> int
+  val compare_skeleton : t -> t -> int
+    
   val apply_unifier : t -> Unifier.t -> t
   val fill_hole : CostModel.t -> Hole.t -> parent:t -> child:t -> t
   val verify : t -> bool

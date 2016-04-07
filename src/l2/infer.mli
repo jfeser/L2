@@ -93,7 +93,7 @@ module Unifier : sig
   
   val empty : t
   val apply : t -> Type.t -> Type.t
-  val compose : t -> t -> t
+  val compose : outer:t -> inner:t -> t
   val equal : t -> t -> bool
   val relevant_to : t -> Type.t -> t
   val of_types_exn : Type.t -> Type.t -> t

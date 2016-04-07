@@ -229,11 +229,13 @@ module Unifier = struct
     | App_t (name, args) -> App_t (name, List.map ~f:(apply s) args)
     | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(apply s) args, apply s ret)
 
-  let compose (s1: t) (s2: t) : t =
-    let merge outer inner =
-      Int.Map.fold ~f:(fun ~key:name ~data:typ m ->
-          Int.Map.add ~key:name ~data:typ m) ~init:outer inner
-    in merge s1 (Int.Map.map ~f:(fun t -> apply s1 t) s2)
+  let merge outer inner =
+    Int.Map.merge outer inner ~f:(fun ~key -> function
+        | `Both (o, i) -> Some i
+        | `Left x | `Right x -> Some x)
+
+  let compose : outer:t -> inner:t -> t = fun ~outer ~inner ->
+    merge (Int.Map.map ~f:(fun t -> apply inner t) outer) inner
 
   let rec of_types_exn (t1: typ) (t2: typ) : t =
     (* Check whether the free variable 'id' occurs in type 'typ'. If it
