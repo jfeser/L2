@@ -298,7 +298,13 @@ let of_spec_files : string list -> (Sp.t Sk.t -> Sp.t Sk.t Option.t) = fun spec_
   push_specs' ~specs:name_to_examples
 
 let spec_dir = "/Users/jack/Documents/l2/repo/component-specs"
-let spec_files =
-  Sys.ls_dir spec_dir
-  |> List.map ~f:(fun f -> spec_dir ^ "/" ^ f)
-let push_specs = of_spec_files spec_files
+    
+let push_specs =
+  if Sys.is_directory spec_dir = `Yes then
+    let spec_files =
+      Sys.ls_dir spec_dir
+      |> List.map ~f:(fun f -> spec_dir ^ "/" ^ f)
+    in
+    of_spec_files spec_files
+  else
+    fun _ -> failwith "Could not load component specifications."
