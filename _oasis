@@ -46,10 +46,10 @@ Executable gen
   ByteOpt: -thread -custom -cclib -lz3
   NativeOpt: -thread -g
 
-Executable timeout
+Executable timeout_osx
   Build$: system(macosx)
   Path: src/timeout
-  MainIs: timeout.ml
+  MainIs: timeout_osx.ml
   CompiledObject: best
   BuildDepends:
     core,
@@ -57,6 +57,17 @@ Executable timeout
     ctypes,
     ctypes.foreign
   CCLib: -lproc
+  ByteOpt: -thread
+  NativeOpt: -thread
+
+Executable timeout_linux
+  Build$: system(linux)
+  Path: src/timeout
+  MainIs: timeout_linux.ml
+  CompiledObject: best
+  BuildDepends:
+    core,
+    core_extended
   ByteOpt: -thread
   NativeOpt: -thread
 

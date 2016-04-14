@@ -81,36 +81,32 @@ let proc_pid_rusage =
   foreign "proc_pid_rusage"
     (int @-> int @-> ptr rusage_info_t @-> returning int)
 
-module ProcessInfo = struct
-  type t = {
-    user_time: Time_ns.Span.t;
-    system_time: Time_ns.Span.t;
-    wired_size: int64;
-    resident_size: int64;
-  } [@@deriving sexp]
+type t = {
+  user_time: Time_ns.Span.t;
+  system_time: Time_ns.Span.t;
+  memory_size: int64;
+} [@@deriving sexp]
 
-  let ticks_to_ns ticks = (Int.of_int64_exn ticks) * 100
-  let get_time_as_int info field =
-    let user_time_ticks = getf info field |> Unsigned.UInt64.to_int64 in
-    Time_ns.Span.of_int_ns (ticks_to_ns user_time_ticks)
+let ticks_to_ns ticks = (Int.of_int64_exn ticks) * 100
+let get_time_as_int info field =
+  let user_time_ticks = getf info field |> Unsigned.UInt64.to_int64 in
+  Time_ns.Span.of_int_ns (ticks_to_ns user_time_ticks)
 
-  let of_rusage_info_v3 info =
-    {
-      (* Assuming that ri_*_time fields are in 100ns ticks. *)
-      user_time = get_time_as_int info ri_user_time;
-      system_time = get_time_as_int info ri_system_time;
+let of_rusage_info_v3 info =
+  {
+    (* Assuming that ri_*_time fields are in 100ns ticks. *)
+    user_time = get_time_as_int info ri_user_time;
+    system_time = get_time_as_int info ri_system_time;
 
-      wired_size = Unsigned.UInt64.to_int64 (getf info ri_wired_size);
-      resident_size = Unsigned.UInt64.to_int64 (getf info ri_resident_size);
-    }
+    memory_size = Unsigned.UInt64.to_int64 (getf info ri_resident_size);
+  }
 
-  let of_pid pid =
-    let info_v3_ptr = allocate_n rusage_info_v3 ~count:1 in
-    let info_ptr = coerce (ptr rusage_info_v3) (ptr rusage_info_t) info_v3_ptr in
-    let ret = proc_pid_rusage (Pid.to_int pid) 3 info_ptr in
-    if ret = 0 then
-      Some (of_rusage_info_v3 (!@ info_v3_ptr))
-    else None
+let of_pid pid =
+  let info_v3_ptr = allocate_n rusage_info_v3 ~count:1 in
+  let info_ptr = coerce (ptr rusage_info_v3) (ptr rusage_info_t) info_v3_ptr in
+  let ret = proc_pid_rusage (Pid.to_int pid) 3 info_ptr in
+  if ret = 0 then
+    Some (of_rusage_info_v3 (!@ info_v3_ptr))
+  else None
 
-  let to_string info = Sexp.to_string_hum (sexp_of_t info)
-end
+let to_string info = Sexp.to_string_hum (sexp_of_t info)
