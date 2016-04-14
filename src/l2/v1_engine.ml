@@ -17,6 +17,7 @@ type config = {
   deduction: bool;
   infer_base: bool;
   max_exhaustive_depth: int;
+  flat_cost : bool;
 }
 
 let default_config = {
@@ -24,6 +25,7 @@ let default_config = {
   untyped=false;
   deduction=true;
   infer_base=true;
+  flat_cost=false;
   max_exhaustive_depth=7;
 }
 
@@ -272,12 +274,13 @@ let solve_single
   in
 
   let generate_specs (specs: Spec.t list) : Spec.t list =
+    let cost = if config.flat_cost then Cost.flat else Cost.default in
     List.concat_map specs ~f:(fun parent ->
-        (Spec.map_bodies ~deduce_examples:config.deduction parent)
-        @ (Spec.filter_bodies ~deduce_examples:config.deduction parent)
-        @ (Spec.fold_bodies ~deduce_examples:config.deduction ~infer_base:config.infer_base parent)
-        @ (Spec.foldt_bodies ~deduce_examples:config.deduction ~infer_base:config.infer_base parent)
-        @ (Spec.recurs_bodies ~deduce_examples:config.deduction parent)
+        (Spec.map_bodies ~deduce_examples:config.deduction ~cost parent)
+        @ (Spec.filter_bodies ~deduce_examples:config.deduction ~cost parent)
+        @ (Spec.fold_bodies ~deduce_examples:config.deduction ~infer_base:config.infer_base ~cost parent)
+        @ (Spec.foldt_bodies ~deduce_examples:config.deduction ~infer_base:config.infer_base ~cost parent)
+        (* @ (Spec.recurs_bodies ~deduce_examples:config.deduction parent) *)
       )
   in
 
@@ -307,11 +310,13 @@ let solve_single
     Sstream.map_matrix (matrix_of_hole hole) ~f:(Ctx.bind ctx name)
   in
 
-  let total_cost (hypo_cost: int) (enum_cost: int) : int =
-    hypo_cost + (Int.of_float (1.5 ** (Float.of_int enum_cost)))
-    (* hypo_cost + (if enum_cost <= 6 then enum_cost else enum_cost * 2) *)
+  let total_cost =
+    if config.flat_cost then
+      fun hypo_cost enum_cost -> hypo_cost + enum_cost
+    else
+      fun hypo_cost enum_cost -> hypo_cost + (Int.of_float (1.5 ** (Float.of_int enum_cost)))
   in
-
+  
   let solver_of_spec spec =
     let matrix = match Ctx.to_alist spec.Spec.holes with
       | [] -> failwith "Specification has no holes."

@@ -18,6 +18,38 @@ let ctx_merge outer_ctx inner_ctx =
       | `Left octx_v -> Some octx_v
       | `Right ictx_v -> Some ictx_v)
 
+module Cost = struct
+  type t = {
+    foldr: int;
+    foldl: int;
+    foldt: int;
+    rec_: int;
+    map: int;
+    mapt: int;
+    filter: int;
+  }
+
+  let default = {
+    foldr = 8;
+    foldl = 8;
+    foldt = 8;
+    rec_ = 40;
+    map = 7;
+    mapt = 7;
+    filter = 7;
+  }
+
+  let flat = {
+    foldr = 1;
+    foldl = 1;
+    foldt = 1;
+    rec_ = 1;
+    map = 1;
+    mapt = 1;
+    filter = 1;
+  }
+end
+
 module Spec = struct
   type t = {
     target: expr Ctx.t -> expr -> expr;
@@ -25,23 +57,13 @@ module Spec = struct
     cost: int;
   }
 
-  let costs = [
-    "foldr", 8;
-    "foldl", 8;
-    "foldt", 8;
-    "rec", 40;
-    "map", 7;
-    "mapt", 7;
-    "filter", 7;
-  ] |> Ctx.of_alist_exn
-
   let to_string (spec: t) : string =
     let (hole_bodies: expr Ctx.t) = Ctx.mapi spec.holes ~f:(fun ~key:name ~data:_ -> `Id name) in
     spec.target hole_bodies (`Id "_") |> Expr.to_string
 
   (* Map is an appropriate implementation when one of the inputs is a
      list and the output is a list of the same length. *)
-  let map_bodies ?(deduce_examples=true) (spec: t) : t list =
+  let map_bodies ?(deduce_examples=true) ?(cost = Cost.default) (spec: t) : t list =
     let map_example lambda_name input result : example =
       (`Apply (`Id lambda_name, [input])), result
     in
@@ -97,8 +119,7 @@ module Spec = struct
           |> Ctx.to_alist
         in
 
-        let map_specs args map_name =
-          let cost = Ctx.lookup_exn costs map_name in
+        let map_specs args map_name cost =
           List.filter_map args ~f:(fun (input_name, input_elem_typ) ->
               let lambda_name = Fresh.name "f" in
               match map_examples examples lambda_name input_name with
@@ -121,12 +142,13 @@ module Spec = struct
                 }
               | None -> None)
         in
-        (map_specs tree_args "mapt") @ (map_specs list_args "map")
+        (map_specs tree_args "mapt" cost.Cost.mapt)
+        @ (map_specs list_args "map" cost.Cost.map)
       | _ -> []
     in
     Ctx.to_alist spec.holes |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
-  let filter_bodies ?(deduce_examples=true) (spec: t) : t list =
+  let filter_bodies ?(deduce_examples=true) ?(cost = Cost.default) (spec: t) : t list =
     let filter_example lambda_name input result = (`Apply (`Id lambda_name, [input])), `Bool result in
     let filter_examples examples lambda_name list_name =
       let ex =
@@ -158,7 +180,7 @@ module Spec = struct
     in
 
     let fill name hole =
-      let cost = Ctx.lookup_exn costs "filter" in
+      let cost = cost.Cost.filter in
       match hole.signature with
       | Arrow_t (arg_typs, App_t ("list", [res_elem_typ])) ->
         let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
@@ -225,7 +247,7 @@ module Spec = struct
      appropriate whenever one of the inputs is a list. If another of the
      arguments can act as a base case, it is used. Otherwise, a default
      base case is used for each type. *)
-  let fold_bodies ?(deduce_examples=true) ?(infer_base=false) (spec: t) : t list =
+  let fold_bodies ?(deduce_examples=true) ?(infer_base=false) ?(cost = Cost.default) (spec: t) : t list =
     let init_examples examples init_name list_name =
       let ex = List.filter_map examples ~f:(fun ((_, result), vctx) ->
           match Ctx.lookup_exn vctx list_name with
@@ -278,8 +300,8 @@ module Spec = struct
     in
 
     let fill name hole : t list =
-      let foldl_cost = Ctx.lookup_exn costs "foldl" in
-      let foldr_cost = Ctx.lookup_exn costs "foldr" in
+      let foldl_cost = cost.Cost.foldl in
+      let foldr_cost = cost.Cost.foldr in
       match hole.signature with
       | Arrow_t (arg_typs, res_typ) ->
         let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
@@ -372,7 +394,7 @@ module Spec = struct
     in
     Ctx.to_alist spec.holes |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
-  let foldt_bodies ?(deduce_examples=true) ?(infer_base=false) (spec: t) : t list =
+  let foldt_bodies ?(deduce_examples=true) ?(infer_base=false) ?(cost = Cost.default) (spec: t) : t list =
     let init_examples examples init_name input_name =
       let ex = List.filter_map examples ~f:(fun ((_, result), vctx) ->
           match Ctx.lookup_exn vctx input_name with
@@ -401,7 +423,7 @@ module Spec = struct
           |> Ctx.to_alist
         in
 
-        let cost = Ctx.lookup_exn costs "foldt" in
+        let cost = cost.Cost.foldt in
         List.concat_map trees ~f:(fun (input_name, input_elem_typ) ->
             let init_name = Fresh.name "i" in
             match init_examples examples init_name input_name with
@@ -455,7 +477,7 @@ module Spec = struct
     in
     Ctx.to_alist spec.holes |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
-  let recurs_bodies ?(deduce_examples=true) (spec: t) : t list =
+  let recurs_bodies ?(deduce_examples=true) ?(cost = Cost.default) (spec: t) : t list =
     let base_examples examples base_name input_name =
       let ex = List.filter_map examples ~f:(fun ((_, result), vctx) ->
           match Ctx.lookup_exn vctx input_name with
@@ -494,7 +516,7 @@ module Spec = struct
           |> Ctx.to_alist
         in
 
-        let cost = Ctx.lookup_exn costs "rec" in
+        let cost = cost.Cost.rec_ in
         List.filter_map lists ~f:(fun (input_name, input_elem_typ) ->
             let base_name = Fresh.name "f" in
             let recurs_name = Fresh.name "f" in

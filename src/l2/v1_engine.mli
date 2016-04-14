@@ -9,6 +9,7 @@ type config = {
   deduction: bool;
   infer_base: bool;
   max_exhaustive_depth: int;
+  flat_cost:bool;
 }
 
 val default_init : TypedExpr.t List.t

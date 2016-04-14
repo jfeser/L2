@@ -21,6 +21,8 @@ type t = {
   max_exhaustive_depth : int;
 
   check_prob : float;
+
+  flat_cost : bool;
 }
 
 (** The default configuration. *)

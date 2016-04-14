@@ -65,6 +65,7 @@ let synthesize engine deduction testcase =
           V1_engine.deduction = config.Config.deduction;
           V1_engine.infer_base = config.Config.infer_base;
           V1_engine.max_exhaustive_depth = config.Config.max_exhaustive_depth;
+          V1_engine.flat_cost = config.Config.flat_cost;
         } in
         let (solutions, runtime) = Util.with_runtime (fun () ->
             V1_engine.solve ~init:V1_engine.default_init ~config:v1_config ~bk:bg exs)
@@ -156,22 +157,31 @@ let synth_command =
   let spec =
     let open Command.Spec in
     empty
-    +> flag "-c" ~aliases:["--config"] (optional file) ~doc:" read configuration from file"
-    +> flag "-d" ~aliases:["--debug"] (optional file) ~doc:" write debugging information to file in JSON format"
-    +> flag "-dd"
+    +> flag "-c" ~aliases:["--config"] (optional file)
+      ~doc:" read configuration from file"
+    +> flag "-d" ~aliases:["--debug"] (optional file)
+      ~doc:" write debugging information to file in JSON format"
+    +> flag "--flat-cost" no_arg ~doc:" use a flat cost metric (v1 engine only)"
+    +> flag "--cost" (optional file)
+      ~doc:" load cost function parameters from file (only only applies when using v2 engine)"
+    +> flag "-dd" ~aliases:["--deduction"]
       (optional_with_default ["higher_order"]
-         (nonempty_symbol_list ["higher_order"; "recursive_spec"; "unification"; "example"; "random"; "none"]))
-      ~doc:" the deduction routines to use during synthesis"
+         (nonempty_symbol_list
+            ["higher_order"; "recursive_spec"; "unification"; "example"; "random"; "none"]))
+      ~doc:" deduction routines to use during synthesis (only applies when using v2 engine)"
     +> flag "-e" ~aliases:["--engine"]
-      (optional_with_default "v1" (symbol ["v1"; "v1_solver"; "v2"; "automata"]))
+      (optional_with_default "v2" (symbol ["v1"; "v1_solver"; "v2"; "automata"]))
       ~doc:" the synthesis algorithm to use"
-    +> flag "-v" ~aliases:["--verbose"] no_arg ~doc:" print progress messages while searching"
-    +> flag "-V" ~aliases:["--very-verbose"] no_arg ~doc:" print many progress messages while searching"
-    +> flag "-z" ~aliases:["--use-z3"] no_arg ~doc:" use Z3 for pruning"
-    +> anon (maybe ("testcase" %: string))
+    +> flag "-v" ~aliases:["--verbose"] no_arg
+      ~doc:" print progress messages while searching"
+    +> flag "-V" ~aliases:["--very-verbose"] no_arg
+      ~doc:" print many progress messages while searching"
+    +> flag "-z" ~aliases:["--use-z3"] no_arg
+      ~doc:" use Z3 for pruning"
+    +> anon (maybe ("testcase" %: file))
   in
 
-  let run config_file json_file deduction_methods engine_str verbose very_verbose use_solver m_testcase_name () =
+  let run config_file json_file flat_cost cost_file deduction_methods engine_str verbose very_verbose use_solver m_testcase_name () =
     let initial_config = 
       match config_file with
       | Some file -> In_channel.read_all file |> Config.of_string
@@ -184,6 +194,7 @@ let synth_command =
           if very_verbose then 2 else 1
         else 0;
       Config.use_solver;
+      Config.flat_cost = flat_cost;
     };
 
     let err = 
