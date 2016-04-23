@@ -108,7 +108,7 @@ module Make (PI : Process_info.S) = struct
 
   let main
       (memory_limit: int option)
-      (time_limit: int option)
+      (time_limit: float option)
       (machine_readable: bool)
       (silence_child: bool)
       (command: string list option)
@@ -116,9 +116,8 @@ module Make (PI : Process_info.S) = struct
     match command with
     | Some (prog::args) -> begin
         let byte_limit = Option.map ~f:(fun mb -> mb * 1000000) memory_limit in
-        let time_span_limit =
-          Option.map ~f:(fun sec -> Time_ns.Span.of_int_sec sec) time_limit
-        in
+        let time_span_limit = Option.map ~f:Time_ns.Span.of_sec time_limit in
+        
         let (stdout_fn, stdout_fd) = Unix.mkstemp "stdout" in
         let (stderr_fn, stderr_fd) = Unix.mkstemp "stderr" in
         at_exit (fun () -> Unix.remove stdout_fn; Unix.remove stderr_fn);
@@ -149,7 +148,7 @@ module Make (PI : Process_info.S) = struct
       let open Command.Spec in
       empty
       +> flag "-m" ~aliases:["--memory"] (optional int) ~doc:" process memory limit (Mb) (default: unlimited)"
-      +> flag "-t" ~aliases:["--time"] (optional int) ~doc:" process time limit (sec) (default: unlimited)"
+      +> flag "-t" ~aliases:["--time"] (optional float) ~doc:" process time limit (sec) (default: unlimited)"
       +> flag "--machine-readable" no_arg ~doc:" produce a summary in machine readable format"
       +> flag "-q" ~aliases:["--quiet"] no_arg ~doc:" silence all output from the child process"
       +> flag "--" escape ~doc:" use the remaining arguments as the command to run"
