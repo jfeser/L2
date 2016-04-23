@@ -1,0 +1,12 @@
+algo = ../repo/src/l2_wrapper.py
+execdir = .
+deterministic = 1
+run_obj = runtime
+overall_obj = mean
+cutoff_time = 10
+cutoff_length = max
+tunerTimeout = 300
+paramfile = ../repo/src/params.txt
+outdir = .
+instance_file = instances.txt
+test_instance_file = instances.txt
