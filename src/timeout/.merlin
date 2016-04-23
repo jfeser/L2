@@ -6,3 +6,4 @@ PKG core
 PKG core_extended
 PKG ctypes
 PKG ppx_sexp_conv
+PKG yojson
