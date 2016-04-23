@@ -721,7 +721,7 @@ module Synthesizer = struct
     fun ~max_cost components spec type_ ->
       let search_state = {
         zctx = Z3.mk_context [];
-        cost_model = V2_engine.cost_model; (* TODO: Should use our own cost model here. *)
+        cost_model = V2_engine.default_cost_model; (* TODO: Should use our own cost model here. *)
         space = Constrained.mk_any components |> Tuple.T2.get2;
         spec; type_; max_cost;
       } in
@@ -797,7 +797,7 @@ module Synthesizer = struct
 
       let search_state = {
         zctx = Z3.mk_context [];
-        cost_model = V2_engine.cost_model; (* TODO: Should use our own cost model here. *)
+        cost_model = V2_engine.default_cost_model; (* TODO: Should use our own cost model here. *)
         space = Constrained.mk_any components |> Tuple.T2.get2;
         type_ = ret_t;
         spec; max_cost;

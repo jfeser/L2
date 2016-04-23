@@ -51,7 +51,7 @@ let get_json testcase runtime solution config engine deduction : Json.json =
     "deduction", `List (List.map deduction ~f:(fun d -> `String d));
   ]
 
-let synthesize engine deduction testcase =
+let synthesize engine deduction cost_model testcase =
   let module T = Testcase in
   match testcase.T.case with
   | T.Examples (exs, bg) ->
@@ -102,8 +102,9 @@ let synthesize engine deduction testcase =
               | `Recursive_spec -> Deduction.compose d Recursive_spec_deduction.push_specs)
           in
           let (m_solution, runtime) = Util.with_runtime (fun () ->
-              let hypo = L2_Synthesizer.initial_hypothesis exs in
-              L2_Synthesizer.synthesize deduce hypo ~cost:50)
+              let synth = L2_Synthesizer.create deduce ?cost_model in
+              let hypo = L2_Synthesizer.initial_hypothesis synth exs in
+              L2_Synthesizer.synthesize synth hypo ~cost:50)
           in
           match m_solution with
           | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)
@@ -222,7 +223,12 @@ let synth_command =
           | m -> failwiths "BUG: Failed to validate argument." m [%sexp_of:string])
       in
 
-      let m_solution, solve_time = synthesize engine deduction testcase in
+      let cost_model = Option.map cost_file ~f:(fun f ->
+          Hypothesis.PerFunctionCostModel.of_json (Json.from_file f)
+          |> Hypothesis.PerFunctionCostModel.to_cost_model)               
+      in
+      
+      let m_solution, solve_time = synthesize engine deduction cost_model testcase in
 
       printf "Runtime: %s\n" (Time.Span.to_short_string solve_time);
       begin

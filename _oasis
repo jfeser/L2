@@ -55,7 +55,8 @@ Executable timeout_osx
     core,
     core_extended,
     ctypes,
-    ctypes.foreign
+    ctypes.foreign,
+    yojson
   CCLib: -lproc
   ByteOpt: -thread
   NativeOpt: -thread
@@ -67,7 +68,8 @@ Executable timeout_linux
   CompiledObject: best
   BuildDepends:
     core,
-    core_extended
+    core_extended,
+    yojson
   ByteOpt: -thread
   NativeOpt: -thread
 

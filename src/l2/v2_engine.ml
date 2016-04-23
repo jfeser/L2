@@ -7,7 +7,7 @@ open Collections
 open Hypothesis
 open Infer
 
-let cost_model : CostModel.t =
+let default_cost_model : CostModel.t =
   let module Sk = Skeleton in
   let module C = CostModel in
   {
@@ -61,22 +61,20 @@ module L2_Generalizer = struct
      I := <identifier in current scope>
   *)
 
-  type t = Hole.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
-  
-  module type Selector = sig
-    val select : Symbol.t -> t list
-  end
+  (* module type Selector = sig *)
+  (*   val select : Symbol.t -> t list *)
+  (* end *)
 
   module type S = sig
-    val generalize : Generalizer.t
+    val generalize : CostModel.t -> Generalizer.t
 
     (* The following are implementation details of the
        generalizer. They are exposed for testing purposes. *)
-    val generate_constants : Generalizer.t
-    val generate_identifiers : Generalizer.t
-    val generate_expressions : Generalizer.t
-    val generate_lambdas : Generalizer.t
-    val generate_combinators : Generalizer.t
+    val generate_constants : CostModel.t -> Generalizer.t
+    val generate_identifiers : CostModel.t -> Generalizer.t
+    val generate_expressions : CostModel.t -> Generalizer.t
+    val generate_lambdas : CostModel.t -> Generalizer.t
+    val generate_combinators : CostModel.t -> Generalizer.t
   end
 
   module Symbols = struct
@@ -100,7 +98,7 @@ module L2_Generalizer = struct
     let functions = Ctx.filter Infer.stdlib_tctx ~f:(fun ~key:k ~data:_ ->
         not (List.mem ~equal:String.equal combinators k))
 
-    let generate_constants ctx type_ symbol spec =
+    let generate_constants cost_model ctx type_ symbol spec =
       let constants = [
         Type.num, [
           H.num cost_model 0 spec;
@@ -120,12 +118,12 @@ module L2_Generalizer = struct
           | Some u -> List.map xs ~f:(fun x -> (x, u))
           | None -> [])
 
-    let generate_identifiers ctx type_ symbol spec =
+    let generate_identifiers cost_model ctx type_ symbol spec =
       List.filter_map (StaticDistance.Map.to_alist ctx) ~f:(fun (id, id_t) ->
           Option.map (Unifier.of_types type_ id_t) ~f:(fun u ->
               H.id_sd cost_model id spec, u))
 
-    let generate_expressions ctx type_ symbol spec =
+    let generate_expressions cost_model ctx type_ symbol spec =
       let op_exprs = List.filter_map Expr.Op.all ~f:(fun op ->
           let op_t = instantiate 0 (Expr.Op.meta op).Expr.Op.typ in
           match op_t with
@@ -156,7 +154,7 @@ module L2_Generalizer = struct
       in
       op_exprs @ apply_exprs
 
-    let generate_lambdas ctx type_ symbol spec =
+    let generate_lambdas cost_model ctx type_ symbol spec =
       match type_ with
       (* If the hole has an arrow type, generate a lambda expression with
          the right number of arguments and push the specification down. *)
@@ -174,7 +172,7 @@ module L2_Generalizer = struct
         [ lambda, Unifier.empty ]
       | _ -> []
 
-    let generate_combinators ctx type_ symbol spec =
+    let generate_combinators cost_model ctx type_ symbol spec =
       List.filter_map (Ctx.to_alist Infer.stdlib_tctx) ~f:(fun (func, func_t) ->
           if List.mem ~equal:String.equal combinators func then
             let func_t = instantiate 0 func_t in
@@ -224,9 +222,9 @@ module L2_Generalizer = struct
       else
         failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
 
-    let generalize ctx type_ symbol spec =
+    let generalize cost_model ctx type_ symbol spec =
       let generators = select symbol in
-      List.concat (List.map generators ~f:(fun g -> g ctx type_ symbol spec))
+      List.concat (List.map generators ~f:(fun g -> g cost_model ctx type_ symbol spec))
   end
 
   module No_components = struct
@@ -248,9 +246,9 @@ module L2_Generalizer = struct
       else
         failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
 
-    let generalize ctx type_ symbol spec =
+    let generalize cost_model ctx type_ symbol spec =
       let generators = select symbol in
-      List.concat (List.map generators ~f:(fun g -> g ctx type_ symbol spec))
+      List.concat (List.map generators ~f:(fun g -> g cost_model ctx type_ symbol spec))
   end
 
   module No_lambdas = struct
@@ -270,24 +268,30 @@ module L2_Generalizer = struct
       else
         failwiths "Unknown symbol type." symbol Symbol.sexp_of_t
 
-    let generalize ctx type_ symbol spec =
+    let generalize cost_model ctx type_ symbol spec =
       let generators = select symbol in
-      List.concat (List.map generators ~f:(fun g -> g ctx type_ symbol spec))      
+      List.concat (List.map generators ~f:(fun g -> g cost_model ctx type_ symbol spec))
   end
 end
 
 module L2_Synthesizer = struct
   type t = {
+    cost_model : CostModel.t;
+    gen_no_lambdas : Generalizer.t;
+    gen_no_components : Generalizer.t;
     deduce : Deduction.t;
     memoizer : Memoizer.t;
   }
   
   exception SynthesisException of Hypothesis.t
 
-  let create deduce = {
-    memoizer = Memoizer.create ~deduce L2_Generalizer.No_lambdas.generalize cost_model;
-    deduce;
-  }
+  let create ?(cost_model=default_cost_model) deduce =
+    let gen_no_lambdas = L2_Generalizer.No_lambdas.generalize cost_model in
+    {
+      gen_no_lambdas; deduce; cost_model;
+      gen_no_components = L2_Generalizer.No_components.generalize cost_model;
+      memoizer = Memoizer.create ~deduce gen_no_lambdas cost_model;
+    }
   
   let search s ~check_cost ~found hypo initial_cost =  
     let module H = Hypothesis in
@@ -303,13 +307,11 @@ module L2_Synthesizer = struct
   let total_cost (hypo_cost: int) (enum_cost: int) : int =
     hypo_cost + (Int.of_float (1.5 ** (Float.of_int enum_cost)))
 
-  let synthesize ~cost:max_cost deduce hypo =
+  let synthesize s ~cost:max_cost hypo =
     let module H = Hypothesis in
     let fresh_hypos = ref [ (hypo, ref 0) ] in
     let stale_hypos = ref [] in
 
-    let s = create deduce in
-    
     try
       for cost = 1 to max_cost do
         (* Search each hypothesis that can be searched at this cost. If
@@ -327,14 +329,14 @@ module L2_Synthesizer = struct
           List.partition_tf !fresh_hypos ~f:(fun (h, _) -> H.cost h < cost)
         in
         let children = List.concat_map generalizable ~f:(fun (h, _) ->
-            Generalizer.generalize_all L2_Generalizer.No_components.generalize cost_model h
+            Generalizer.generalize_all s.gen_no_components s.cost_model h
 
             (* After generalizing, push specifications down the
                skeleton and filter skeletons with Bottom
                specifications. *)
             |> List.filter_map ~f:(fun h ->
                 Option.map (s.deduce (H.skeleton h))
-                  (Hypothesis.of_skeleton cost_model))
+                  (Hypothesis.of_skeleton s.cost_model))
               
             |> List.map ~f:(fun h -> (h, ref 0)))
         in
@@ -343,7 +345,7 @@ module L2_Synthesizer = struct
       done; Ok None
     with SynthesisException s -> Ok (Some s)
 
-  let initial_hypothesis examples =
+  let initial_hypothesis s examples =
     let exs = List.map examples ~f:(function
         | (`Apply (_, args), out) ->
           let ctx = StaticDistance.Map.empty in
@@ -354,7 +356,7 @@ module L2_Synthesizer = struct
               |> Specification.FunctionExamples.of_list_exn
     in
     let t = Infer.Type.normalize (Example.signature examples) in
-    Hypothesis.hole cost_model
+    Hypothesis.hole s.cost_model
       (Hole.create t L2_Generalizer.Symbols.lambda)
       (Specification.FunctionExamples exs)
 end

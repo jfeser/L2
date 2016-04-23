@@ -1,4 +1,5 @@
 open Core.Std
+open Collections
 
 open Infer
 
@@ -68,7 +69,7 @@ module Skeleton : sig
     | Num_h of int * 'a
     | Bool_h of bool * 'a
     | List_h of 'a t list * 'a
-    | Tree_h of 'a t Collections.Tree.t * 'a
+    | Tree_h of 'a t Tree.t * 'a
     | Id_h of Id.t * 'a
     | Let_h of ('a t * 'a t) * 'a
     | Lambda_h of (int * 'a t) * 'a
@@ -95,7 +96,18 @@ module Skeleton : sig
   val fill_hole : Hole.t -> parent:'a t -> child:'a t -> 'a t
   val annotation : 'a t -> 'a
   val map_hole : f:(Hole.t * 'a -> 'a t) -> 'a t -> 'a t
-  val map_annotation : f:('a -> 'a) -> 'a t -> 'a t      
+  val map_annotation : f:('a -> 'a) -> 'a t -> 'a t
+  val map :
+    ?num:(int -> 'a -> int * 'a) ->
+    ?bool:(bool -> 'a -> bool * 'a) ->
+    ?id:(Id.t -> 'a -> Id.t * 'a) ->
+    ?hole:(Hole.t -> 'a -> Hole.t * 'a) ->
+    ?list:('a t list -> 'a -> 'a t list * 'a) ->
+    ?tree:('a t Tree.t -> 'a -> 'a t Tree.t * 'a) ->
+    ?let_:('a t * 'a t -> 'a -> ('a t * 'a t) * 'a) ->
+    ?lambda:(int * 'a t -> 'a -> (int * 'a t) * 'a) ->
+    ?op:(Expr.Op.t * 'a t list -> 'a -> (Expr.Op.t * 'a t list) * 'a) ->
+    ?apply:('a t * 'a t list -> 'a -> ('a t * 'a t list) * 'a) -> 'a t -> 'a t
 end
 
 module CostModel : sig
@@ -105,7 +117,7 @@ module CostModel : sig
     hole : Hole.t -> int;
     id : Skeleton.Id.t -> int;
     list : 'a. 'a list -> int;
-    tree : 'a. 'a Collections.Tree.t -> int;
+    tree : 'a. 'a Tree.t -> int;
     _let : 'a. 'a -> 'a -> int;
     lambda : 'a. int -> 'a -> int;
     apply : 'a. 'a -> 'a list -> int;
@@ -114,7 +126,15 @@ module CostModel : sig
 
   val constant : int -> t
   val zero : t
+    
   val cost_of_skeleton : t -> 'a Skeleton.t -> int
+end
+
+module PerFunctionCostModel : sig
+  type t
+  val to_cost_model : t -> CostModel.t
+  val to_json : t -> Json.json
+  val of_json : Json.json -> t
 end
 
 module Specification : sig
@@ -198,7 +218,7 @@ module Hypothesis : sig
   val id_name : CostModel.t -> string -> Specification.t -> t
   val hole : CostModel.t -> Hole.t -> Specification.t -> t
   val list : CostModel.t -> t list -> Specification.t -> t
-  val tree : CostModel.t -> t Collections.Tree.t -> Specification.t -> t
+  val tree : CostModel.t -> t Tree.t -> Specification.t -> t
   val _let : CostModel.t -> t -> t -> Specification.t -> t
   val lambda : CostModel.t -> int -> t -> Specification.t -> t
   val apply : CostModel.t -> t -> t list -> Specification.t -> t

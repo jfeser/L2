@@ -94,8 +94,8 @@ let push_specs s =
                     begin
                       match SE.skeleton_of_result out_a with
                       | Some skel ->
-                        if (CostModel.cost_of_skeleton V2_engine.cost_model skel) <
-                           (CostModel.cost_of_skeleton V2_engine.cost_model s)
+                        if (CostModel.cost_of_skeleton V2_engine.default_cost_model skel) <
+                           (CostModel.cost_of_skeleton V2_engine.default_cost_model s)
                         then None else m_exs
                       | None -> m_exs
                     end

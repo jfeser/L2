@@ -13,6 +13,8 @@ module Sym = L2_Generalizer.Symbols
 module Gen = L2_Generalizer.With_components
 module Mem = Memoizer
 
+let cost_model = default_cost_model
+
 let top = Specification.Top
 let cost_model_tests = "cost-model" >::: [
     test_case (fun ctxt ->

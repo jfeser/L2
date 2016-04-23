@@ -291,6 +291,61 @@ module Skeleton = struct
     | Op_h (x, a) -> Op_h (x, f a)
     | Hole_h (x, a) -> Hole_h (x, f a)
 
+  let default x s = (x, s)
+  let map
+      ?(num = default)
+      ?(bool = default)
+      ?(id = default)
+      ?(hole = default)
+      ?(list = default)
+      ?(tree = default)
+      ?(let_ = default)
+      ?(lambda = default)
+      ?(op = default)
+      ?(apply = default)
+      skel =
+    let rec ps = function
+      | Num_h (x, s) ->
+        let (x', s') = num x s in
+        Num_h (x', s')      
+      | Bool_h (x, s) ->
+        let (x', s') = bool x s in
+        Bool_h (x', s')      
+      | Id_h (x, s) ->
+        let (x', s') = id x s in
+        Id_h (x', s')      
+      | Hole_h (x, s) ->
+        let (x', s') = hole x s in
+        Hole_h (x', s')      
+      | List_h (x, s) ->
+        let (x', s') = list x s in
+        let x'' = List.map x' ~f:ps in
+        List_h (x'', s')
+      | Tree_h (x, s) ->
+        let (x', s') = tree x s in
+        let x'' = Tree.map x' ~f:ps in
+        Tree_h (x'', s')
+      | Let_h (x, s) ->
+        let ((bound, body), s') = let_ x s in
+        let bound' = ps bound in
+        let body' = ps body in
+        Let_h ((bound', body'), s')
+      | Lambda_h (x, s) ->
+        let ((num_args, body), s') = lambda x s in
+        let body' = ps body in
+        Lambda_h ((num_args, body'), s')
+      | Op_h (x, s) ->
+        let ((op, args), s') = op x s in
+        let args' = List.map args ~f:ps in
+        Op_h ((op, args'), s')
+      | Apply_h (x, s) ->
+        let ((func, args), s') = apply x s in
+        let func' = ps func in
+        let args' = List.map args ~f:ps in
+        Apply_h ((func', args'), s')
+    in
+    ps skel
+
   let rec map_hole ~f s =
     match s with
     | Num_h _
@@ -366,6 +421,100 @@ module CostModel = struct
       | Sk.Op_h ((x, y), _) -> cm.op x y + List.int_sum (List.map y ~f:cost)
     in
     cost sk
+end
+
+module PerFunctionCostModel = struct
+  module CM = CostModel
+    
+  type t = {
+    num : int;
+    bool: int;
+    hole: int;
+    lambda: int;
+    _let: int;
+    list: int;
+    tree: int;
+    var : int;
+    call: int String.Map.t;
+    call_default: int;
+  }
+
+  let to_cost_model t =
+    let lookup_func op = 
+      match String.Map.find t.call op with
+      | Some cost -> cost
+      | None -> t.call_default
+    in
+    {
+      CM.num = (fun _ -> t.num);
+      CM.bool = (fun _ -> t.bool);
+      CM.hole = (fun _ -> t.hole);
+      CM.lambda = (fun _ _ -> t.lambda);
+      CM._let = (fun _ _ -> t._let);
+      CM.list = (fun _ -> t.list);
+      CM.tree = (fun _ -> t.tree);
+      CM.apply = (fun _ _ -> 0);
+      CM.op = (fun op _ -> lookup_func (Expr.Op.to_string op));
+      CM.id = (function
+          | Skeleton.Id.Name op -> lookup_func op
+          | Skeleton.Id.StaticDistance sd -> t.var);
+    }
+  
+  let to_json t =
+    let call_to_json m =
+      String.Map.to_alist m
+      |> List.map ~f:(fun (k, v) -> k, `Int v)
+    in
+    `Assoc [
+      "num", `Int t.num;
+      "bool", `Int t.bool;
+      "hole", `Int t.hole;
+      "lambda", `Int t.lambda;
+      "let", `Int t._let;
+      "list", `Int t.list;
+      "tree", `Int t.tree;
+      "var", `Int t.var;
+      "call", `Assoc (call_to_json t.call);
+      "call_default", `Int t.call_default;
+    ]
+
+  let of_json : Json.json -> t = fun json ->
+    let call_of_json m =
+      List.map m ~f:(fun (k, v_json) ->
+          match v_json with
+          | `Int v -> k, v
+          | _ -> failwiths "Expected an Int." v_json [%sexp_of:Json.json])
+      |> String.Map.of_alist_exn
+    in
+    let lookup key assoc =
+      match List.Assoc.find assoc ~equal:String.equal key with
+      | Some v -> v
+      | None -> failwiths "Missing key." (key, assoc) [%sexp_of:string * (string * Json.json) list]
+    in
+    let int = function
+      | `Int x -> x
+      | json -> failwiths "Expected an int." json [%sexp_of:Json.json]
+    in
+    let string_int_map = function
+      | `Assoc x -> call_of_json x
+      | json -> failwiths "Expected a mapping from string to int." json [%sexp_of:Json.json]
+    in
+      
+    match json with
+    | `Assoc kv ->
+      {
+        num = lookup "num" kv |> int;
+        bool = lookup "bool" kv |> int;
+        hole = lookup "hole" kv |> int;
+        lambda = lookup "lambda" kv |> int;
+        _let = lookup "let" kv |> int;
+        list = lookup "list" kv |> int;
+        tree = lookup "tree" kv |> int;
+        var = lookup "var" kv |> int;
+        call = lookup "call" kv |> string_int_map;
+        call_default = lookup "call_default" kv |> int;
+      }
+    | _ -> failwiths "Unexpected JSON." json [%sexp_of:Json.json]
 end
 
 module Specification = struct

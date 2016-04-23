@@ -5,17 +5,16 @@ open Synthesis_common
 open Hypothesis
 open Infer
 
-val cost_model : CostModel.t
+val default_cost_model : CostModel.t
 
 module L2_Generalizer : sig
   module type S = sig
-    val generalize : Generalizer.t
-              
-    val generate_constants : Generalizer.t
-    val generate_identifiers : Generalizer.t
-    val generate_expressions : Generalizer.t
-    val generate_lambdas : Generalizer.t
-    val generate_combinators : Generalizer.t
+    val generalize : CostModel.t -> Generalizer.t
+    val generate_constants : CostModel.t -> Generalizer.t
+    val generate_identifiers : CostModel.t -> Generalizer.t
+    val generate_expressions : CostModel.t -> Generalizer.t
+    val generate_lambdas : CostModel.t -> Generalizer.t
+    val generate_combinators : CostModel.t -> Generalizer.t
   end
 
   module Symbols : sig
@@ -33,6 +32,15 @@ module L2_Generalizer : sig
 end
 
 module L2_Synthesizer : sig
-  val synthesize : cost:int -> Deduction.t -> Hypothesis.t -> Hypothesis.t Option.t Or_error.t
-  val initial_hypothesis : Example.t list -> Hypothesis.t
+  type t
+    
+  val create : ?cost_model:CostModel.t -> Deduction.t -> t
+    
+  val synthesize :
+    t
+    -> cost:int
+    -> Hypothesis.t
+    -> Hypothesis.t Option.t Or_error.t
+      
+  val initial_hypothesis : t -> Example.t list -> Hypothesis.t
 end

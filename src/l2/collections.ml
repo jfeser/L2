@@ -1,6 +1,10 @@
 open Core.Std
 
-module Json = Yojson.Safe
+module Json = struct
+  include Yojson.Safe
+
+  let sexp_of_json j = to_string j |> [%sexp_of:string]
+end
 
 module ListExt = struct
   include List

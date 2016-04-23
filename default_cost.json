@@ -1,0 +1,19 @@
+{
+    "num" : 1,
+    "bool": 1,
+    "hole": 0,
+    "lambda": 1,
+    "_let": 1,
+    "list": 1,
+    "tree": 1,
+    "var ": 1,
+    "call": {
+        "foldr": 3,
+        "foldl": 3,
+        "foldt": 3,
+        "map": 2,
+        "mapt": 2,
+        "filter": 2
+    },
+    "call_default": 1
+}
