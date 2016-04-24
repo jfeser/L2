@@ -307,42 +307,49 @@ module L2_Synthesizer = struct
   let total_cost (hypo_cost: int) (enum_cost: int) : int =
     hypo_cost + (Int.of_float (1.5 ** (Float.of_int enum_cost)))
 
-  let synthesize s ~cost:max_cost hypo =
+  let synthesize ?max_cost s hypo =
     let module H = Hypothesis in
     let fresh_hypos = ref [ (hypo, ref 0) ] in
     let stale_hypos = ref [] in
 
+    let should_continue = match max_cost with
+      | Some c -> fun c' -> c' < c
+      | None -> fun _ -> true
+    in
+
+    let rec loop cost =
+      (* Search each hypothesis that can be searched at this cost. If
+         the search succeeds it will throw an exception. *)
+      List.iter (!fresh_hypos @ !stale_hypos) ~f:(fun (hypo, max_search_cost) ->
+          if total_cost (H.cost hypo) (!max_search_cost + 1) <= cost then
+            let hypo_cost = H.cost hypo in
+            max_search_cost :=
+              search s hypo !max_search_cost
+                ~check_cost:(fun exh_cost -> total_cost hypo_cost exh_cost >= cost)
+                ~found:(fun h -> raise (SynthesisException h)));
+
+      (* Generalize each hypothesis that is cheap enough to generalize. *)
+      let (generalizable, remaining) =
+        List.partition_tf !fresh_hypos ~f:(fun (h, _) -> H.cost h < cost)
+      in
+      let children = List.concat_map generalizable ~f:(fun (h, _) ->
+          Generalizer.generalize_all s.gen_no_components s.cost_model h
+
+          (* After generalizing, push specifications down the
+             skeleton and filter skeletons with Bottom
+             specifications. *)
+          |> List.filter_map ~f:(fun h ->
+              Option.map (s.deduce (H.skeleton h))
+                (Hypothesis.of_skeleton s.cost_model))
+
+          |> List.map ~f:(fun h -> (h, ref 0)))
+      in
+      fresh_hypos := remaining @ children;
+      stale_hypos := !stale_hypos @ generalizable;
+      if should_continue cost then loop (cost + 1) else ()
+    in
     try
-      for cost = 1 to max_cost do
-        (* Search each hypothesis that can be searched at this cost. If
-           the search succeeds it will throw an exception. *)
-        List.iter (!fresh_hypos @ !stale_hypos) ~f:(fun (hypo, max_search_cost) ->
-            if total_cost (H.cost hypo) (!max_search_cost + 1) <= cost then
-              let hypo_cost = H.cost hypo in
-              max_search_cost :=
-                search s hypo !max_search_cost
-                  ~check_cost:(fun exh_cost -> total_cost hypo_cost exh_cost >= cost)
-                  ~found:(fun h -> raise (SynthesisException h)));
-
-        (* Generalize each hypothesis that is cheap enough to generalize. *)
-        let (generalizable, remaining) =
-          List.partition_tf !fresh_hypos ~f:(fun (h, _) -> H.cost h < cost)
-        in
-        let children = List.concat_map generalizable ~f:(fun (h, _) ->
-            Generalizer.generalize_all s.gen_no_components s.cost_model h
-
-            (* After generalizing, push specifications down the
-               skeleton and filter skeletons with Bottom
-               specifications. *)
-            |> List.filter_map ~f:(fun h ->
-                Option.map (s.deduce (H.skeleton h))
-                  (Hypothesis.of_skeleton s.cost_model))
-              
-            |> List.map ~f:(fun h -> (h, ref 0)))
-        in
-        fresh_hypos := remaining @ children;
-        stale_hypos := !stale_hypos @ generalizable;
-      done; Ok None
+      loop 1; Ok None
     with SynthesisException s -> Ok (Some s)
 
   let initial_hypothesis s examples =

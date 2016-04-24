@@ -104,7 +104,7 @@ let synthesize engine deduction cost_model testcase =
           let (m_solution, runtime) = Util.with_runtime (fun () ->
               let synth = L2_Synthesizer.create deduce ?cost_model in
               let hypo = L2_Synthesizer.initial_hypothesis synth exs in
-              L2_Synthesizer.synthesize synth hypo ~cost:50)
+              L2_Synthesizer.synthesize synth hypo)
           in
           match m_solution with
           | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)

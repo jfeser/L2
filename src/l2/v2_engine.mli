@@ -37,8 +37,8 @@ module L2_Synthesizer : sig
   val create : ?cost_model:CostModel.t -> Deduction.t -> t
     
   val synthesize :
-    t
-    -> cost:int
+    ?max_cost:int
+    -> t
     -> Hypothesis.t
     -> Hypothesis.t Option.t Or_error.t
       
