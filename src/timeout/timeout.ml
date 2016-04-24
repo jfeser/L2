@@ -42,8 +42,8 @@ module Make (PI : Process_info.S) = struct
       | `Success -> printf "Child exited with return code 0.\n";
       | `Exit_or_signal (`Exit_non_zero code) -> printf "Child exited with return code %d.\n" code
       | `Exit_or_signal (`Signal s) -> printf "Child received signal %s.\n" (Signal.to_string s)
-      | `Killed_memory -> printf "Child killed for violating memory limit."
-      | `Killed_runtime -> printf "Child killed for violating runtime limit."
+      | `Killed_memory -> printf "Child killed for violating memory limit.\n"
+      | `Killed_runtime -> printf "Child killed for violating runtime limit.\n"
     end;
     if result.peak_memory <> Int64.min_value then
       printf "Peak memory: %s Mb\n"
