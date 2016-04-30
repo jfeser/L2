@@ -3,7 +3,7 @@
 '''
 usage: 
   crossvalidate.py setup [--test-perc PERC] [--num-tests TESTS] [--seed SEED] [--l2-path FILE] [--timeout-path FILE] OUT_DIR
-  crossvalidate.py run OUT_DIR
+  crossvalidate.py write-costs OUT_DIR
 
 Options:
   --test-perc PERC     Percentage of instances to use as test set [default: 0.3].
@@ -14,9 +14,11 @@ Options:
 '''
 
 from docopt import docopt
+import json
 import math
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -110,40 +112,86 @@ def setup(args):
             }
             f.write(SCENARIO.format(**kwargs))
 
-def run(args):
-    children = []
+def cost_of_params(kv):
+    return {
+        "num": kv['num'],
+        "bool": kv['bool'],
+        "hole": kv['hole'],
+        "lambda": kv['lambda'],
+        "let": kv['let'],
+        "list": kv['list'],
+        "tree": kv['tree'],
+        "var": kv['var_'],
+        "call": {
+            "+": kv['add'],
+            "-": kv['sub'],
+            "*": kv['mult'],
+            "/": kv['div'],
+            "%": kv['mod'],
+            "=": kv['eq'],
+            "!=": kv['neq'],
+            "<": kv['lt'],
+            "<=": kv['le'],
+            ">": kv['gt'],
+            ">=": kv['ge'],
+            "&": kv['and'],
+            "|": kv['or'],
+            "~": kv['not'],
+            "if": kv['if'],
+            "rcons": kv['rcons'],
+            "cons": kv['cons'],
+            "car": kv['car'],
+            "cdr": kv['cdr'],
+            "tree": kv['tree_op'],
+            "children": kv['children'],
+            "value": kv['value'],
+            "foldr": kv["foldr"],
+            "foldl": kv["foldl"],
+            "map": kv["map"],
+            "filter": kv["filter"],
+            "mapt": kv["mapt"],
+            "foldt": kv["foldt"],
+            "merge": kv["merge"],
+            "take": kv["take"],
+            "zip": kv["zip"],
+            "intersperse": kv["intersperse"],
+            "append": kv["append"],
+            "reverse": kv["reverse"],
+            "concat": kv["concat"],
+            "drop": kv["drop"],
+            "sort": kv["sort"],
+            "dedup": kv["dedup"],
+        },
+        "call_default": 1,
+    }
+            
+def write_costs(args):
+    out_dir = os.path.abspath(args['OUT_DIR'])
+    traj_reg = re.compile('^.*-traj_\d+\.csv$')
+
+    for run_dir in [os.path.join(out_dir, d) for d in os.listdir(out_dir)]:
+        trajfile = [os.path.join(run_dir, f) for f in os.listdir(run_dir) if traj_reg.match(f)][0]
     
-    os.chdir(args['OUT_DIR'])
-    for run_dir in os.listdir('.'):
-        os.chdir(run_dir)
-        children.append(subprocess.Popen(
-            ['paramils', '-scenariofile', 'scenario.txt', '-numRun', '0'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        ))
-        os.chdir('..')
+        with open(trajfile, 'r') as f:
+            cost_params = f.readlines()[-1].strip().split(', ')[5:]
+            costs = {}
+            for cp in cost_params:
+                parts = cp.split('=')
+                name = parts[0]
+                cost = int(parts[1].strip("'"))
+                costs[name] = cost
 
-    while True:
-        time.sleep(5)
-        
-        children_ = []
-        for child in children:
-            if child.returncode is not None:
-                children_.append(child)
-        children = children_
-
-        if len(children) == 0:
-            break
-
-        plot_progress()
+            cost_fn = os.path.join(run_dir, 'cost.json')
+            with open(cost_fn, 'w') as cost_file:
+                json.dump(cost_of_params(costs), cost_file)
 
 def main():
     args = docopt(__doc__)
 
     if args['setup']:
         setup(args)
-    elif args['run']:
-        run(args)
+    elif args['write-costs']:
+        write_costs(args)
 
 if __name__ == '__main__':
     main()
