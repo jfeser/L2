@@ -29,7 +29,7 @@ Executable l2
     hashcons,
     Z3
   ByteOpt: -thread -custom -cclib -lz3
-  NativeOpt: -thread -g 
+  NativeOpt: -thread -g
 
 Executable gen
   Path: src/l2
@@ -46,6 +46,37 @@ Executable gen
   ByteOpt: -thread -custom -cclib -lz3
   NativeOpt: -thread -g
 
+Library timeout_lib
+  FindlibName: timeout
+  Path: src/timeout
+  BuildDepends:
+    core,
+    core_extended
+  Modules: Limited_process, Process_info
+
+Library timeout_lib_osx
+  Build$: system(macosx)
+  Path: src/timeout
+  BuildDepends:
+    timeout,
+    core,
+    ctypes,
+    ctypes.foreign
+  FindlibParent: timeout_lib
+  FindlibName: osx
+  Modules: Process_info_osx
+
+Library timeout_lib_linux
+  Build$: system(linux)
+  Path: src/timeout
+  BuildDepends:
+    timeout,
+    core,
+    core_extended
+  FindlibParent: timeout_lib
+  FindlibName: linux
+  Modules: Process_info_linux
+
 Executable timeout_osx
   Build$: system(macosx)
   Path: src/timeout
@@ -53,10 +84,8 @@ Executable timeout_osx
   CompiledObject: best
   BuildDepends:
     core,
-    core_extended,
-    ctypes,
-    ctypes.foreign,
-    yojson
+    yojson,
+    timeout.osx
   CCLib: -lproc
   ByteOpt: -thread
   NativeOpt: -thread
@@ -68,8 +97,8 @@ Executable timeout_linux
   CompiledObject: best
   BuildDepends:
     core,
-    core_extended,
-    yojson
+    yojson,
+    timeout.linux
   ByteOpt: -thread
   NativeOpt: -thread
 
