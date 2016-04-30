@@ -103,7 +103,7 @@ def setup(args):
 
         with open(os.path.join(test_dir, 'scenario.txt'), 'w') as f:
             kwargs = {
-                'algo': os.path.abspath('l2_wrapper.py'),
+                'algo': relpath('l2_wrapper.py'),
                 'l2_path': l2_path,
                 'timeout_path': timeout_path,
                 'cutoff_time': CUTOFF_TIME
