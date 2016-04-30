@@ -85,7 +85,7 @@ if __name__ == '__main__':
         cmd = [
             timeout_path,
             '-m', str(MEMORY_LIMIT),
-            '-t', str(int(float(cutoff_time))),
+            '-t', cutoff_time,
             '--machine-readable',
             '--',
             l2_path, 'synth',
@@ -97,7 +97,6 @@ if __name__ == '__main__':
         out = json.loads(out.decode())
 
         if out['status'] == 'success':
-            print(out)
             print('Result for ParamILS: SAT, {}, -1, -1, {}'.format(out['runtime'], seed))
         else:
             print(out)
