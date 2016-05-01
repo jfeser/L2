@@ -36,7 +36,7 @@ RESOURCES = [
 ]
 RESOURCES = [relpath(f) for f in RESOURCES]
 
-CUTOFF_TIME = 600
+CUTOFF_TIME = 10
 
 SCENARIO = '''algo = {algo} "{l2_path}" "{timeout_path}"
 execdir = .
