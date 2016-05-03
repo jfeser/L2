@@ -31,6 +31,14 @@ Executable l2
   ByteOpt: -thread -custom -cclib -lz3
   NativeOpt: -thread -g
 
+Document l2_docs
+  BuildTools: ocamldoc
+  Type: ocamlbuild (0.4)
+  Title: API Reference for L2
+  XOcamlBuildPath: src/l2
+  XOcamlBuildModules: Automaton, Collections, Combinat, Component, Eval, Example, Example_deduction, ExprValue, Higher_order_deduction, Hypothesis, Infer, L2, Precondition, Random_deduction, Recursive_spec_deduction, Smt_deduction, Sstream, Structure
+  PostCommand: ln -sf _build/src/l2/l2_docs.docdir doc
+
 Executable gen
   Path: src/l2
   MainIs: generate_values.ml

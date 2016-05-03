@@ -1,5 +1,7 @@
 open Core.Std
 
+(** Custom collections. *)
+
 module Json = struct
   include Yojson.Safe
 
@@ -370,8 +372,8 @@ module Timer = struct
     List.map (Ctx.data t) ~f:(fun { desc = d; time = t } ->
         sprintf "%s: %s" d (Time.Span.to_short_string t))
 
-  (** Serialize a timer to JSON. This creates an object of the form {
-      name: time, ...}. Times are stored in seconds. *)
+  (** Serialize a timer to JSON. This creates an object of the form \{
+      name: time, ...\}. Times are stored in seconds. *)
   let to_json (t: t) : Json.json =
     `Assoc
       (Ctx.to_alist t
@@ -410,7 +412,7 @@ module Counter = struct
         sprintf "%s: %s" d (Int.to_string c))
 
   (** Serialize a counter to JSON. This creates an object of the form
-      { name: count, ... }. *)
+      \{ name: count, ... \}. *)
   let to_json (t: t) : Json.json =
     `Assoc (Ctx.to_alist t |> List.map ~f:(fun (k, v) -> (k, `Assoc [
         "count", `Int v.count;

@@ -3,21 +3,41 @@ open Collections
 
 open Infer
 
+(** Modules for constructing hypotheses. *)
+
+(** Static distance coordinates. *)
 module StaticDistance : sig
   type t
 
   include Sexpable.S with type t := t
   include Comparable.S with type t := t
 
+  (** Increment the scope of a coordinate. *)
   val increment_scope : t -> t
+
+  (** Increment the scope of every coordinate in a Map.t. *)
   val map_increment_scope : 'a Map.t -> 'a Map.t
+
+  (** Create a static distance coordinate.
+      @param distance The distance of the coordinate from its binding site, in number of bindings.
+      @param index The binding index. *)
   val create : distance:int -> index:int -> t
+
+  (** Get the distance of a static distance coordinate. *)
   val distance : t -> int
+
+  (** Get the index of a static distance coordinate. *)
   val index : t -> int
+
+  (** Generate an arguments list with {i n} arguments. *)
   val args : int -> t list
+
+  (** Convert static distance coordinate to string. *)
   val to_string : t -> string
 end
 
+(** Symbols are constant strings with a fast comparison function. Used
+    as identifiers. *)
 module Symbol : sig
   type t
 
@@ -30,6 +50,9 @@ module Symbol : sig
   val create : string -> t
 end
 
+(** Holes are subproblems within a {! Hypothesis}. They have a type, a
+    type context, and a symbol which defines the set of expressions which
+    can be used to fill the hole. *)
 module Hole : sig
   module Id : sig
     type t
@@ -55,6 +78,7 @@ module Hole : sig
   val apply_unifier : Unifier.t -> t -> t
 end
 
+(** Skeletons are expressions, with holes, that can be annotated. *)
 module Skeleton : sig
   module Id : sig
     type t =
@@ -81,22 +105,47 @@ module Skeleton : sig
 
   val equal : equal:('a -> 'a -> bool) -> 'a t -> 'a t -> bool
   val to_string_hum : 'a t -> string
+
+  (** Convert a skeleton to an {!Expr.t}.
+      @param ctx A mapping from static distance variables to expressions. All SD variables will be replaced according to this mapping.
+      @param fresh_name A function which generates a fresh name.
+      @param of_hole A function which converts a {!Hole.t} into an {!Expr.t}. All holes will be converted according to this function. *)
   val to_expr :
     ?ctx:Expr.t StaticDistance.Map.t
     -> ?fresh_name:(unit -> string)
     -> ?of_hole:(Hole.t -> Expr.t)
     -> 'a t
     -> Expr.t
+         
+  (** Convert a skeleton to an {!Expr.t}. Throws an exception if a {!Hole.t} is encountered.
+      @param ctx A mapping from static distance variables to expressions. All SD variables will be replaced according to this mapping.
+      @param fresh_name A function which generates a fresh name. *)
   val to_expr_exn :
-    ?ctx:Expr.t StaticDistance.Map.t -> ?fresh_name:(unit -> string) -> 'a t -> Expr.t
+    ?ctx:Expr.t StaticDistance.Map.t
+    -> ?fresh_name:(unit -> string)
+    -> 'a t
+    -> Expr.t
+
   val of_expr : 'a -> Expr.t -> 'a t
   val of_string : 'a -> string -> 'a t Or_error.t
   val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
   val hash : 'a -> int
+
+  (** Fill a hole in a skeleton with another skeleton.
+      @param parent The skeleton which contains the hole.
+      @param child The skeleton used to fill the hole. *)
   val fill_hole : Hole.t -> parent:'a t -> child:'a t -> 'a t
+
+  (** Get the annotation on the root node of a skeleton. *)
   val annotation : 'a t -> 'a
+
+  (** Map over the holes in a skeleton. *)
   val map_hole : f:(Hole.t * 'a -> 'a t) -> 'a t -> 'a t
+
+  (** Map over the annotations in a skeleton. *)
   val map_annotation : f:('a -> 'a) -> 'a t -> 'a t
+
+  (** Map over all variants of a skeleton. *)
   val map :
     ?num:(int -> 'a -> int * 'a) ->
     ?bool:(bool -> 'a -> bool * 'a) ->
@@ -110,6 +159,8 @@ module Skeleton : sig
     ?apply:('a t * 'a t list -> 'a -> ('a t * 'a t list) * 'a) -> 'a t -> 'a t
 end
 
+(** A CostModel assigns a cost to each variant of a skeleton. The
+    total cost is the sum of the costs of the nodes. *)
 module CostModel : sig
   type t = {
     num : int -> int;
@@ -124,9 +175,13 @@ module CostModel : sig
     op : 'a. Expr.Op.t -> 'a list -> int;
   }
 
+  (** A cost model where variant has a constant cost. *)
   val constant : int -> t
+
+  (** A cost model where variant has a cost of zero. *)
   val zero : t
-    
+
+  (** Compute the cost of a skeleton. *)
   val cost_of_skeleton : t -> 'a Skeleton.t -> int
 end
 
@@ -181,6 +236,7 @@ module Specification : sig
   val increment_scope : t -> t
 end
 
+(** Hypotheses are {! Skeleton}s which are annotated with {!Specification}s. *)
 module Hypothesis : sig
   type skeleton = Specification.t Skeleton.t
 

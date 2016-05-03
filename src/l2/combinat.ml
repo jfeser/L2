@@ -5,8 +5,6 @@ let array_to_string a ts =
   let elems_str = String.concat elems ~sep:", " in
   "[" ^ elems_str ^ "]"
 
-(** Compute the partitions of an integer 'n' into 'm' parts. See
-    (Knuth 3b, pg. 2). *)
 let m_partition : int -> int -> Array.Int.t Sequence.t = fun n m ->
   (* if m <= 0 then failwiths "'m' must be greater than or equal to 1." m [%sexp_of:int]; *)
   if n < m then Sequence.empty else
@@ -43,7 +41,6 @@ let m_partition : int -> int -> Array.Int.t Sequence.t = fun n m ->
     in
     Sequence.append init_seq rest_seq
 
-(** Compute the unique permutations of an array. See (Knuth 2b, pg. 1)) *)
 let permutations : Array.Int.t -> Array.Int.t Sequence.t = fun a_init ->
   let a_init = Array.copy a_init in
   Array.sort ~cmp:Int.compare a_init;
