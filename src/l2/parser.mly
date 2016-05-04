@@ -6,20 +6,59 @@ open Collections
 %token <string> ID
 %token <int> NUM
 %token <bool> BOOL
+
 %token LET
+%token IN
+%token IF
+%token THEN
+%token ELSE
+%token FUN
 %token LAMBDA
 %token FORALL
+%token ADD
+%token SUB
+%token MUL
+%token DIV
+%token MOD
+%token EQ
+%token NEQ
+%token GT
+%token GE
+%token LT
+%token LE
+%token AND
+%token OR
+%token NOT
+%token CONS
+%token SEMI
+%token ARROW
+%token LCBRACKET
+%token RCBRACKET
 %token LPAREN
 %token RPAREN
 %token LBRACKET
 %token RBRACKET
-%token LCBRACKET
-%token RCBRACKET
 %token COMMA
-%token ARROW
+
 %token EOF
 
+%nonassoc IN
+%nonassoc SEMI
+%nonassoc LET
+%nonassoc THEN
+%nonassoc ELSE
+%right OR
+%right AND
+%left EQ NEQ GT LT LE GE
+%right CONS
+%left ADD SUB
+%left MUL DIV MOD
+%nonassoc NOT
+%nonassoc LPAREN
+
 %start <Ast.expr> expr_eof
+%start <Ast.expr> expr_ml_eof
+
 %start <Ast.example> example_eof
 %start <Ast.constr> constr_eof
 %start <Ast.typ> typ_eof
@@ -27,6 +66,9 @@ open Collections
 
 expr_eof:
  | x = expr; EOF { x }
+
+expr_ml_eof:
+ | x = expr_ml; EOF { x }
 
 example_eof:
  | x = example; EOF { x }
@@ -36,6 +78,41 @@ constr_eof:
 
 typ_eof:
  | x = typ; EOF { x }
+
+expr_ml:
+ | x = delimited(LBRACKET, separated_list(SEMI, expr_ml), RBRACKET) { `List x }
+ | LET; x = ID; EQ; y = expr_ml; IN; z = expr_ml;         { `Let (x, y, z) }
+ | IF; x = expr_ml; THEN; y = expr_ml; ELSE; z = expr_ml  { `Op (If, [x; y; z]) }
+ | FUN; xs = nonempty_list(ID); ARROW; y = expr_ml        { `Lambda(xs, y) }
+ | x = simple_expr_ml { x }
+ 
+simple_expr_ml:
+ | x = BOOL                                               { `Bool x }
+ | x = NUM                                                { `Num x }
+ | x = sexp(expr_ml) { x }
+ | x = ID                                                        { `Id x }
+ | op = unop; x = simple_expr_ml;                                { `Op (op, [x]) }
+ | x = simple_expr_ml; op = binop; y = simple_expr_ml;           { `Op (op, [x; y]) }
+ | x = simple_expr_ml; ys = sexp(separated_list(COMMA, expr_ml)) { `Apply (x, ys) }
+
+%inline binop:
+ | MUL { Mul }
+ | DIV { Div }
+ | MOD { Mod }
+ | ADD { Plus }
+ | SUB { Minus }
+ | CONS { Cons }
+ | EQ { Eq }
+ | NEQ { Neq }
+ | GT { Gt }
+ | GE { Geq }
+ | LT { Lt }
+ | LE { Leq }
+ | AND { And }
+ | OR  { Or }
+
+%inline unop:
+ | NOT { Not }
 
 expr:
  | x = ID                { `Id x }
@@ -58,26 +135,14 @@ lambda_body:
  | LAMBDA; args = sexp(list(ID)); body = expr; { `Lambda (args, body) }
 
 call_body:
+ | op = binop; args = list(expr); { `Op (op, args) }
+ | op = unop; args = list(expr);  { `Op (op, args) }
+ | IF; args = list(expr);         { `Op (If, args) }
  | f = expr; args = list(expr);
    {
      match f with
      | `Id f_id ->
         (match f_id with
-         | "+"        -> `Op (Plus, args)
-         | "-"        -> `Op (Minus, args)
-         | "*"        -> `Op (Mul, args)
-         | "/"        -> `Op (Div, args)
-         | "%"        -> `Op (Mod, args)
-         | "="        -> `Op (Eq, args)
-         | "!="       -> `Op (Neq, args)
-         | "<"        -> `Op (Lt, args)
-         | "<="       -> `Op (Leq, args)
-         | ">"        -> `Op (Gt, args)
-         | ">="       -> `Op (Geq, args)
-         | "&"        -> `Op (And, args)
-         | "|"        -> `Op (Or, args)
-         | "~"        -> `Op (Not, args)
-         | "if"       -> `Op (If, args)
          | "rcons"    -> `Op (RCons, args)
          | "cons"     -> `Op (Cons, args)
          | "car"      -> `Op (Car, args)
