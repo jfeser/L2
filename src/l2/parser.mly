@@ -26,7 +26,9 @@ open Collections
 %token GE
 %token LT
 %token LE
+%token AMP
 %token AND
+%token BAR
 %token OR
 %token NOT
 %token CONS
@@ -42,8 +44,8 @@ open Collections
 
 %token EOF
 
-%right OR
-%right AND
+%right BAR OR
+%right AMP AND
 %left EQ NEQ GT LT LE GE
 %right CONS
 %left ADD SUB
@@ -105,6 +107,8 @@ argument_ml:
  | GE { Geq }
  | LT { Lt }
  | LE { Leq }
+ | AMP  { And }
+ | BAR   { Or }
  | AND { And }
  | OR  { Or }
 

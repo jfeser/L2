@@ -19,6 +19,8 @@ rule token = parse
  | "fun"                 { FUN }
  | "lambda"              { LAMBDA }
  | "forall"              { FORALL }
+ | "or"                  { OR }
+ | "and"                 { AND }
  | "+"                   { ADD }
  | "-"                   { SUB }
  | "*"                   { MUL }
@@ -30,8 +32,8 @@ rule token = parse
  | ">="                  { GE }
  | "<"                   { LT }
  | "<="                  { LE }
- | "&"                   { AND }
- | "|"                   { OR }
+ | "&"                   { AMP }
+ | "|"                   { BAR }
  | "~"                   { NOT }
  | "::"                  { CONS }
  | ";"                   { SEMI }
