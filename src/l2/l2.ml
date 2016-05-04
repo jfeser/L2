@@ -264,10 +264,13 @@ let eval_command =
     let open Command.Spec in
     empty
     +> flag "--untyped" no_arg ~doc:" disable type-checking before evaluation"
+    +> flag "--syntax"
+      (optional_with_default `Sexp (symbol ["sexp", `Sexp; "ml", `Ml]))
+      ~doc:" the syntax to use for parsing expressions"
     +> anon (maybe ("source" %: string))
   in
 
-  let run untyped m_source_fn () =
+  let run untyped syntax m_source_fn () =
     let source = match m_source_fn with
       | Some fn -> In_channel.read_all fn
       | None -> In_channel.input_all In_channel.stdin
@@ -276,7 +279,7 @@ let eval_command =
     let open Or_error.Monad_infix in
 
     let m_output = 
-      Expr.of_string source
+      Expr.of_string ~syntax source
       >>= (fun expr -> (* Perform type inference and report type errors, unless disabled. *)
           if untyped then Ok expr else
             Infer.infer (Ctx.empty ()) expr |> Or_error.map ~f:(fun _ -> expr))
