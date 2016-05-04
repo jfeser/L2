@@ -80,20 +80,23 @@ typ_eof:
  | x = typ; EOF { x }
 
 expr_ml:
- | x = delimited(LBRACKET, separated_list(SEMI, expr_ml), RBRACKET) { `List x }
  | LET; x = ID; EQ; y = expr_ml; IN; z = expr_ml;         { `Let (x, y, z) }
  | IF; x = expr_ml; THEN; y = expr_ml; ELSE; z = expr_ml  { `Op (If, [x; y; z]) }
  | FUN; xs = nonempty_list(ID); ARROW; y = expr_ml        { `Lambda(xs, y) }
  | x = simple_expr_ml { x }
  
 simple_expr_ml:
+ | x = argument_ml                                                  { x }
+ | x = argument_ml; ys = nonempty_list(argument_ml)                 { `Apply (x, ys) }
+ | op = unop; x = simple_expr_ml;                                   { `Op (op, [x]) }
+ | x = simple_expr_ml; op = binop; y = simple_expr_ml;              { `Op (op, [x; y]) }
+
+argument_ml:
  | x = BOOL                                               { `Bool x }
  | x = NUM                                                { `Num x }
- | x = sexp(expr_ml) { x }
  | x = ID                                                        { `Id x }
- | op = unop; x = simple_expr_ml;                                { `Op (op, [x]) }
- | x = simple_expr_ml; op = binop; y = simple_expr_ml;           { `Op (op, [x; y]) }
- | x = simple_expr_ml; ys = sexp(separated_list(COMMA, expr_ml)) { `Apply (x, ys) }
+ | x = sexp(expr_ml)                                                { x }
+ | x = delimited(LBRACKET, separated_list(SEMI, expr_ml), RBRACKET) { `List x } 
 
 %inline binop:
  | MUL { Mul }
