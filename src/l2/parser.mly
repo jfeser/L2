@@ -42,11 +42,6 @@ open Collections
 
 %token EOF
 
-%nonassoc IN
-%nonassoc SEMI
-%nonassoc LET
-%nonassoc THEN
-%nonassoc ELSE
 %right OR
 %right AND
 %left EQ NEQ GT LT LE GE
@@ -54,7 +49,6 @@ open Collections
 %left ADD SUB
 %left MUL DIV MOD
 %nonassoc NOT
-%nonassoc LPAREN
 
 %start <Ast.expr> expr_eof
 %start <Ast.expr> expr_ml_eof
