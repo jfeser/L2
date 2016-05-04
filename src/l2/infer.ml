@@ -421,6 +421,7 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : TypedExpr.t =
        | None -> error (Info.of_thunk (fun () ->
            sprintf "%s is unbound in context %s."
              name (Ctx.to_string ctx Type0.to_string))))
+      
     | `Lambda (args, body) ->
       (* Generate fresh type variables for each argument and bind them
          into the existing context. *)
@@ -430,6 +431,7 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : TypedExpr.t =
       let arg_typs = List.map args ~f:(fun arg -> Ctx.lookup_exn ctx' arg) in
       let body' = typeof' ctx' level body in
       Lambda ((args, body'), Arrow_t (arg_typs, TypedExpr.to_type body'))
+        
     | `Apply (func, args) ->
       let func' = typeof' ctx level func in
       let args' = List.map args ~f:(typeof' ctx level) in
@@ -438,6 +440,7 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : TypedExpr.t =
        | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (TypedExpr.to_type arg'))
        | None -> error (Info.of_string "Wrong number of arguments."));
       Apply ((func', args'), ret_typ)
+        
     | `Op (op, args) ->
       let args' = List.map args ~f:(typeof' ctx level) in
       let arg_typs, ret_typ = typeof_func (List.length args) (instantiate level (Op.typ op)) in
@@ -445,7 +448,10 @@ let typeof (ctx: typ Ctx.t) (level: level) (expr: expr) : TypedExpr.t =
        | Some pairs -> List.iter pairs ~f:(fun (typ, arg') -> unify_exn typ (TypedExpr.to_type arg'))
        | None -> error (Info.of_string "Wrong number of arguments."));
       Op ((op, args'), ret_typ)
+        
     | `Let (name, bound, body) ->
+      (* Bind a fresh free type variable to the name. *)
+      let ctx = Ctx.bind ctx name (fresh_free level) in
       let bound' = typeof' ctx (level + 1) bound in
       let body' =
         let bound_typ = generalize level (TypedExpr.to_type bound') in
