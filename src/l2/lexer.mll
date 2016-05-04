@@ -12,6 +12,7 @@ rule token = parse
  | white                 { token lexbuf } (* Eat whitespace. *)
  | "(*"                  { comment lexbuf }
  | "let"                 { LET }
+ | "let rec"             { LET }
  | "in"                  { IN }
  | "if"                  { IF }
  | "then"                { THEN }
