@@ -18,7 +18,7 @@ let example_deduction = fun sk ->
   Timer.run_with_time deduction_timer "example" (fun () -> Example_deduction.push_specs sk)
 
 (** Get a JSON object containing all captured information from a single run. *)
-let get_json testcase runtime solution config engine deduction : Json.json =
+let get_json testcase runtime solution config argv : Json.json =
   let solution_str = match solution with
     | `Solution s -> s
     | `NoSolution -> ""
@@ -47,8 +47,7 @@ let get_json testcase runtime solution config engine deduction : Json.json =
     "solution", `String solution_str;
     "runtime", `Float runtime;
     "config", `String (Config.to_string config);
-    "engine", `String engine;
-    "deduction", `List (List.map deduction ~f:(fun d -> `String d));
+    "argv", `List (Array.map argv ~f:(fun a -> `String a) |> Array.to_list);
   ]
 
 let synthesize engine deduction cost_model testcase =
@@ -125,32 +124,36 @@ let synthesize engine deduction cost_model testcase =
     end
 
 let parse_symbol_exn symbols s =
-  if not (List.mem symbols s) then
+  match List.Assoc.find symbols s with
+  | Some sym -> sym
+  | None -> 
     Error.createf "Unexpected parameter '%s'. Expected one of: %s."
-      s ([%sexp_of:string list] symbols |> Sexp.to_string_hum)
-    |> Error.raise;
-  s
+      s ([%sexp_of:string list] (List.map ~f:Tuple.T2.get1 symbols) |> Sexp.to_string_hum)
+    |> Error.raise
 
 let parse_symbol_list_exn symbols str =
   String.split str ~on:','
   |> List.filter ~f:(fun s -> not (String.is_empty s))
   |> List.map ~f:(parse_symbol_exn symbols)
 
-let symbol : string list -> string Command.Arg_type.t = fun symbols ->
+let symbol : 'a. (string * 'a) list -> 'a Command.Arg_type.t = fun symbols ->
   Command.Arg_type.create
-    ~complete:(fun _ ~part -> List.filter symbols ~f:(String.is_prefix ~prefix:part))
+    ~complete:(fun _ ~part ->
+        List.filter symbols ~f:(fun (name, _) -> String.is_prefix ~prefix:part name)
+        |> List.map ~f:Tuple.T2.get1)
     (parse_symbol_exn symbols)
 
-let nonempty_symbol_list : string list -> string list Command.Arg_type.t = fun symbols ->
+let nonempty_symbol_list : 'a. (string * 'a) list -> 'a list Command.Arg_type.t = fun symbols ->
   Command.Arg_type.create
     ~complete:(fun _ ~part ->
         let last_part = Option.value_exn (String.split part ~on:' ' |> List.last) in
-        List.filter symbols ~f:(String.is_prefix ~prefix:last_part))
+        List.filter symbols ~f:(fun (name, _) -> String.is_prefix ~prefix:last_part name)
+        |> List.map ~f:Tuple.T2.get1)
     (fun str -> 
        match parse_symbol_list_exn symbols str with
        | [] ->
          Error.createf "No parameters provided. Expected one of: %s."
-           ([%sexp_of:string list] symbols |> Sexp.to_string_hum)
+           ([%sexp_of:string list] (List.map ~f:Tuple.T2.get1 symbols) |> Sexp.to_string_hum)
          |> Error.raise;
        | l -> l)
 
@@ -165,14 +168,26 @@ let synth_command =
     +> flag "--flat-cost" no_arg ~doc:" use a flat cost metric (v1 engine only)"
     +> flag "--cost" (optional file)
       ~doc:" load cost function parameters from file (only only applies when using v2 engine)"
+      
     +> flag "-dd" ~aliases:["--deduction"]
-      (optional_with_default ["higher_order"]
+      (optional_with_default [`Higher_order]
          (nonempty_symbol_list
-            ["higher_order"; "recursive_spec"; "unification"; "example"; "random"; "none"]))
+            ["higher_order", `Higher_order;
+             "recursive_spec", `Recursive_spec;
+             "unification", `Unification;
+             "example", `Example;
+             "random", `Random;
+             "none", `None]))
       ~doc:" deduction routines to use during synthesis (only applies when using v2 engine)"
+      
     +> flag "-e" ~aliases:["--engine"]
-      (optional_with_default "v2" (symbol ["v1"; "v1_solver"; "v2"; "automata"]))
+      (optional_with_default `V2
+         (symbol ["v1", `V1;
+                  "v1_solver", `V1_solver;
+                  "v2", `V2;
+                  "automata", `Automata]))
       ~doc:" the synthesis algorithm to use"
+      
     +> flag "-v" ~aliases:["--verbose"] no_arg
       ~doc:" print progress messages while searching"
     +> flag "-V" ~aliases:["--very-verbose"] no_arg
@@ -182,7 +197,7 @@ let synth_command =
     +> anon (maybe ("testcase" %: file))
   in
 
-  let run config_file json_file flat_cost cost_file deduction_methods engine_str verbose very_verbose use_solver m_testcase_name () =
+  let run config_file json_file flat_cost cost_file deduction engine verbose very_verbose use_solver m_testcase_name () =
     let initial_config = 
       match config_file with
       | Some file -> In_channel.read_all file |> Config.of_string
@@ -203,24 +218,6 @@ let synth_command =
       let%bind testcase = match m_testcase_name with
         | Some testcase_name -> Testcase.from_file ~filename:testcase_name
         | None -> Testcase.from_channel In_channel.stdin
-      in
-
-      let engine = match engine_str with
-        | "v1" -> `V1
-        | "v1_solver" -> `V1_solver
-        | "v2" -> `V2
-        | "automata" -> `Automata
-        | _ -> failwiths "BUG: Failed to validate argument." engine_str [%sexp_of:string]
-      in
-
-      let deduction = List.map deduction_methods ~f:(function
-          | "higher_order" -> `Higher_order
-          | "recursive_spec" -> `Recursive_spec
-          | "example" -> `Example
-          | "random" -> `Random
-          | "none" -> `None
-          | "unification" -> `Unification
-          | m -> failwiths "BUG: Failed to validate argument." m [%sexp_of:string])
       in
 
       let cost_model = Option.map cost_file ~f:(fun f ->
@@ -247,8 +244,7 @@ let synth_command =
             (Time.Span.to_sec solve_time)
             m_solution
             !Config.config
-            engine_str
-            deduction_methods
+            Sys.argv
           |> Json.pretty_to_channel ~std:true ch
         | None -> ()
       end;
