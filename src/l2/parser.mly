@@ -89,29 +89,31 @@ toplevel_ml:
  | x = list(toplevel_let_ml) { x }
 
 toplevel_let_ml:
- | LET; x = ID; EQ; y = expr_ml { (x, y) }
+ | LET; x = ID; EQ; y = expr_ml                          { (x, y) }
+ | LET; x = ID; xs = nonempty_list(ID); EQ; y = expr_ml; { (x, `Lambda (xs, y)) }
 
 expr_ml:
- | LET; x = ID; EQ; y = expr_ml; IN; z = expr_ml;                        { `Let (x, y, z) }
- | IF; x = expr_ml; THEN; y = expr_ml; ELSE; z = expr_ml                 { `Op (If, [x; y; z]) }
- | FUN; xs = nonempty_list(ID); ARROW; y = expr_ml                       { `Lambda(xs, y) }
- | x = simple_expr_ml                                                    { x }
+ | LET; x = ID; EQ; y = expr_ml; IN; z = expr_ml;                         { `Let (x, y, z) }
+ | LET; x = ID; xs = nonempty_list(ID); EQ; y = expr_ml; IN; z = expr_ml; { `Let (x, `Lambda (xs, y), z) }
+ | IF; x = expr_ml; THEN; y = expr_ml; ELSE; z = expr_ml                  { `Op (If, [x; y; z]) }
+ | FUN; xs = nonempty_list(ID); ARROW; y = expr_ml                        { `Lambda(xs, y) }
+ | x = simple_expr_ml                                                     { x }
  
 simple_expr_ml:
- | x = argument_ml                                                       { x }
- | x = argument_ml; ys = nonempty_list(argument_ml)                      { `Apply (x, ys) }
- | op = unop_call; x = argument_ml                                       { `Op (op, [x]) }
- | op = binop_call; x = argument_ml; y = argument_ml                     { `Op (op, [x; y]) }
- | op = unop; x = simple_expr_ml;                                        { `Op (op, [x]) }
- | x = simple_expr_ml; op = binop; y = simple_expr_ml;                   { `Op (op, [x; y]) }
+ | x = argument_ml                                                        { x }
+ | x = argument_ml; ys = nonempty_list(argument_ml)                       { `Apply (x, ys) }
+ | op = unop_call; x = argument_ml                                        { `Op (op, [x]) }
+ | op = binop_call; x = argument_ml; y = argument_ml                      { `Op (op, [x; y]) }
+ | op = unop; x = simple_expr_ml;                                         { `Op (op, [x]) }
+ | x = simple_expr_ml; op = binop; y = simple_expr_ml;                    { `Op (op, [x; y]) }
 
 argument_ml:
- | x = BOOL                                                              { `Bool x }
- | x = NUM                                                               { `Num x }
- | x = ID                                                                { `Id x }
- | x = sexp(expr_ml)                                                     { x }
- | x = delimited(LBRACKET, separated_list(SEMI, expr_ml), RBRACKET)      { `List x }
- | x = tree_ml                                                           { `Tree x }
+ | x = BOOL                                                               { `Bool x }
+ | x = NUM                                                                { `Num x }
+ | x = ID                                                                 { `Id x }
+ | x = sexp(expr_ml)                                                      { x }
+ | x = delimited(LBRACKET, separated_list(SEMI, expr_ml), RBRACKET)       { `List x }
+ | x = tree_ml                                                            { `Tree x }
 
 tree_ml:
  | LCBRACKET; RCBRACKET;                                                       { Tree.Empty }
