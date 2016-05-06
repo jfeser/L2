@@ -36,6 +36,8 @@ module Type : sig
   val of_string : string -> t
   val to_string : t -> string
 
+  val of_expr : ?ctx:t String.Map.t -> Expr.t -> (t * t Int.Map.t)
+
   val num : t
   val bool : t
   val list : t -> t
@@ -45,6 +47,24 @@ module Type : sig
   val arrow1 : t -> t -> t
   val arrow2 : t -> t -> t -> t
 end
+
+module Unifier : sig
+  type t = Type.t Int.Map.t
+
+  include Sexpable.S with type t := t
+  
+  val empty : t
+  val apply : t -> Type.t -> Type.t
+  val compose : outer:t -> inner:t -> t
+  val equal : t -> t -> bool
+  val relevant_to : t -> Type.t -> t
+  val of_types_exn : Type.t -> Type.t -> t
+  val of_types : Type.t -> Type.t -> t option
+  val to_alist : t -> (int * Type.t) list
+  val of_alist_exn : (int * Type.t) list -> t
+  val to_string : t -> string
+end
+
 
 module ImmutableType : sig
   type t =
@@ -83,23 +103,6 @@ module TypedExpr : sig
   val map : f:(Type.t -> Type.t) -> t -> t
   val to_expr : t -> Expr.t
   val to_type : t -> Type.t
-  val to_string : t -> string
-end
-
-module Unifier : sig
-  type t
-
-  include Sexpable.S with type t := t
-  
-  val empty : t
-  val apply : t -> Type.t -> Type.t
-  val compose : outer:t -> inner:t -> t
-  val equal : t -> t -> bool
-  val relevant_to : t -> Type.t -> t
-  val of_types_exn : Type.t -> Type.t -> t
-  val of_types : Type.t -> Type.t -> t option
-  val to_alist : t -> (int * Type.t) list
-  val of_alist_exn : (int * Type.t) list -> t
   val to_string : t -> string
 end
 

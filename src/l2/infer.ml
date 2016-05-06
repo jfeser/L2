@@ -533,6 +533,119 @@ let free ?(bound=stdlib_names) (e: TypedExpr.t) : (id * typ) list =
 module Type = struct
   include Type0
 
+  let generalize : t String.Map.t -> t -> t = fun ctx t ->
+    let free_ctx_vars =
+      String.Map.to_alist ctx
+      |> List.map ~f:Tuple.T2.get2
+      |> List.map ~f:free_vars
+      |> Int.Set.union_list
+    in
+    let gen_vars = Int.Set.diff (free_vars t) free_ctx_vars in
+    let rec gen = function
+      | Var_t {contents = Free (id, _)} when Set.mem gen_vars id ->
+        Var_t (ref (Quant ("t" ^ (Int.to_string id))))
+      | Var_t {contents = Link t} -> gen t
+      | Arrow_t (args, ret) -> Arrow_t (List.map ~f:gen args, gen ret)
+      | App_t (const, args) -> App_t (const, List.map ~f:gen args)
+      | Const_t _ | Var_t {contents = Quant _} | Var_t {contents = Free _} as t -> t
+    in
+    gen t
+
+  let of_expr : ?ctx:t String.Map.t -> Expr.t -> (t * t Int.Map.t) =
+    fun ?(ctx = String.Map.empty) expr ->
+      let error msg =
+        raise @@ TypeError (Error.of_thunk (fun () ->
+            sprintf "In %s: %s" (Expr.to_string expr) (Info.to_string_hum msg)))
+      in
+
+      let rec of_tree ctx = function
+        | Tree.Empty -> fresh_free 0, Unifier.empty
+        | Tree.Node (x, ys) ->
+          let t1, u1 = of_expr ctx x in
+          List.fold_left ys ~init:(t1, u1) ~f:(fun (t, u) y ->
+              let ctx = Unifier.apply_ctx u ctx in
+              let t', u' = of_tree ctx y in
+              let u'' = Unifier.of_types_exn t t' in
+              (Unifier.apply u'' t', u''))
+            
+      and of_list ctx = function
+        | [] -> fresh_free 0, Unifier.empty
+        | x::xs ->
+          let t1, u1 = of_expr ctx x in
+          let t2, u2 = of_list (Unifier.apply_ctx u1 ctx) xs in
+          let u = Unifier.compose ~inner:u2 ~outer:u1 in
+          let u3 = Unifier.of_types_exn (Unifier.apply u t1) (Unifier.apply u t2) in
+          let u = Unifier.compose ~inner:u3 ~outer:u in
+          (Unifier.apply u3 t2, u)
+
+      and of_id ctx id = match String.Map.find ctx id with
+        | Some t -> instantiate 0 t, Unifier.empty
+        | None ->
+          Info.create "Unbound name." (id, ctx) [%sexp_of:string * t String.Map.t]
+          |> error
+
+      and of_lambda ctx args body =
+        let (ctx, ts) = List.fold_right args ~init:(ctx, []) ~f:(fun arg (ctx, ts) ->
+            let t = fresh_free 0 in
+            String.Map.add ctx ~key:arg ~data:t, t::ts)
+        in
+        let t, u = of_expr ctx body in
+        Unifier.apply u (Arrow_t (ts, t)), u
+
+      and of_callable ctx func_t func_u args =
+        let (args_t, u) = List.fold_right args ~init:([], func_u) ~f:(fun arg (ts, u) ->
+            let arg_t, u' = of_expr (Unifier.apply_ctx u ctx) arg in
+            arg_t::ts, Unifier.compose ~outer:u ~inner:u')
+        in
+
+        let ret_t = fresh_free 0 in
+        let u' = Unifier.of_types_exn (Unifier.apply u func_t) (Unifier.apply u (Arrow_t (args_t, ret_t))) in
+        Unifier.apply u' ret_t, Unifier.compose ~outer:u ~inner:u'
+  
+      and of_func ctx func args =
+        let t, u = of_expr ctx func in
+        let t = Unifier.apply u t in
+        of_callable ctx t u args
+  
+      and of_op ctx op args =
+        let t = Op.typ op |> instantiate 0 in
+        printf "%s: %s\n" (Op.to_string op) (to_string t);
+        of_callable ctx t Unifier.empty args
+
+      and of_let ctx name bound body =
+        let tv = fresh_free 0 in
+        let bound_t, u = of_expr (String.Map.add ctx ~key:name ~data:tv) bound in
+        let u = Unifier.compose ~outer:u ~inner:(Unifier.of_types_exn (Unifier.apply u tv) (Unifier.apply u bound_t)) in
+        let bound_t = Unifier.apply u bound_t in
+        let ctx = Unifier.apply_ctx u ctx in
+        let bound_t = generalize ctx bound_t in
+        let body_t, u' = of_expr (String.Map.add ctx ~key:name ~data:bound_t) body in
+        let u = Unifier.compose ~outer:u ~inner:u' in
+        Unifier.apply u body_t, u
+        
+      and of_expr ctx expr =
+        let t, u = match expr with
+          | `Num x -> Const_t Num_t, Unifier.empty
+          | `Bool x -> Const_t Bool_t, Unifier.empty
+          | `Tree x ->
+            let t, u = of_tree ctx x in
+            App_t ("tree", [t]), u
+          | `List x ->
+            let t, u = of_list ctx x in
+            App_t ("list", [t]), u
+          | `Id id -> of_id ctx id
+          | `Lambda (args, body) -> of_lambda ctx args body
+          | `Apply (func, args) -> of_func ctx func args
+          | `Op (op, args) -> of_op ctx op args
+          | `Let (name, bound, body) -> of_let ctx name bound body
+        in
+        let t = Unifier.apply u t in
+        printf "Type of %s: %s\n%s\n\n" (Expr.to_string expr) (to_string t) (Unifier.to_string u);
+        t, u
+      in
+
+      of_expr ctx expr
+          
   let are_unifiable t1 t2 = Option.is_some (Unifier.of_types t1 t2)
 end
 
