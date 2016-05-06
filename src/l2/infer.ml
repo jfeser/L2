@@ -257,8 +257,7 @@ module Unifier = struct
       match t1, t2 with
       | Var_t {contents = Link x}, y
       | x, Var_t {contents = Link y} -> of_types_exn x y
-      | Var_t {contents = Free (x, _)}, Var_t {contents = Free (y, _)}
-        when x = y ->
+      | Var_t {contents = Free (x, _)}, Var_t {contents = Free (y, _)} when x = y ->
         unify_error t1 t2 ~msg:(Info.of_thunk (fun () ->
             sprintf "Free variable %d occurred in %s and %s."
               x (Type0.to_string t1) (Type0.to_string t2)))
