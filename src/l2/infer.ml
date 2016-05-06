@@ -266,16 +266,16 @@ module Unifier = struct
               sprintf "Free variable %d occurs in %s." id (Type0.to_string t)))
         else Int.Map.singleton id t
       | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
-        let s1 =
-          List.fold2_exn ~init:Int.Map.empty args1 args2 ~f:(fun s a1 a2 ->
-              compose s (of_types_exn a1 a2))
-        in
+        let s1 = of_many_types_exn args1 args2 in
         let s2 = of_types_exn ret1 ret2 in
         compose s1 s2
       | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
-        List.fold2_exn ~init:Int.Map.empty args1 args2 ~f:(fun s a1 a2 ->
-            compose s (of_types_exn a1 a2))
+        of_many_types_exn args1 args2
       | _ -> unify_error t1 t2
+
+  and of_many_types_exn : Type0.t list -> Type0.t list -> t =
+    List.fold2_exn ~init:empty ~f:(fun s a1 a2 ->
+        compose s (of_types_exn (apply s a1) (apply s a2)))
 
   let of_types t1 t2 =
     try Some (of_types_exn t1 t2) with TypeError _ -> None
