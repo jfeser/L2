@@ -101,6 +101,11 @@ argument_ml:
  | x = ID                                                        { `Id x }
  | x = sexp(expr_ml)                                                { x }
  | x = delimited(LBRACKET, separated_list(SEMI, expr_ml), RBRACKET) { `List x } 
+ | x = tree_ml                                                           { `Tree x }
+
+tree_ml:
+ | LCBRACKET; RCBRACKET;                                                       { Tree.Empty }
+ | LCBRACKET; x = expr_ml; SEMI; y = separated_list(SEMI, tree_ml); RCBRACKET; { Tree.Node (x, y) }
 
 %inline binop:
  | MUL { Mul }
@@ -180,6 +185,7 @@ simple_typ:
                                                       | _ -> Var_t (ref (Quant x)) }
  | x = sexp(typ);                                   { x }
  | constr = ID; LBRACKET; arg = typ; RBRACKET       { App_t (constr, [arg]) }
+ | TREE; LBRACKET; arg = typ; RBRACKET              { App_t ("tree", [arg]) }
  | constr = ID; LBRACKET; args = typ_list; RBRACKET { App_t (constr, args) }
 
 typ_list:
