@@ -690,7 +690,7 @@ module Synthesizer = struct
   let rec search_in_space : check -> search_state -> unit = fun check search_state ->
     let ss = search_state in
     let gen = Constrained.to_generalizer ss.zctx ss.space ss.cost_model |> Or_error.ok_exn in
-    let memo = Memoizer.create gen ss.cost_model in
+    let memo = Memoizer.create Library.empty gen ss.cost_model in
 
     Symbol.Set.iter ss.space.Constrained.initial_states ~f:(fun init_state ->
         let hole = Hole.create (Infer.instantiate 0 ss.type_) init_state in

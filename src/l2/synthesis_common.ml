@@ -8,18 +8,23 @@ let print_sexp x s = print_endline (Sexp.to_string_hum (s x))
 
 module Generalizer = struct
   type t = Type.t StaticDistance.Map.t -> Type.t -> Symbol.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
+
+  type params = {
+    cost_model : CostModel.t;
+    library : Library.t;
+  }
   
-  let generalize_all generalize cost_model hypo =
+  let generalize_all params generalize hypo =
     let open Hypothesis in
     List.fold_left
       (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
       ~init:[ hypo ]
       ~f:(fun hypos (hole, spec) ->
           let children = List.filter (generalize hole.Hole.ctx hole.Hole.type_ hole.Hole.symbol spec) ~f:(fun (c, _) ->
-              kind c = Abstract || Specification.verify spec (skeleton c))
+              kind c = Abstract || Specification.verify ~library:params.library spec (skeleton c))
           in
           List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
-              apply_unifier (fill_hole cost_model hole ~parent:p ~child:c) u))
+              apply_unifier (fill_hole params.cost_model hole ~parent:p ~child:c) u))
           |> List.concat)
 
   let compose : t -> t -> t = fun g1 g2 ctx type_ symbol spec ->
@@ -153,11 +158,13 @@ module Memoizer = struct
     generalize : Generalizer.t;
     cost_model : CostModel.t;
     deduction : Deduction.t;
+    library : Library.t;
   }
 
-  let create : ?deduce:Deduction.t -> Generalizer.t -> CostModel.t -> t =
-    fun ?(deduce = Deduction.no_op) g cm ->
+  let create : ?deduce:Deduction.t -> Library.t -> Generalizer.t -> CostModel.t -> t =
+    fun ?(deduce = Deduction.no_op) library g cm ->
       {
+        library;
         generalize = g;
         cost_model = cm;
         deduction = (fun sk -> run_with_time "deduction_time" (fun () -> deduce sk));
@@ -176,9 +183,9 @@ module Memoizer = struct
           Option.map (m.deduction sk) (fun sk' ->
               (Hypothesis.of_skeleton m.cost_model sk', u)))
 
-  let select_matching : (Hypothesis.t * Unifier.t) Sequence.t -> (Hypothesis.t * Unifier.t) Sequence.t =
+  let select_matching : t -> (Hypothesis.t * Unifier.t) Sequence.t -> (Hypothesis.t * Unifier.t) Sequence.t =
     let module H = Hypothesis in
-    Sequence.filter ~f:(fun (h, _) ->
+    fun m -> Sequence.filter ~f:(fun (h, _) ->
         incr "num_hypos";
         let num_hypos = Counter.get counter "num_hypos" in
         if num_hypos mod 100 = 0 then begin
@@ -188,7 +195,7 @@ module Memoizer = struct
         match H.kind h with
         | H.Concrete ->
           (* printf "%s\n\n" ([%sexp_of:H.t] h |> Sexp.to_string_hum); *)
-          H.verify h
+          H.verify ~library:m.library h
         | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t)
 
   (** Requires: 'm' is a memoization table. 'hypo' is a
@@ -258,7 +265,7 @@ module Memoizer = struct
                       |> perform_deduction m)))
           
         (* Only return concrete hypotheses which match the specification. *)
-        |> select_matching
+        |> select_matching m
   
   and get m hole spec ~cost =
     if cost < 0 then failwiths "Argument out of range." cost [%sexp_of:int] else

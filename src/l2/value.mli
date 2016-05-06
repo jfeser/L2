@@ -2,6 +2,5 @@ open Core.Std
 
 type t = Ast.value
 
-include Sexpable.S with type t := t
-
+val sexp_of_t : t -> Sexp.t
 val compare : t -> t -> int

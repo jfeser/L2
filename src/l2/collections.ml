@@ -334,6 +334,9 @@ module Ctx = struct
   let of_alist_exn alist = ref (String.Map.of_alist_exn alist)
   let of_alist_mult alist = ref (String.Map.of_alist_multi alist)
 
+  let of_string_map = ref
+  let to_string_map ctx = !ctx
+
   let to_alist ctx = String.Map.to_alist !ctx
   let to_string (ctx: 'a t) (str: 'a -> string) : string =
     to_alist ctx

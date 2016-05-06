@@ -232,7 +232,7 @@ module Specification : sig
   val compare : t -> t -> int
   val equal : t -> t -> bool
   val to_string : t -> string
-  val verify : t -> 'a Skeleton.t -> bool
+  val verify : ?library:Library.t -> t -> 'a Skeleton.t -> bool
   val increment_scope : t -> t
 end
 
@@ -263,7 +263,7 @@ module Hypothesis : sig
     
   val apply_unifier : t -> Unifier.t -> t
   val fill_hole : CostModel.t -> Hole.t -> parent:t -> child:t -> t
-  val verify : t -> bool
+  val verify : ?library:Library.t -> t -> bool
 
   val of_skeleton : CostModel.t -> skeleton -> t
 

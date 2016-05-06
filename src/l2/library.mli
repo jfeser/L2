@@ -6,6 +6,8 @@ type t = {
   type_ctx : Infer.Type.t String.Map.t;
 }
 
+val empty : t
+
 val from_channel_exn : file:string -> In_channel.t -> t
 val from_channel : file:string -> In_channel.t -> t Or_error.t
 val from_file_exn : string -> t

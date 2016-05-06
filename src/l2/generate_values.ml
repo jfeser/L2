@@ -150,7 +150,7 @@ let generate_examples : max_cost:int -> Expr.t -> Type.t -> example Sequence.t =
       in
       let gen = Generalizer.compose_all_exn gens in
       let init = H.list cost_model inits Sp.Top in
-      let memo = Memoizer.create gen cost_model in
+      let memo = Memoizer.create Library.empty gen cost_model in
       Memoizer.to_flat_sequence memo ~max_cost init
         
       |> Sequence.map ~f:(fun (args, _) -> match H.skeleton args with

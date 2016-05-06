@@ -50,7 +50,7 @@ let get_json testcase runtime solution config argv : Json.json =
     "argv", `List (Array.map argv ~f:(fun a -> `String a) |> Array.to_list);
   ]
 
-let synthesize engine deduction cost_model testcase =
+let synthesize engine deduction cost_model library testcase =
   let module T = Testcase in
   match testcase.T.case with
   | T.Examples (exs, bg) ->
@@ -101,7 +101,7 @@ let synthesize engine deduction cost_model testcase =
               | `Recursive_spec -> Deduction.compose d Recursive_spec_deduction.push_specs)
           in
           let (m_solution, runtime) = Util.with_runtime (fun () ->
-              let synth = L2_Synthesizer.create deduce ?cost_model in
+              let synth = L2_Synthesizer.create deduce ?cost_model library in
               let hypo = L2_Synthesizer.initial_hypothesis synth exs in
               L2_Synthesizer.synthesize synth hypo)
           in
@@ -126,7 +126,7 @@ let synthesize engine deduction cost_model testcase =
 let parse_symbol_exn symbols s =
   match List.Assoc.find symbols s with
   | Some sym -> sym
-  | None -> 
+  | None ->
     Error.createf "Unexpected parameter '%s'. Expected one of: %s."
       s ([%sexp_of:string list] (List.map ~f:Tuple.T2.get1 symbols) |> Sexp.to_string_hum)
     |> Error.raise
@@ -187,6 +187,9 @@ let synth_command =
                   "v2", `V2;
                   "automata", `Automata]))
       ~doc:" the synthesis algorithm to use"
+
+    +> flag "-l" ~aliases:["--library"] (optional file)
+      ~doc:" file containing components to use for synthesis"
       
     +> flag "-v" ~aliases:["--verbose"] no_arg
       ~doc:" print progress messages while searching"
@@ -197,7 +200,7 @@ let synth_command =
     +> anon (maybe ("testcase" %: file))
   in
 
-  let run config_file json_file flat_cost cost_file deduction engine verbose very_verbose use_solver m_testcase_name () =
+  let run config_file json_file flat_cost cost_file deduction engine m_library verbose very_verbose use_solver m_testcase_name () =
     let initial_config = 
       match config_file with
       | Some file -> In_channel.read_all file |> Config.of_string
@@ -213,7 +216,7 @@ let synth_command =
       Config.flat_cost = flat_cost;
     };
 
-    let err = 
+    let err =
       let module Let_syntax = Or_error.Let_syntax.Let_syntax in
       let%bind testcase = match m_testcase_name with
         | Some testcase_name -> Testcase.from_file ~filename:testcase_name
@@ -222,10 +225,15 @@ let synth_command =
 
       let cost_model = Option.map cost_file ~f:(fun f ->
           Hypothesis.PerFunctionCostModel.of_json (Json.from_file f)
-          |> Hypothesis.PerFunctionCostModel.to_cost_model)               
+          |> Hypothesis.PerFunctionCostModel.to_cost_model)
+      in
+
+      let%bind library = match m_library with
+        | Some fn -> Library.from_file fn
+        | None -> Ok Library.empty
       in
       
-      let m_solution, solve_time = synthesize engine deduction cost_model testcase in
+      let m_solution, solve_time = synthesize engine deduction cost_model library testcase in
 
       printf "Runtime: %s\n" (Time.Span.to_short_string solve_time);
       begin
@@ -266,8 +274,8 @@ let eval_command =
     +> flag "--untyped" no_arg ~doc:" disable type-checking before evaluation"
     +> flag "--syntax"
       (optional_with_default `Sexp (symbol ["sexp", `Sexp; "ml", `Ml]))
-      ~doc:" the syntax to use for parsing expressions"
-    +> anon (maybe ("source" %: string))
+      ~doc:" syntax to use for parsing expressions"
+    +> anon (maybe ("source" %: file))
   in
 
   let run untyped syntax m_source_fn () =
@@ -311,8 +319,10 @@ let library_command =
       List.iter (String.Map.keys library.Library.expr_ctx) ~f:(fun name ->
           let type_ = String.Map.find_exn library.Library.type_ctx name in
           let expr = String.Map.find_exn library.Library.expr_ctx name in
+          let value = String.Map.find_exn library.Library.value_ctx name in
           printf "%s: %s\n" name (Infer.Type.to_string type_);
           print_endline (Expr.to_string expr);
+          print_endline (Sexp.to_string_hum ([%sexp_of:Value.t] value));
           print_newline ())
     | Error err -> print_endline (Error.to_string_hum err)
   in

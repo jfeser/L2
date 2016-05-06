@@ -10,6 +10,12 @@ type t = {
   type_ctx : Type.t SMap.t;
 }
 
+let empty = {
+  expr_ctx = SMap.empty;
+  value_ctx = SMap.empty;
+  type_ctx = SMap.empty;
+}
+
 let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
   let exprs =
     let lexbuf = Lexing.from_channel ch in
@@ -31,9 +37,7 @@ let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
       let type_ =
         try
           let t, u = Type.of_expr ~ctx (`Let (name, expr, `Id name)) in
-          let t = generalize (-1) t |> normalize in
-          printf "%s: %s\n%s\n\n" name (Type.to_string t) (Unifier.to_string u);
-          t
+          generalize (-1) t |> normalize
         with TypeError err -> Error.raise err
       in
       SMap.add ctx ~key:name ~data:type_)

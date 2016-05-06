@@ -597,49 +597,48 @@ module Specification = struct
 
   let to_string s = Sexp.to_string (sexp_of_t s)
 
-  let verify spec skel = begin
-    match spec with
-    | Top -> true
-    | Bottom -> false
-    | Examples exs ->
-      (try
-         List.for_all exs ~f:(fun (in_ctx, out) ->
-             let fresh_name = Fresh.mk_fresh_name_fun () in
-             let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
-             let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
-             let expr = Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel in
-             let value_ctx =
-               StaticDistance.Map.to_alist in_ctx
-               |> List.map ~f:(fun (k, v) -> StaticDistance.Map.find_exn name_ctx k, v)
-               |> Ctx.of_alist_exn
-               |> Ctx.merge_right Eval.stdlib_vctx
-             in
-             Eval.eval ~recursion_limit:100 value_ctx expr = out)
-       with
-       | Eval.HitRecursionLimit
-       | Eval.RuntimeError _ -> false)
-    | FunctionExamples exs ->
-      (try
-         List.for_all exs ~f:(fun ((in_ctx, in_args), out) ->
-             let fresh_name = Fresh.mk_fresh_name_fun () in
-             let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
-             let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
-             let expr =
-               `Apply (Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel,
-                       List.map in_args ~f:Expr.of_value)
-             in
-             let value_ctx =
-               StaticDistance.Map.to_alist in_ctx
-               |> List.map ~f:(fun (k, v) -> StaticDistance.Map.find_exn name_ctx k, v)
-               |> Ctx.of_alist_exn
-               |> Ctx.merge_right Eval.stdlib_vctx
-             in
-             Eval.eval ~recursion_limit:100 value_ctx expr = out)
-       with
-       | Eval.HitRecursionLimit
-       | Eval.RuntimeError _ -> false)
-  end  
-      
+  let verify : ?library:Library.t -> t -> 'a Skeleton.t -> bool =
+    fun ?(library=Library.empty) spec skel -> match spec with
+      | Top -> true
+      | Bottom -> false
+      | Examples exs ->
+        (try
+           List.for_all exs ~f:(fun (in_ctx, out) ->
+               let fresh_name = Fresh.mk_fresh_name_fun () in
+               let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
+               let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
+               let expr = Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel in
+               let value_ctx =
+                 StaticDistance.Map.to_alist in_ctx
+                 |> List.map ~f:(fun (k, v) -> StaticDistance.Map.find_exn name_ctx k, v)
+                 |> Ctx.of_alist_exn
+                 |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
+               in
+               Eval.eval ~recursion_limit:100 value_ctx expr = out)
+         with
+         | Eval.HitRecursionLimit
+         | Eval.RuntimeError _ -> false)
+      | FunctionExamples exs ->
+        (try
+           List.for_all exs ~f:(fun ((in_ctx, in_args), out) ->
+               let fresh_name = Fresh.mk_fresh_name_fun () in
+               let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
+               let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
+               let expr =
+                 `Apply (Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel,
+                         List.map in_args ~f:Expr.of_value)
+               in
+               let value_ctx =
+                 StaticDistance.Map.to_alist in_ctx
+                 |> List.map ~f:(fun (k, v) -> StaticDistance.Map.find_exn name_ctx k, v)
+                 |> Ctx.of_alist_exn
+                 |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
+               in
+               Eval.eval ~recursion_limit:100 value_ctx expr = out)
+         with
+         | Eval.HitRecursionLimit
+         | Eval.RuntimeError _ -> false)
+
   let increment_scope spec =
     match spec with
     | Bottom
@@ -776,7 +775,8 @@ module Hypothesis = struct
     }
   end
 
-  let verify h = Sp.verify (spec h) (skeleton h)
+  let verify : ?library:Library.t -> t -> bool =
+    fun ?(library = Library.empty) h -> Sp.verify ~library (spec h) (skeleton h)
 
   let of_skeleton cm s =
     let holes = Sk.holes s in

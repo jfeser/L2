@@ -123,7 +123,9 @@ let eval ?recursion_limit ctx expr =
       | `Id id  ->
         (match Ctx.lookup ctx id with
          | Some x -> x
-         | None -> raise @@ RuntimeError (Error.create "Unbound lookup." id [%sexp_of:Expr.id]))
+         | None ->
+           raise @@ RuntimeError
+             (Error.create "Unbound lookup." (id, Ctx.keys ctx) [%sexp_of:Expr.id * string list]))
       | `Let (name, bound, body) ->
         let ctx = Ctx.bind ctx name `Unit in
         Ctx.update ctx name (eval limit ctx bound);
@@ -221,10 +223,6 @@ let eval ?recursion_limit ctx expr =
                   | _ -> arg_error expr)
               | _ -> arg_error expr)
         end
-  in
-  let ctx = Ctx.merge stdlib_vctx ctx ~f:(fun ~key:_ value ->
-      match value with
-      | `Both (_, v) | `Left v | `Right v -> Some v)
   in
   match recursion_limit with
   | Some limit -> eval limit ctx expr
