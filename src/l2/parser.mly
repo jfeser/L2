@@ -60,6 +60,7 @@ open Collections
 
 %start <Ast.expr> expr_eof
 %start <Ast.expr> expr_ml_eof
+%start <(Ast.id * Ast.expr) list> toplevel_ml_eof
 
 %start <Ast.example> example_eof
 %start <Ast.constr> constr_eof
@@ -72,6 +73,9 @@ expr_eof:
 expr_ml_eof:
  | x = expr_ml; EOF { x }
 
+toplevel_ml_eof:
+ | x = toplevel_ml; EOF { x }
+
 example_eof:
  | x = example; EOF { x }
 
@@ -81,26 +85,32 @@ constr_eof:
 typ_eof:
  | x = typ; EOF { x }
 
+toplevel_ml:
+ | x = list(toplevel_let_ml) { x }
+
+toplevel_let_ml:
+ | LET; x = ID; EQ; y = expr_ml { (x, y) }
+
 expr_ml:
- | LET; x = ID; EQ; y = expr_ml; IN; z = expr_ml;         { `Let (x, y, z) }
- | IF; x = expr_ml; THEN; y = expr_ml; ELSE; z = expr_ml  { `Op (If, [x; y; z]) }
- | FUN; xs = nonempty_list(ID); ARROW; y = expr_ml        { `Lambda(xs, y) }
- | x = simple_expr_ml { x }
+ | LET; x = ID; EQ; y = expr_ml; IN; z = expr_ml;                        { `Let (x, y, z) }
+ | IF; x = expr_ml; THEN; y = expr_ml; ELSE; z = expr_ml                 { `Op (If, [x; y; z]) }
+ | FUN; xs = nonempty_list(ID); ARROW; y = expr_ml                       { `Lambda(xs, y) }
+ | x = simple_expr_ml                                                    { x }
  
 simple_expr_ml:
- | x = argument_ml                                                  { x }
- | x = argument_ml; ys = nonempty_list(argument_ml)                 { `Apply (x, ys) }
+ | x = argument_ml                                                       { x }
+ | x = argument_ml; ys = nonempty_list(argument_ml)                      { `Apply (x, ys) }
  | op = unop_call; x = argument_ml                                       { `Op (op, [x]) }
  | op = binop_call; x = argument_ml; y = argument_ml                     { `Op (op, [x; y]) }
- | op = unop; x = simple_expr_ml;                                   { `Op (op, [x]) }
- | x = simple_expr_ml; op = binop; y = simple_expr_ml;              { `Op (op, [x; y]) }
+ | op = unop; x = simple_expr_ml;                                        { `Op (op, [x]) }
+ | x = simple_expr_ml; op = binop; y = simple_expr_ml;                   { `Op (op, [x; y]) }
 
 argument_ml:
- | x = BOOL                                               { `Bool x }
- | x = NUM                                                { `Num x }
- | x = ID                                                        { `Id x }
- | x = sexp(expr_ml)                                                { x }
- | x = delimited(LBRACKET, separated_list(SEMI, expr_ml), RBRACKET) { `List x } 
+ | x = BOOL                                                              { `Bool x }
+ | x = NUM                                                               { `Num x }
+ | x = ID                                                                { `Id x }
+ | x = sexp(expr_ml)                                                     { x }
+ | x = delimited(LBRACKET, separated_list(SEMI, expr_ml), RBRACKET)      { `List x }
  | x = tree_ml                                                           { `Tree x }
 
 tree_ml:
@@ -108,22 +118,22 @@ tree_ml:
  | LCBRACKET; x = expr_ml; SEMI; y = separated_list(SEMI, tree_ml); RCBRACKET; { Tree.Node (x, y) }
 
 %inline binop:
- | MUL { Mul }
- | DIV { Div }
- | MOD { Mod }
- | ADD { Plus }
- | SUB { Minus }
+ | MUL  { Mul }
+ | DIV  { Div }
+ | MOD  { Mod }
+ | ADD  { Plus }
+ | SUB  { Minus }
  | CONS { Cons }
- | EQ { Eq }
- | NEQ { Neq }
- | GT { Gt }
- | GE { Geq }
- | LT { Lt }
- | LE { Leq }
+ | EQ   { Eq }
+ | NEQ  { Neq }
+ | GT   { Gt }
+ | GE   { Geq }
+ | LT   { Lt }
+ | LE   { Leq }
  | AMP  { And }
- | BAR   { Or }
- | AND { And }
- | OR  { Or }
+ | BAR  { Or }
+ | AND  { And }
+ | OR   { Or }
 
 %inline unop:
  | NOT { Not }
@@ -139,31 +149,31 @@ tree_ml:
  | TREE { Tree }
 
 expr:
- | x = ID                { `Id x }
- | x = sexp(let_body)    { x }
- | x = sexp(lambda_body) { x }
- | x = sexp(call_body)   { x }
- | x = BOOL              { `Bool x }
- | x = NUM               { `Num x }
- | x = tree;             { `Tree x }
- | LBRACKET; x = list(expr); RBRACKET; { `List x }
+ | x = ID                                          { `Id x }
+ | x = sexp(let_body)                              { x }
+ | x = sexp(lambda_body)                           { x }
+ | x = sexp(call_body)                             { x }
+ | x = BOOL                                        { `Bool x }
+ | x = NUM                                         { `Num x }
+ | x = tree;                                       { `Tree x }
+ | LBRACKET; x = list(expr); RBRACKET;             { `List x }
 
 tree:
  | LCBRACKET; RCBRACKET;                           { Tree.Empty }
  | LCBRACKET; x = expr; y = list(tree); RCBRACKET; { Tree.Node (x, y) }
 
 let_body:
- | LET; i = ID; b = expr; e = expr; { `Let (i, b, e) }
+ | LET; i = ID; b = expr; e = expr;                { `Let (i, b, e) }
 
 lambda_body:
- | LAMBDA; args = sexp(list(ID)); body = expr; { `Lambda (args, body) }
+ | LAMBDA; args = sexp(list(ID)); body = expr;     { `Lambda (args, body) }
 
 call_body:
- | op = binop; args = list(expr); { `Op (op, args) }
- | op = unop; args = list(expr);  { `Op (op, args) }
+ | op = binop; args = list(expr);                  { `Op (op, args) }
+ | op = unop; args = list(expr);                   { `Op (op, args) }
  | op = unop_call; args = list(expr);              { `Op (op, args) }
  | op = binop_call; args = list(expr);             { `Op (op, args) }
- | IF; args = list(expr);         { `Op (If, args) }
+ | IF; args = list(expr);                          { `Op (If, args) }
  | f = expr; args = list(expr);                    { `Apply (f, args) }
 
 constr:
@@ -173,10 +183,10 @@ example:
  | lhs = expr; ARROW; rhs = expr { (lhs, rhs) }
 
 typ:
- | x = simple_typ                                { x }
- | LPAREN; RPAREN; ARROW; output = typ;          { Arrow_t ([], output) }
- | input = simple_typ; ARROW; output = typ;      { Arrow_t ([input], output) }
- | inputs = sexp(typ_list); ARROW; output = typ; { Arrow_t (inputs, output) }
+ | x = simple_typ                                   { x }
+ | LPAREN; RPAREN; ARROW; output = typ;             { Arrow_t ([], output) }
+ | input = simple_typ; ARROW; output = typ;         { Arrow_t ([input], output) }
+ | inputs = sexp(typ_list); ARROW; output = typ;    { Arrow_t (inputs, output) }
 
 simple_typ:
  | x = ID                                           { match x with
@@ -189,8 +199,8 @@ simple_typ:
  | constr = ID; LBRACKET; args = typ_list; RBRACKET { App_t (constr, args) }
 
 typ_list:
- | x = typ; COMMA; y = typ       { [x; y] }
- | x = typ; COMMA; xs = typ_list { x::xs }
+ | x = typ; COMMA; y = typ                          { [x; y] }
+ | x = typ; COMMA; xs = typ_list                    { x::xs }
 
 sexp(X):
  | LPAREN; x = X; RPAREN; { x }

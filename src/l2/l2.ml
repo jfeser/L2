@@ -293,10 +293,37 @@ let eval_command =
   
   Command.basic ~summary:"Run L2 source code." spec run
 
+let library_command =
+  let spec =
+    let open Command.Spec in
+    empty
+    +> anon (maybe ("source" %: file))
+  in
+
+  let run m_source_fn () =
+    let m_library = match m_source_fn with
+      | Some fn -> Library.from_file fn
+      | None -> Library.from_channel ~file:"stdin" In_channel.stdin
+    in
+
+    match m_library with
+    | Ok library ->
+      List.iter (String.Map.keys library.Library.expr_ctx) ~f:(fun name ->
+          let type_ = String.Map.find_exn library.Library.type_ctx name in
+          let expr = String.Map.find_exn library.Library.expr_ctx name in
+          printf "%s: %s\n" name (Infer.Type.to_string type_);
+          print_endline (Expr.to_string expr);
+          print_newline ())
+    | Error err -> print_endline (Error.to_string_hum err)
+  in
+
+  Command.basic ~summary:"Load a library and print." spec run
+
 let commands =
   Command.group ~summary:"A suite of tools for synthesizing and running L2 programs." [
     "synth", synth_command;
     "eval", eval_command;
+    "library", library_command;
   ]
 
 let () = Command.run commands
