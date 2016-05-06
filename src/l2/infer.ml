@@ -229,6 +229,9 @@ module Unifier = struct
     | App_t (name, args) -> App_t (name, List.map ~f:(apply s) args)
     | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(apply s) args, apply s ret)
 
+  let rec apply_ctx : t -> Type0.t String.Map.t -> Type0.t String.Map.t =
+    fun u ctx -> String.Map.map ctx ~f:(apply u)
+
   let merge outer inner =
     Int.Map.merge outer inner ~f:(fun ~key -> function
         | `Both (o, i) -> Some i
