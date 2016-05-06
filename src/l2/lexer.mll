@@ -43,6 +43,7 @@ rule token = parse
  | "|"                   { BAR }
  | "~"                   { NOT }
  | "::"                  { CONS }
+ | "cons"                { CONS }
  | ";"                   { SEMI }
  | "->"                  { ARROW }
  | '{'                   { LCBRACKET }
