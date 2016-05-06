@@ -531,28 +531,6 @@ let free ?(bound=stdlib_names) (e: TypedExpr.t) : (id * typ) list =
       IdTypeSet.union (f bound' e1) (f bound' e2)
   in f bound e |> IdTypeSet.to_list
 
-(** Check whether expression e contains expression x. *)
-(* let contains (x: typed_expr) (e: typed_expr) : bool = match e with *)
-(*   | Num _ | Bool _ | Id _ -> e = x *)
-(*   | List (l, _) -> List.find ~f:(contains x) l *)
-(*   | Tree (l, _) -> Tree.flatten x |> List.find ~f:(contains x) *)
-(*   | Lambda ((_, body), _) -> contains x body *)
-(*   | Apply ((func, args), _) -> *)
-(*     contains x args || List.find ~f:(contains x) args *)
-(*   | Op ((_, args), _) -> List.find ~f:(contains x) args *)
-(*   | Let ((_, e1, e2), _) -> contains x e1 || contains x e2 *)
-
-(* let contains_name (x: typed_exper) (n: string) : bool = match e with *)
-(*   | Num _ | Bool _ -> false *)
-(*   | Id n' -> n' = n *)
-(*   | List (l, _) -> List.find ~f:(contains_name x) l *)
-(*   | Tree (l, _) -> Tree.flatten x |> List.find ~f:(contains_name x) *)
-(*   | Lambda ((_, body), _) -> contains_name x body *)
-(*   | Apply ((func, args), _) -> *)
-(*     contains_name x args || List.find ~f:(contains_name x) args *)
-(*   | Op ((_, args), _) -> List.find ~f:(contains_name x) args *)
-(*   | Let ((_, e1, e2), _) -> contains_name x e1 || contains_name x e2 *)
-
 module Type = struct
   include Type0
 
