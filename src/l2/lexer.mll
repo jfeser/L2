@@ -22,6 +22,12 @@ rule token = parse
  | "forall"              { FORALL }
  | "or"                  { OR }
  | "and"                 { AND }
+ | "car"                 { CAR }
+ | "cdr"                 { CDR }
+ | "tree"                { TREE }
+ | "children"            { CHILDREN }
+ | "value"               { VALUE }
+ | "rcons"               { RCONS }
  | "+"                   { ADD }
  | "-"                   { SUB }
  | "*"                   { MUL }

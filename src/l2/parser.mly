@@ -32,6 +32,12 @@ open Collections
 %token OR
 %token NOT
 %token CONS
+%token RCONS
+%token CAR
+%token CDR
+%token TREE
+%token CHILDREN
+%token VALUE
 %token SEMI
 %token ARROW
 %token LCBRACKET
@@ -84,6 +90,8 @@ expr_ml:
 simple_expr_ml:
  | x = argument_ml                                                  { x }
  | x = argument_ml; ys = nonempty_list(argument_ml)                 { `Apply (x, ys) }
+ | op = unop_call; x = argument_ml                                       { `Op (op, [x]) }
+ | op = binop_call; x = argument_ml; y = argument_ml                     { `Op (op, [x; y]) }
  | op = unop; x = simple_expr_ml;                                   { `Op (op, [x]) }
  | x = simple_expr_ml; op = binop; y = simple_expr_ml;              { `Op (op, [x; y]) }
 
@@ -115,6 +123,16 @@ argument_ml:
 %inline unop:
  | NOT { Not }
 
+%inline unop_call:
+ | CAR { Car }
+ | CDR { Cdr }
+ | VALUE { Value }
+ | CHILDREN { Children }
+
+%inline binop_call:
+ | RCONS { RCons }
+ | TREE { Tree }
+
 expr:
  | x = ID                { `Id x }
  | x = sexp(let_body)    { x }
@@ -138,22 +156,10 @@ lambda_body:
 call_body:
  | op = binop; args = list(expr); { `Op (op, args) }
  | op = unop; args = list(expr);  { `Op (op, args) }
+ | op = unop_call; args = list(expr);              { `Op (op, args) }
+ | op = binop_call; args = list(expr);             { `Op (op, args) }
  | IF; args = list(expr);         { `Op (If, args) }
- | f = expr; args = list(expr);
-   {
-     match f with
-     | `Id f_id ->
-        (match f_id with
-         | "rcons"    -> `Op (RCons, args)
-         | "cons"     -> `Op (Cons, args)
-         | "car"      -> `Op (Car, args)
-         | "cdr"      -> `Op (Cdr, args)
-         | "tree"     -> `Op (Tree, args)
-         | "children" -> `Op (Children, args)
-         | "value"    -> `Op (Value, args)
-         | _          -> `Apply (f, args))
-     | _ -> `Apply (f, args)
-   }
+ | f = expr; args = list(expr);                    { `Apply (f, args) }
 
 constr:
  | LPAREN; FORALL; vars = sexp(list(ID)); body = expr; RPAREN { (body, vars) }
