@@ -191,7 +191,9 @@ module L2_Generalizer = struct
                       H.hole cost_model (Hole.create ~ctx:ctx t2 lambda) Sp.Top;
                       H.hole cost_model (Hole.create ~ctx:ctx t3 base_case) Sp.Top;
                     ]
-                  | name, _ -> failwith (sprintf "Unexpected combinator name: %s" name)
+                  | name, args -> List.map args ~f:(function
+                      | Arrow_t _ as t -> H.hole cost_model (Hole.create ~ctx:ctx t lambda) Sp.Top
+                      | t -> H.hole cost_model (Hole.create ~ctx:ctx t expression) Sp.Top)
                 in
                 H.apply cost_model (H.id_name cost_model func Sp.Top) arg_holes spec, u)
           | _ -> None
