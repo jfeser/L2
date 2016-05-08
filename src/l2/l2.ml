@@ -319,11 +319,10 @@ let library_command =
       List.iter (String.Map.keys library.Library.expr_ctx) ~f:(fun name ->
           let type_ = String.Map.find_exn library.Library.type_ctx name in
           let expr = String.Map.find_exn library.Library.expr_ctx name in
-          let value = String.Map.find_exn library.Library.value_ctx name in
           printf "%s: %s\n" name (Infer.Type.to_string type_);
           print_endline (Expr.to_string expr);
-          print_endline (Sexp.to_string_hum ([%sexp_of:Value.t] value));
-          print_newline ())
+          print_newline ());
+      printf "Summary: %d values" (String.Map.length library.Library.expr_ctx)
     | Error err -> print_endline (Error.to_string_hum err)
   in
 
