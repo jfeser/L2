@@ -276,8 +276,13 @@ module Unifier = struct
       | _ -> unify_error t1 t2
 
   and of_many_types_exn : Type0.t list -> Type0.t list -> t =
-    List.fold2_exn ~init:empty ~f:(fun s a1 a2 ->
-        compose s (of_types_exn (apply s a1) (apply s a2)))
+    fun ts1 ts2 ->
+      match List.zip ts1 ts2 with
+      | Some ts -> List.fold_left ts ~init:empty ~f:(fun s (a1, a2) ->
+          compose s (of_types_exn (apply s a1) (apply s a2)))
+      | None ->
+        let err = Error.create "Length mismatch." (ts1, ts2) [%sexp_of:Type0.t list * Type0.t list] in
+        raise (TypeError err)
 
   let of_types t1 t2 =
     try Some (of_types_exn t1 t2) with TypeError _ -> None
@@ -623,23 +628,27 @@ module Type = struct
         Unifier.apply u body_t, u
         
       and of_expr ctx expr =
-        let t, u = match expr with
-          | `Num x -> Const_t Num_t, Unifier.empty
-          | `Bool x -> Const_t Bool_t, Unifier.empty
-          | `Tree x ->
-            let t, u = of_tree ctx x in
-            App_t ("tree", [t]), u
-          | `List x ->
-            let t, u = of_list ctx x in
-            App_t ("list", [t]), u
-          | `Id id -> of_id ctx id
-          | `Lambda (args, body) -> of_lambda ctx args body
-          | `Apply (func, args) -> of_func ctx func args
-          | `Op (op, args) -> of_op ctx op args
-          | `Let (name, bound, body) -> of_let ctx name bound body
-        in
-        let t = Unifier.apply u t in
-        t, u
+        try 
+          let t, u = match expr with
+            | `Num x -> Const_t Num_t, Unifier.empty
+            | `Bool x -> Const_t Bool_t, Unifier.empty
+            | `Tree x ->
+              let t, u = of_tree ctx x in
+              App_t ("tree", [t]), u
+            | `List x ->
+              let t, u = of_list ctx x in
+              App_t ("list", [t]), u
+            | `Id id -> of_id ctx id
+            | `Lambda (args, body) -> of_lambda ctx args body
+            | `Apply (func, args) -> of_func ctx func args
+            | `Op (op, args) -> of_op ctx op args
+            | `Let (name, bound, body) -> of_let ctx name bound body
+          in
+          let t = Unifier.apply u t in
+          t, u
+        with TypeError err ->
+          let err = Error.tag_arg err "Type inference failed." expr [%sexp_of:Expr.t] in
+          raise (TypeError err)
       in
 
       of_expr ctx expr
