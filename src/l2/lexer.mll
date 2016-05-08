@@ -22,6 +22,7 @@ rule token = parse
  | "forall"              { FORALL }
  | "or"                  { OR }
  | "and"                 { AND }
+ | "not"                 { NOT }
  | "car"                 { CAR }
  | "cdr"                 { CDR }
  | "tree"                { TREE }
