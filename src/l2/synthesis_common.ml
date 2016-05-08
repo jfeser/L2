@@ -188,8 +188,8 @@ module Memoizer = struct
     fun m -> Sequence.filter ~f:(fun (h, _) ->
         incr "num_hypos";
         let num_hypos = Counter.get counter "num_hypos" in
-        if num_hypos mod 100 = 0 then begin
-          printf "%d\n" num_hypos;
+        if num_hypos mod 1000 = 0 then begin
+          printf "%d %d\n" num_hypos (Hypothesis.cost h);
           flush stdout
         end;
         match H.kind h with
