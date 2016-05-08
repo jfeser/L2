@@ -609,7 +609,6 @@ module Type = struct
   
       and of_op ctx op args =
         let t = Op.typ op |> instantiate 0 in
-        printf "%s: %s\n" (Op.to_string op) (to_string t);
         of_callable ctx t Unifier.empty args
 
       and of_let ctx name bound body =
@@ -640,7 +639,6 @@ module Type = struct
           | `Let (name, bound, body) -> of_let ctx name bound body
         in
         let t = Unifier.apply u t in
-        printf "Type of %s: %s\n%s\n\n" (Expr.to_string expr) (to_string t) (Unifier.to_string u);
         t, u
       in
 
