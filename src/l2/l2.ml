@@ -28,6 +28,7 @@ let get_json testcase runtime solution config argv : Json.json =
     "memoizer", Synthesis_common.timer;
     "deduction", deduction_timer;
     "example_deduction", Example_deduction.timer;
+    "fast_example_deduction", Fast_example_deduction.timer;
     (* "deduction", Deduction.timer; *)
   ] in
   let counters = [
@@ -96,6 +97,7 @@ let synthesize engine deduction cost_model library testcase =
               | `None -> Deduction.no_op
               | `Higher_order -> Deduction.compose d higher_order_deduction
               | `Unification -> Deduction.compose d Unification_deduction.push_specs
+              | `Fast_example -> Deduction.compose d (Fast_example_deduction.create library)
               | `Example -> Deduction.compose d example_deduction
               | `Random -> Deduction.compose d Random_deduction.push_specs
               | `Recursive_spec -> Deduction.compose d Recursive_spec_deduction.push_specs)
@@ -176,6 +178,7 @@ let synth_command =
              "recursive_spec", `Recursive_spec;
              "unification", `Unification;
              "example", `Example;
+             "fast_example", `Fast_example;
              "random", `Random;
              "none", `None]))
       ~doc:" deduction routines to use during synthesis (only applies when using v2 engine)"
@@ -328,11 +331,139 @@ let library_command =
 
   Command.basic ~summary:"Load a library and print." spec run
 
+module AbstractExample = struct
+  module T = struct
+    type t = ExprValue.t list * ExprValue.t [@@deriving compare, sexp]
+  end
+  include T
+
+  let normalize : t -> t = fun (ins, out) ->
+    let ctx = ref String.Map.empty in
+    let ctr = ref 0 in
+    let rec normalize = function
+      | `Unit
+      | `Num _
+      | `Bool _ as e -> e
+      | `Id id -> begin
+          let id' = sprintf "v%d" !ctr in
+          ctx := String.Map.add !ctx ~key:id ~data:id';
+          incr ctr;
+          `Id id'
+        end
+      | `List l -> `List (List.map l ~f:normalize)
+      | _ -> failwith "Unexpected case."
+    in
+    let rec sub = function
+      | `Unit
+      | `Num _
+      | `Bool _ as e -> e
+      | `Id id -> begin match String.Map.find !ctx id with
+          | Some id' -> `Id id'
+          | None -> `Id id
+        end
+      | `List l -> `List (List.map l ~f:sub)
+      | _ -> failwith "Unexpected case."
+    in      
+    let out' = normalize out in
+    let ins' = List.map ins ~f:sub in
+    (ins', out')
+
+  let print (ins, out) =
+    print_string "(";
+    List.map ins ~f:ExprValue.to_string
+    |> List.intersperse ~sep:", "
+    |> List.iter ~f:print_string;
+    print_string ") -> ";
+    print_string (ExprValue.to_string out);
+    print_newline ()
+
+  let join : t -> t -> t = fun e1 e2 ->
+    let fresh_int = Util.Fresh.mk_fresh_int_fun () in
+    let fresh_var = fun () -> `Id (sprintf "T%d" (fresh_int ())) in
+    let rec join_val = fun v1 v2 -> match v1, v2 with
+      | `Unit, `Unit -> `Unit
+      | `Num _, `Num _ 
+      | `Bool _, `Bool _ 
+      | `Id _, `Id _ -> 
+        if v1 = v2 then v1 else fresh_var ()
+      | (`Id _ as v), _ | _, (`Id _ as v) -> v
+      | `List l1, `List l2 ->
+        if List.length l1 = List.length l2 then
+          `List (List.map2_exn l1 l2 ~f:join_val)
+        else fresh_var ()
+      | _ -> failwiths "Unexpected case." (v1, v2) [%sexp_of:ExprValue.t * ExprValue.t]
+    in
+    let (i1, o1) = e1 in
+    let (i2, o2) = e2 in
+    (List.map2_exn i1 i2 ~f:join_val, join_val o1 o2)
+
+  let join_many : t list -> t = List.fold_left1 ~f:join
+
+  include Comparable.Make(T)
+end
+
+let spec_command =
+  let print_command =
+    let spec =
+      let open Command.Spec in
+      empty
+      +> anon (maybe ("source" %: file))
+    in
+
+    let run m_source_fn () =
+      let exs = match m_source_fn with
+        | Some fn -> Example_deduction.examples_of_file fn
+        | None -> Example_deduction.examples_of_channel In_channel.stdin
+      in
+
+      let exs = List.map ~f:AbstractExample.normalize exs in
+
+      let num_args =
+        List.hd_exn exs
+        |> Tuple.T2.get1
+        |> List.length
+      in
+
+      let map =
+        List.range 0 num_args
+        |> List.fold_left ~init:AbstractExample.Map.empty ~f:(fun m n ->
+            List.fold_left exs ~init:m ~f:(fun m (ins, out) ->
+                Map.add_multi m ~key:(List.take ins n, out) ~data:(ins, out)))
+        |> Map.map ~f:List.dedup
+      in
+      
+      Map.iteri map ~f:(fun ~key ~data ->
+          let (ins, out) = key in
+          let ins = ins @ (List.repeat (num_args - List.length ins) (`Id "T")) in
+          AbstractExample.print (ins, out);
+          
+          print_string "\t";
+          AbstractExample.print (AbstractExample.join_many data);
+          print_newline ())
+
+      (* List.iter exs ~f:(fun (ins, out) -> *)
+      (*     print_string "("; *)
+      (*     List.map ins ~f:ExprValue.to_string *)
+      (*     |> List.intersperse ~sep:", " *)
+      (*     |> List.iter ~f:print_string; *)
+      (*     print_string ") -> "; *)
+      (*     print_string (ExprValue.to_string out); *)
+      (*     print_newline ()) *)
+    in
+    
+    Command.basic ~summary:"Print out a component specification." spec run
+  in
+
+  Command.group ~summary:"Commands related to component specifications." [
+    "print", print_command;
+  ]
+
 let commands =
   Command.group ~summary:"A suite of tools for synthesizing and running L2 programs." [
     "synth", synth_command;
     "eval", eval_command;
     "library", library_command;
+    "spec", spec_command;
   ]
 
 let () = Command.run commands

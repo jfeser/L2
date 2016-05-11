@@ -1,19 +1,22 @@
 open Core.Std
 open Collections
 
-type t = [
-  | `Unit
-  | `Num of int
-  | `Bool of bool
-  | `List of t list
-  | `Tree of t Tree.t
-  | `Closure of t * (t Ctx.t)
-  | `Id of Expr.id
-  | `Let of Expr.id * t * t
-  | `Lambda of Expr.id list * t
-  | `Apply of t * (t list)
-  | `Op of Expr.Op.t * (t list)
-] [@@deriving compare, sexp, bin_io]
+module T = struct
+  type t = [
+    | `Unit
+    | `Num of int
+    | `Bool of bool
+    | `List of t list
+    | `Tree of t Tree.t
+    | `Closure of t * (t Ctx.t)
+    | `Id of Expr.id
+    | `Let of Expr.id * t * t
+    | `Lambda of Expr.id list * t
+    | `Apply of t * (t list)
+    | `Op of Expr.Op.t * (t list)
+  ] [@@deriving compare, sexp, bin_io]
+end
+include T
 
 let rec to_string (e: t) : string =
   let list_to_string l = String.concat ~sep:" " (List.map ~f:to_string l) in
@@ -77,3 +80,5 @@ let rec to_value_exn : t -> Value.t = function
 
 let to_value : t -> Value.t Or_error.t = fun e ->
   Or_error.try_with (fun () -> to_value_exn e)
+
+include Comparable.Make(T)

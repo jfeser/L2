@@ -22,10 +22,11 @@ let timer =
   t
 let run_with_time = fun name f -> Timer.run_with_time timer name f
 
-let load_examples : file:string -> example list =
-  fun ~file ->
-    Sexp.load_sexps file
-    |> List.map ~f:[%of_sexp:example]
+let examples_of_file : string -> example list =
+  fun fn -> Sexp.load_sexps fn |> List.map ~f:[%of_sexp:example]
+
+let examples_of_channel : In_channel.t -> example list =
+  fun ch -> Sexp.input_sexps ch |> List.map ~f:[%of_sexp:example]
 
 let rec occurs : ExprValue.t -> id:string -> bool = fun e ~id ->
   match e with
@@ -290,7 +291,7 @@ let push_specs' : specs:((ExprValue.t list * ExprValue.t) list) String.Map.t -> 
 let of_spec_files : string list -> (Sp.t Sk.t -> Sp.t Sk.t Option.t) = fun spec_files ->
   let name_to_examples =
     List.map spec_files ~f:(fun sf ->
-        let exs = load_examples ~file:sf in
+        let exs = examples_of_file sf in
         let name = Filename.chop_suffix (Filename.basename sf) "-examples.sexp" in
         (name, exs))
     |> String.Map.of_alist_exn

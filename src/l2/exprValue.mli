@@ -16,6 +16,7 @@ type t =
 
 include Binable.S with type t := t
 include Sexpable.S with type t := t
+include Comparable.S with type t := t
 
 val compare : t -> t -> int
 val to_string : t -> String.t
