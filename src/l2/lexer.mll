@@ -20,8 +20,8 @@ rule token = parse
  | "fun"                 { FUN }
  | "lambda"              { LAMBDA }
  | "forall"              { FORALL }
- | "or"                  { OR }
- | "and"                 { AND }
+ | "||"                  { OR }
+ | "&&"                  { AND }
  | "not"                 { NOT }
  | "car"                 { CAR }
  | "cdr"                 { CDR }

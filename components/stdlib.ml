@@ -51,7 +51,7 @@ let rec take = fun l x ->
   if x > 0 then (car l) :: (take (cdr l) (x - 1)) else []
 
 let rec zip = fun x y ->
-  if x = [] or y = [] then [] else
+  if x = [] && y = [] then [] else
     [x; y] :: (zip (cdr x) (cdr y))
 
 let rec intersperse = fun l e ->
@@ -134,11 +134,11 @@ let is_empty l = l = []
 
 let rec list_and l =
   if l = [] then true else
-    (car l) and (list_and (cdr l))
+    (car l) && (list_and (cdr l))
 
 let rec list_or l =
   if l = [] then false else
-    (car l) and (list_or (cdr l))
+    (car l) && (list_or (cdr l))
 
 let rec repeat x n =
   if n = 0 then [] else
