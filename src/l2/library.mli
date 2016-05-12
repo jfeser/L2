@@ -3,6 +3,7 @@ open Core.Std
 type t = {
   expr_ctx : Expr.t String.Map.t;
   value_ctx : Value.t String.Map.t;
+  exprvalue_ctx : ExprValue.t String.Map.t;
   type_ctx : Infer.Type.t String.Map.t;
 }
 

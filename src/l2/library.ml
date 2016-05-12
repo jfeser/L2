@@ -7,12 +7,14 @@ module SMap = String.Map
 type t = {
   expr_ctx : Expr.t SMap.t;
   value_ctx : Value.t SMap.t;
+  exprvalue_ctx : ExprValue.t SMap.t;
   type_ctx : Type.t SMap.t;
 }
 
 let empty = {
   expr_ctx = SMap.empty;
   value_ctx = SMap.empty;
+  exprvalue_ctx = SMap.empty;
   type_ctx = SMap.empty;
 }
 
@@ -28,11 +30,19 @@ let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
   in
 
   let expr_ctx = SMap.of_alist_exn exprs in
+  
   let value_ctx = List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
       let ctx_ref = ref ctx in
       let value = Eval.eval ctx_ref (`Let (name, expr, `Id name)) in
       SMap.add !ctx_ref ~key:name ~data:value)
   in
+  
+  let exprvalue_ctx = List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
+      let ctx_ref = ref ctx in
+      let value = Eval.partial_eval ~ctx:ctx_ref (`Let (name, (ExprValue.of_expr expr), `Id name)) in
+      SMap.add !ctx_ref ~key:name ~data:value)
+  in
+
   let type_ctx = List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
       let type_ =
         try
@@ -42,7 +52,7 @@ let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
       in
       SMap.add ctx ~key:name ~data:type_)
   in
-  { expr_ctx; value_ctx; type_ctx }
+  { expr_ctx; value_ctx; exprvalue_ctx; type_ctx }
 
 let from_channel : file:string -> In_channel.t -> t Or_error.t = fun ~file ch ->
   Or_error.try_with (fun () -> from_channel_exn ~file ch)
