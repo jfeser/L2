@@ -157,7 +157,7 @@ module Abstract_example = struct
             | None -> `Id id
           end
         | `List l -> `List (List.map l ~f:sub_value)
-        | _ -> failwith "Unexpected case."
+        | v -> failwiths "Unexpected case." v [%sexp_of:ExprValue.t]
       in
 
       let sub = function
