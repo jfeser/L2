@@ -138,7 +138,7 @@ let rec list_and l =
 
 let rec list_or l =
   if l = [] then false else
-    (car l) && (list_or (cdr l))
+    (car l) || (list_or (cdr l))
 
 let rec repeat x n =
   if n = 0 then [] else
@@ -184,7 +184,7 @@ let min x = car (sort x)
 let max x = car (reverse (sort x))
 
 let rec product x =
-  if x = [] then 0 else
+  if x = [] then 1 else
     (car x) * (product (cdr x))
 
 (** Integer functions. *)
