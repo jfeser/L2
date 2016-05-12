@@ -326,7 +326,7 @@ module Memoizer = struct
         (* Otherwise, we will need to use the available
            generalizations to generate hypothesis of the current cost. *)
         | None ->
-          let (top_key, _) = Key.of_hole_spec hole Specification.Top in
+          let (top_key, _) = Key.of_hole_spec hole Specification.top in
           let top_match_count = begin match HoleTable.find m.hole_table top_key with
             | Some state -> begin match CostTable.find state.S.hypotheses cost with
                 | Some hs -> List.length hs

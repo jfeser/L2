@@ -40,11 +40,11 @@ module Value_generalizer = struct
   
   let name_of_int n = "v" ^ (Int.to_string n)
 
-  let spec_of_int x = Sp.Examples (Sp.Examples.singleton (SD.Map.empty, `Num x))
-  let int_of_spec = function
-    | Sp.Examples exs ->
+  let spec_of_int x = Examples.singleton (SD.Map.empty, `Num x) |> Examples.to_spec
+  let int_of_spec s = match Sp.spec s with
+    | Examples.Examples exs ->
       let rets =
-        Sp.Examples.to_list exs
+        Examples.to_list exs
         |> List.map ~f:Tuple.T2.get2
         |> List.dedup
       in
@@ -55,8 +55,8 @@ module Value_generalizer = struct
     | _ -> None
 
   let generate_bool () = [
-    (H.bool cost_model true Sp.Top, Unifier.empty);
-    (H.bool cost_model false Sp.Top, Unifier.empty);
+    (H.bool cost_model true Sp.top, Unifier.empty);
+    (H.bool cost_model false Sp.top, Unifier.empty);
   ]
 
   let generate_int type_ spec =
@@ -85,7 +85,7 @@ module Value_generalizer = struct
   let generate_list type_ spec elem_t = match int_of_spec spec with
     | Some x -> [
         H.list cost_model (List.init x ~f:(fun _ ->
-            H.hole cost_model (Hole.create elem_t sym) Sp.Top))
+            H.hole cost_model (Hole.create elem_t sym) Sp.top))
           spec, Unifier.empty;
         H.hole cost_model (Hole.create type_ sym) (spec_of_int (x + 1)), Unifier.empty;
       ]
@@ -109,7 +109,7 @@ module Value_generalizer = struct
     | t -> failwiths "Unexpected type." t [%sexp_of:Type.t]
 
   let of_type : ImmutableType.t -> (Generalizer.t * Hypothesis.t) = fun t ->
-    let init = H.hole cost_model (Hole.create (ImmutableType.to_type t) sym) Sp.Top in
+    let init = H.hole cost_model (Hole.create (ImmutableType.to_type t) sym) Sp.top in
     (gen, init)
 end
 
@@ -151,7 +151,7 @@ let generate_examples : config:config -> Expr.t -> Type.t -> example Sequence.t 
         |> List.unzip
       in
       let gen = Generalizer.compose_all_exn gens in
-      let init = H.list cost_model inits Sp.Top in
+      let init = H.list cost_model inits Sp.top in
       let memo = Memoizer.create Library.empty gen cost_model in
       Memoizer.to_flat_sequence memo ~max_cost:config.max_cost init
         

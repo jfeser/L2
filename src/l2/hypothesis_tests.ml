@@ -36,7 +36,7 @@ let static_distance_tests = "static-distance" >::: [
     ]
   ]
 
-let top = Specification.Top
+let top = Specification.top
 let constant_cm = CostModel.constant 1
 
 let cost_model_tests = "cost-model" >::: [

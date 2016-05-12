@@ -193,47 +193,56 @@ module PerFunctionCostModel : sig
 end
 
 module Specification : sig
-  module Examples : sig
-    type t
-    type example = Value.t StaticDistance.Map.t * Value.t [@@deriving sexp]
+  type spec = ..
+  type spec += private Top | Bottom
 
-    include Sexpable.S with type t := t
+  type t
 
-    val of_list : example list -> t Or_error.t
-    val of_list_exn : example list -> t
-    val to_list : t -> example list
-    val singleton : example -> t
-
-    val context : t -> StaticDistance.t list
-  end
-
-  module FunctionExamples : sig
-    type t
-    type example = (Value.t StaticDistance.Map.t * Value.t list) * Value.t [@@deriving sexp]
-
-    include Sexpable.S with type t := t
-    
-    val of_list : example list -> t Or_error.t
-    val of_list_exn : example list -> t
-    val to_list : t -> example list
-    val singleton : example -> t
-  end
+  include Comparable.S with type t := t
+  include Sexpable.S with type t := t
   
-  type t =
-    | Bottom
-    | Top
-    | Examples of Examples.t
-    | FunctionExamples of FunctionExamples.t
+  val to_string : t -> string
+  val verify : t -> ?library:Library.t -> 'a Skeleton.t -> bool
+  val equal : t -> t -> bool
+  val spec : t -> spec
+  val top : t
+  val bottom : t
+
+  val increment_scope : t -> t
+end
+
+module Examples : sig
+  type t
+  type example = Value.t StaticDistance.Map.t * Value.t [@@deriving sexp]
+
+  type Specification.spec += private Examples of t
 
   include Sexpable.S with type t := t
-  include Comparable.S with type t := t
 
-  val hash : t -> int
-  val compare : t -> t -> int
-  val equal : t -> t -> bool
-  val to_string : t -> string
-  val verify : ?library:Library.t -> t -> 'a Skeleton.t -> bool
-  val increment_scope : t -> t
+  val of_list : example list -> t Or_error.t
+  val of_list_exn : example list -> t
+  val to_list : t -> example list
+  val singleton : example -> t
+
+  val context : t -> StaticDistance.t list
+
+  val to_spec : t -> Specification.t
+end
+
+module FunctionExamples : sig
+  type t
+  type example = (Value.t StaticDistance.Map.t * Value.t list) * Value.t [@@deriving sexp]
+
+  type Specification.spec += private FunctionExamples of t
+  
+  include Sexpable.S with type t := t
+
+  val of_list : example list -> t Or_error.t
+  val of_list_exn : example list -> t
+  val to_list : t -> example list
+  val singleton : example -> t
+
+  val to_spec : t -> Specification.t
 end
 
 (** Hypotheses are {! Skeleton}s which are annotated with {!Specification}s. *)

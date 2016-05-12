@@ -141,13 +141,13 @@ let infer_example :
         (* printf "No examples found. (%s)\n" op; *)
         (* printf "%s\n" (Sexp.to_string_hum ([%sexp_of:example] ex)); *)
         (* print_newline (); *)
-        List.repeat arity Sp.Bottom
+        List.repeat arity Sp.bottom
       | [(args', _)] ->
         List.map args' ~f:(fun a ->
             match ExprValue.to_value a with
-            | Ok v -> Sp.Examples (Sp.Examples.singleton (ctx, v))
-            | Error _ -> Sp.Top)
-      | _ -> List.repeat arity Sp.Top
+            | Ok v -> Examples.singleton (ctx, v) |> Examples.to_spec
+            | Error _ -> Sp.top)
+      | _ -> List.repeat arity Sp.top
     with exn ->
       Error.tag_arg (Error.of_exn exn) "Failure in infer_example."
         (op, ex) [%sexp_of:string * example]
@@ -157,7 +157,7 @@ let infer_examples :
   specs:(example list) String.Map.t
   -> op:string
   -> args:Sp.t Sk.t list
-  -> Sp.Examples.example list
+  -> Examples.example list
   -> Sp.t list =
   fun ~specs ~op ~args exs ->
     try
@@ -190,38 +190,38 @@ let infer_examples :
                   infer_example ~op:op ~specs:op_specs ~ctx (arg_evals, ret_eval)
                 with Eval.RuntimeError err ->
                   (* printf "ERROR: %s\n" (Error.to_string_hum err); *)
-                  List.repeat arity Sp.Bottom)
+                  List.repeat arity Sp.bottom)
             |> List.transpose
             |> (fun a -> Option.value_exn ~message:"BUG: Bad result from infer_example." a)
           in
 
           List.map arg_specs ~f:(fun arg_spec ->
-              if List.exists arg_spec ~f:(fun sp -> sp = Sp.Bottom) then Sp.Bottom else
+              if List.exists arg_spec ~f:(Sp.equal Sp.bottom) then Sp.bottom else
                 let arg_exs =
-                  List.filter_map arg_spec ~f:(function
+                  List.filter_map arg_spec ~f:(fun sp -> match Sp.spec sp with
                       | Sp.Top -> None
-                      | Sp.Examples exs -> Some (Sp.Examples.to_list exs)
+                      | Examples.Examples exs -> Some (Examples.to_list exs)
                       | _ -> failwith "BUG: Unexpected specification.")
                   |> List.concat
                 in
                 match arg_exs with
-                | [] -> Sp.Top
-                | _ -> begin match Sp.Examples.of_list arg_exs with
-                    | Ok sp -> Sp.Examples sp
-                    | Error _ -> Sp.Bottom
+                | [] -> Sp.top
+                | _ -> begin match Examples.of_list arg_exs with
+                    | Ok sp -> Examples.to_spec sp
+                    | Error _ -> Sp.bottom
                   end)
         end
-      | None -> List.repeat arity Sp.Top
+      | None -> List.repeat arity Sp.top
     with exn ->
       Error.tag_arg (Error.of_exn exn) "Failure in infer_examples."
-        (op, args, exs) [%sexp_of:string * Sp.t Sk.t list * Sp.Examples.example list]
+        (op, args, exs) [%sexp_of:string * Sp.t Sk.t list * Examples.example list]
       |> Error.raise
     
 let memoized_infer_examples :
   specs:((ExprValue.t list * ExprValue.t) list) String.Map.t
   -> op:string
   -> args:Sp.t Sk.t list
-  -> Sp.Examples.example list
+  -> Examples.example list
   -> Sp.t list =
   let memoized =
     Cache.memoize (fun (specs, op, args, exs) ->
@@ -235,7 +235,7 @@ let push_specs_exn' :
   -> Sp.t Sk.t
   = fun ~specs sk ->
     let rec push_specs_exn sk = 
-      if Sp.equal (Skeleton.annotation sk) Sp.Bottom then raise Bottom;
+      if Sp.equal (Skeleton.annotation sk) Sp.bottom then raise Bottom;
       match sk with
       | Sk.Num_h (_, s)
       | Sk.Bool_h (_, s)
@@ -246,11 +246,11 @@ let push_specs_exn' :
       | Sk.Let_h ((bound, body), s) -> Sk.Let_h ((push_specs_exn bound, push_specs_exn body), s)
       | Sk.Lambda_h ((num_args, body), s) -> Sk.Lambda_h ((num_args, push_specs_exn body), s)
       | Sk.Op_h ((op, args), s) ->
-        begin match s with
-          | Sp.Examples exs ->
+        begin match Sp.spec s with
+          | Examples.Examples exs ->
             let name = Expr.Op.to_string op in
             let (arg_specs, runtime) = Util.with_runtime (fun () ->
-                memoized_infer_examples ~specs ~op:name ~args (Sp.Examples.to_list exs))
+                memoized_infer_examples ~specs ~op:name ~args (Examples.to_list exs))
             in
             let args = List.map2_exn args arg_specs ~f:(fun arg sp ->
                 Sk.map_annotation arg ~f:(fun _ -> sp))
@@ -259,10 +259,10 @@ let push_specs_exn' :
           | _ -> Sk.Op_h ((op, List.map args ~f:push_specs_exn), s)
         end
       | Sk.Apply_h ((func, args), s) ->
-        begin match s, func with
-          | Sp.Examples exs, Sk.Id_h (Sk.Id.Name name, _) ->
+        begin match Sp.spec s, func with
+          | Examples.Examples exs, Sk.Id_h (Sk.Id.Name name, _) ->
             let (arg_specs, runtime) = Util.with_runtime (fun () ->
-                memoized_infer_examples ~specs ~op:name ~args (Sp.Examples.to_list exs))
+                memoized_infer_examples ~specs ~op:name ~args (Examples.to_list exs))
             in
             (* printf "Runtime %s.\n" (Time.Span.to_string_hum runtime); *)
             (* printf "Pushing specifications for %s.\n" func_name; *)

@@ -77,7 +77,7 @@ let fold_constants (expr: expr) : expr option =
   in try Some (fold expr) with BadExpression -> None
 
 let rewrite h =
-  let top = Specification.Top in
+  let top = Specification.top in
   let rec rewrite h =
     let rewrite_all l = List.map l ~f:rewrite in
     let open Skeleton in
@@ -249,7 +249,7 @@ let rewrite h =
   in try Some (rewrite h) with BadExpression -> None
 
 let rewrite_e (e: Expr.t) =
-  Option.map (rewrite (Skeleton.of_expr Specification.Top e)) (fun h -> Skeleton.to_expr_exn h)
+  Option.map (rewrite (Skeleton.of_expr Specification.top e)) (fun h -> Skeleton.to_expr_exn h)
 
 let simplify base_terms expr =
   match expr |> fold_constants >>= rewrite_e >>= fold_constants >>= (is_base base_terms) with

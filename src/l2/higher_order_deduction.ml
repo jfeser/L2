@@ -36,10 +36,10 @@ end
 module Make_deduce_2 (M : Deduce_2_intf) = struct
   let lambda_spec collection_id parent_spec =
     let open Result.Monad_infix in
-    match parent_spec with
-    | Sp.Examples exs ->
+    match Sp.spec parent_spec with
+    | Examples.Examples exs ->
       let m_hole_exs =
-        List.map (Sp.Examples.to_list exs) ~f:(fun (ctx, out_v) ->
+        List.map (Examples.to_list exs) ~f:(fun (ctx, out_v) ->
             let in_v = match StaticDistance.Map.find ctx collection_id with
               | Some in_v -> in_v
               | None -> lookup_err M.name collection_id
@@ -49,21 +49,21 @@ module Make_deduce_2 (M : Deduce_2_intf) = struct
         |> Result.all
         >>| List.concat
         >>= fun hole_exs ->
-        Result.map_error (Sp.FunctionExamples.of_list hole_exs) ~f:(fun _ -> ())
+        Result.map_error (FunctionExamples.of_list hole_exs) ~f:(fun _ -> ())
       in
       begin
         match m_hole_exs with
-        | Ok hole_exs -> Sp.FunctionExamples hole_exs
-        | Error () -> Sp.Bottom
+        | Ok hole_exs -> FunctionExamples.to_spec hole_exs
+        | Error () -> Sp.bottom
       end
-    | Sp.Top -> Sp.Top
-    | Sp.Bottom -> Sp.Bottom
+    | Sp.Top -> Sp.top
+    | Sp.Bottom -> Sp.bottom
     | _ -> spec_err M.name parent_spec
 
   let deduce spec args =
     let open Result.Monad_infix in
     match args with
-    | [ Sk.Id_h (Sk.Id.StaticDistance sd, _) as list; lambda ] when (Sk.annotation lambda) = Sp.Top ->
+    | [ Sk.Id_h (Sk.Id.StaticDistance sd, _) as list; lambda ] when Sp.equal (Sk.annotation lambda) Sp.top ->
       let child_spec = lambda_spec sd spec in
       [ list; Sk.map_annotation lambda ~f:(fun _ -> child_spec) ]
     | _ -> args
@@ -77,23 +77,23 @@ end
 
 module Make_deduce_fold (M : Deduce_fold_intf) = struct
   let base_spec collection_id parent_spec =
-    match parent_spec with
-    | Sp.Examples exs ->
-      let exs = Sp.Examples.to_list exs in
+    match Sp.spec parent_spec with
+    | Examples.Examples exs ->
+      let exs = Examples.to_list exs in
       let m_base_exs =
         List.filter exs ~f:(fun (ctx, out_v) ->
             match StaticDistance.Map.find ctx collection_id with
             | Some v -> M.is_base_case v
             | None -> lookup_err (M.name ^ "-base-case") collection_id)
-        |> Sp.Examples.of_list
+        |> Examples.of_list
       in
       begin
         match m_base_exs with
-        | Ok base_exs -> Sp.Examples base_exs
-        | Error _ -> Sp.Bottom
+        | Ok base_exs -> Examples.to_spec base_exs
+        | Error _ -> Sp.bottom
       end
-    | Sp.Top -> Sp.Top
-    | Sp.Bottom -> Sp.Bottom
+    | Sp.Top -> Sp.top
+    | Sp.Bottom -> Sp.bottom
     | _ -> spec_err (M.name ^ "-base-case") parent_spec
 
   let deduce spec args =
@@ -101,7 +101,7 @@ module Make_deduce_fold (M : Deduce_fold_intf) = struct
     match args with
     | [ Sk.Id_h (Sk.Id.StaticDistance sd, _) as input; lambda; base ] ->
       let b_spec = Sk.annotation base in
-      let b_spec = if b_spec = Sp.Top then base_spec sd spec else b_spec in
+      let b_spec = if Sp.equal b_spec Sp.top then base_spec sd spec else b_spec in
       [ input; lambda; Sk.map_annotation base ~f:(fun _ -> b_spec ) ]
     | _ -> args
 end
@@ -189,12 +189,13 @@ module Deduce_foldt = Make_deduce_fold (struct
 
 let deduce_lambda lambda spec =
   let (num_args, body) = lambda in
-  if (Sk.annotation body) = Sp.Top then
-    let child_spec = match Sp.increment_scope spec with
-      | Sp.FunctionExamples exs ->
+  if Sp.equal (Sk.annotation body) Sp.top then
+    let child_spec = Sp.increment_scope spec in
+    let child_spec = match Sp.spec child_spec with
+      | FunctionExamples.FunctionExamples exs ->
         let arg_names = StaticDistance.args num_args in
         let child_exs =
-          Sp.FunctionExamples.to_list exs
+          FunctionExamples.to_list exs
           |> List.map ~f:(fun ((in_ctx, in_args), out) ->
               let value_ctx = StaticDistance.Map.of_alist_exn (List.zip_exn arg_names in_args) in
               let in_ctx = StaticDistance.Map.merge value_ctx in_ctx ~f:(fun ~key:_ v ->
@@ -204,11 +205,11 @@ let deduce_lambda lambda spec =
                   | `Right x -> Some x)
               in
               (in_ctx, out))
-          |> Sp.Examples.of_list_exn
+          |> Examples.of_list_exn
         in
-        Sp.Examples child_exs
-      | Sp.Bottom -> Sp.Bottom
-      | Sp.Top -> Sp.Top
+        Examples.to_spec child_exs
+      | Sp.Bottom -> Sp.bottom
+      | Sp.Top -> Sp.top
       | _ -> spec_err "<lambda>" spec
     in
     (num_args, Sk.map_annotation body ~f:(fun _ -> child_spec))
@@ -220,7 +221,7 @@ let rec push_specs (skel: Specification.t Skeleton.t) : Specification.t Skeleton
   | Sk.Num_h (_, s)
   | Sk.Bool_h (_, s)
   | Sk.Id_h (_, s)
-  | Sk.Hole_h (_, s) -> if s = Sp.Bottom then None else Some skel
+  | Sk.Hole_h (_, s) -> if Sp.equal s Sp.bottom then None else Some skel
   | Sk.List_h (l, s) ->
     let m_l = List.map l ~f:push_specs |> Option.all in
     m_l >>| fun l -> Sk.List_h (l, s)
@@ -249,7 +250,7 @@ let rec push_specs (skel: Specification.t Skeleton.t) : Specification.t Skeleton
       | _ -> args        
     in
     let m_args =
-      if List.exists args ~f:(fun a -> Sk.annotation a = Sp.Bottom) then None else
+      if List.exists args ~f:(fun a -> Sp.equal (Sk.annotation a) Sp.bottom) then None else
         Option.all (List.map args ~f:push_specs)
     in
     let m_func = push_specs func in

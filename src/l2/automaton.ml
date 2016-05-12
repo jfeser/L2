@@ -164,12 +164,12 @@ module Constrained = struct
               (* If unification succeeds, apply the unifier to the rest of the type. *)
               let args_t = List.map args_t ~f:(Unifier.apply u) in
               let arg_holes = List.map2_exn args_t (Rule.end_states r) ~f:(fun t sym ->
-                  H.hole cm (Hole.create ~ctx:ctx t sym) Sp.Top)
+                  H.hole cm (Hole.create ~ctx:ctx t sym) Sp.top)
               in
-              (H.apply cm (H.id_name cm c.C.name Sp.Top) arg_holes spec, u)
+              (H.apply cm (H.id_name cm c.C.name Sp.top) arg_holes spec, u)
             | type_ ->
               Unifier.of_types type_ type_ >>| fun u ->
-              (H.id_name cm c.C.name Sp.Top, u)))
+              (H.id_name cm c.C.name Sp.top, u)))
     |> List.concat_no_order
 
   let to_generalizer zctx a cost_model =
@@ -668,7 +668,7 @@ module Synthesizer = struct
     fun ~cost check search_state hole memoizer ->
       let ss = search_state in
       if cost > ss.max_cost then () else
-        let candidates = Memoizer.get memoizer hole Specification.Top ~cost in
+        let candidates = Memoizer.get memoizer hole Specification.top ~cost in
         List.iter candidates ~f:(fun (candidate, _) ->
             print_endline (Sexp.to_string_hum ([%sexp_of:Hypothesis.t] candidate));
             let components = ss.space.Constrained.components in
@@ -733,7 +733,7 @@ module Synthesizer = struct
           | SynthesisException ret -> Some ret)
 
   let synthesize_from_examples : max_cost:int -> Component.Set.t -> Example.t list -> Hypothesis.t Option.t Or_error.t =    
-    let module Exs = Specification.Examples in
+    let module Exs = Examples in
     let module T = Component.Term in
     let module V = Component.Variable in
     let module S = Component.Sort in

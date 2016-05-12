@@ -517,133 +517,199 @@ module PerFunctionCostModel = struct
     | _ -> failwiths "Unexpected JSON." json [%sexp_of:Json.json]
 end
 
-module Specification = struct
-  module Examples = struct
-    module Input = struct
-      module T = struct
-        type t = Ast.value StaticDistance.Map.t [@@deriving sexp, compare]
-      end
-      include T
-      include Comparable.Make(T)
-    end
+module Specification0 = struct
+  type spec = ..
 
-    type example = (Input.t * Ast.value) [@@deriving sexp, compare]
-    type t = example list [@@deriving sexp, compare]
+  module T = struct
+    type t = {
+      verify : 'a. Library.t -> 'a Skeleton.t -> bool;
+      compare : t -> int;
+      to_sexp : unit -> Sexp.t;
+      spec : spec;
+    }
 
-    let of_list exs =
-      let module I = Input in
-      let open Or_error in
-      List.fold exs ~init:(Ok I.Map.empty) ~f:(fun m (ctx, ret) ->
-          m >>= fun m ->
-          match I.Map.find m ctx with
-          | Some ret' when ret' = ret -> Ok m
-          | Some _ -> error_string "Different return value for same input."
-          | None -> Ok (I.Map.add m ~key:ctx ~data:ret))
-      |> ignore
-      >>| fun () -> List.dedup ~compare:compare_example exs
+    let sexp_of_t : t -> Sexp.t = fun t -> t.to_sexp ()
+    let t_of_sexp : Sexp.t -> t = fun _ -> failwith "Unimplemented."
 
-    let singleton : example -> t = fun ex -> [ex]
-    let of_list_exn exs = of_list exs |> Or_error.ok_exn
-    let to_list t = t
-
-    let context = function
-      | [] -> []
-      | (inp, out)::_ -> StaticDistance.Map.keys inp
-  end
-
-  module FunctionExamples = struct
-    module Input = struct
-      module T = struct
-        type t = Ast.value StaticDistance.Map.t * Ast.value list [@@deriving sexp, compare]
-      end
-      include T
-      include Comparable.Make(T)
-    end
-
-    type example = (Input.t * Ast.value) [@@deriving sexp, compare]
-    type t = example list [@@deriving sexp, compare]
-
-    let of_list exs =
-      let module I = Input in
-      let open Or_error in
-      List.fold exs ~init:(Ok I.Map.empty) ~f:(fun m ((ctx, args), ret) ->
-          let key = (ctx, args) in
-          m >>= fun m ->
-          match I.Map.find m key with
-          | Some ret' when ret' = ret -> Ok m
-          | Some _ -> error_string "Different return value for same input."
-          | None -> Ok (I.Map.add m ~key ~data:ret))
-      |> ignore
-      >>| fun () -> List.dedup ~compare:compare_example exs
-
-    let singleton : example -> t = fun ex -> [ex]
-    let of_list_exn exs = of_list exs |> Or_error.ok_exn    
-    let to_list t = t
-  end
-
-  module T = struct 
-    type t =
-      | Bottom
-      | Top
-      | Examples of Examples.t
-      | FunctionExamples of FunctionExamples.t
-      [@@deriving compare, sexp]
+    let compare : t -> t -> int = fun t1 t2 ->
+      let cmp = Int.compare (Obj.extension_id t1.spec) (Obj.extension_id t2.spec) in
+      if cmp = 0 then t1.compare t2 else cmp
   end
   include T
 
-  let hash = Hashtbl.hash
-  let compare = compare_t
-  let equal s1 s2 = compare s1 s2 = 0
-
-  let to_string s = Sexp.to_string (sexp_of_t s)
-
-  let verify : ?library:Library.t -> t -> 'a Skeleton.t -> bool =
-    fun ?(library=Library.empty) spec skel -> match spec with
-      | Top -> true
-      | Bottom -> false
-      | Examples exs ->
-        (try
-           List.for_all exs ~f:(fun (in_ctx, out) ->
-               let fresh_name = Fresh.mk_fresh_name_fun () in
-               let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
-               let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
-               let expr = Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel in
-               let value_ctx =
-                 StaticDistance.Map.to_alist in_ctx
-                 |> List.map ~f:(fun (k, v) -> StaticDistance.Map.find_exn name_ctx k, v)
-                 |> Ctx.of_alist_exn
-                 |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
-               in
-               Eval.eval ~recursion_limit:100 value_ctx expr = out)
-         with
-         | Eval.HitRecursionLimit
-         | Eval.RuntimeError _ -> false)
-      | FunctionExamples exs ->
-        (try
-           List.for_all exs ~f:(fun ((in_ctx, in_args), out) ->
-               let fresh_name = Fresh.mk_fresh_name_fun () in
-               let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
-               let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
-               let expr =
-                 `Apply (Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel,
-                         List.map in_args ~f:Expr.of_value)
-               in
-               let value_ctx =
-                 StaticDistance.Map.to_alist in_ctx
-                 |> List.map ~f:(fun (k, v) -> StaticDistance.Map.find_exn name_ctx k, v)
-                 |> Ctx.of_alist_exn
-                 |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
-               in
-               Eval.eval ~recursion_limit:100 value_ctx expr = out)
-         with
-         | Eval.HitRecursionLimit
-         | Eval.RuntimeError _ -> false)
-
-  let increment_scope spec =
-    match spec with
+  type spec +=
+    | Top
     | Bottom
-    | Top -> spec
-    | Examples exs ->
+
+  let to_string s = Sexp.to_string (s.to_sexp ())
+
+  let verify : 'a. t -> ?library:Library.t -> 'a Skeleton.t -> bool =
+    fun spec ?(library=Library.empty) skel -> spec.verify library skel
+
+  let spec : t -> spec = fun t -> t.spec
+
+  let top =
+    let verify _ _ = true in
+    let compare t = match t.spec with
+      | Top -> 0
+      | _ -> failwith "BUG: Unexpected spec variant."
+    in
+    let to_sexp () = Sexp.Atom "Top" in
+    let spec = Top in
+    { verify; compare; to_sexp; spec }
+
+  let bottom =
+    let verify _ _ = false in
+    let compare t = match t.spec with
+      | Bottom -> 0
+      | _ -> failwith "BUG: Unexpected spec variant."
+    in
+    let to_sexp () = Sexp.Atom "Bottom" in
+    let spec = Bottom in
+    { verify; compare; to_sexp; spec }
+end
+
+module Examples = struct
+  module S = Specification0
+    
+  module Input = struct
+    module T = struct
+      type t = Ast.value StaticDistance.Map.t [@@deriving sexp, compare]
+    end
+    include T
+    include Comparable.Make(T)
+  end
+
+  type example = (Input.t * Ast.value) [@@deriving sexp, compare]
+
+  type t = example list [@@deriving sexp, compare]
+
+  type S.spec += Examples of t
+
+  let of_list exs =
+    let module I = Input in
+    let open Or_error in
+    List.fold exs ~init:(Ok I.Map.empty) ~f:(fun m (ctx, ret) ->
+        m >>= fun m ->
+        match I.Map.find m ctx with
+        | Some ret' when ret' = ret -> Ok m
+        | Some _ -> error_string "Different return value for same input."
+        | None -> Ok (I.Map.add m ~key:ctx ~data:ret))
+    |> ignore
+    >>| fun () -> List.dedup ~compare:compare_example exs
+      
+  let of_list_exn exs = of_list exs |> Or_error.ok_exn
+                                         
+  let to_list t = t
+
+  let singleton : example -> t = fun ex -> [ex]
+  
+  let context = function
+    | [] -> []
+    | (inp, out)::_ -> StaticDistance.Map.keys inp
+
+  let to_spec : t -> S.t = fun exs ->
+    let verify library skel =
+      try
+        List.for_all exs ~f:(fun (in_ctx, out) ->
+            let fresh_name = Fresh.mk_fresh_name_fun () in
+            let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
+            let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
+            let expr = Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel in
+            let value_ctx =
+              StaticDistance.Map.to_alist in_ctx
+              |> List.map ~f:(fun (k, v) -> StaticDistance.Map.find_exn name_ctx k, v)
+              |> Ctx.of_alist_exn
+              |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
+            in
+            Eval.eval ~recursion_limit:100 value_ctx expr = out)
+      with
+      | Eval.HitRecursionLimit
+      | Eval.RuntimeError _ -> false
+    in
+
+    let compare t = match t.S.spec with
+      | Examples exs' -> compare_t exs exs'
+      | _ -> failwith "BUG: Unexpected spec variant."
+    in
+
+    let to_sexp () = sexp_of_t exs in
+    let spec = Examples exs in
+
+    { S.verify; S.compare; S.to_sexp; S.spec }
+end
+
+module FunctionExamples = struct
+  module S = Specification0
+    
+  module Input = struct
+    module T = struct
+      type t = Ast.value StaticDistance.Map.t * Ast.value list [@@deriving sexp, compare]
+    end
+    include T
+    include Comparable.Make(T)
+  end
+
+  type example = (Input.t * Ast.value) [@@deriving sexp, compare]
+  type t = example list [@@deriving sexp, compare]
+  type S.spec += FunctionExamples of t
+
+  let of_list exs =
+    let module I = Input in
+    let open Or_error in
+    List.fold exs ~init:(Ok I.Map.empty) ~f:(fun m ((ctx, args), ret) ->
+        let key = (ctx, args) in
+        m >>= fun m ->
+        match I.Map.find m key with
+        | Some ret' when ret' = ret -> Ok m
+        | Some _ -> error_string "Different return value for same input."
+        | None -> Ok (I.Map.add m ~key ~data:ret))
+    |> ignore
+    >>| fun () -> List.dedup ~compare:compare_example exs
+
+  let singleton : example -> t = fun ex -> [ex]
+  let of_list_exn exs = of_list exs |> Or_error.ok_exn    
+  let to_list t = t
+
+  let to_spec : t -> S.t = fun exs ->
+    let verify library skel =
+      try
+        List.for_all exs ~f:(fun ((in_ctx, in_args), out) ->
+            let fresh_name = Fresh.mk_fresh_name_fun () in
+            let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
+            let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
+            let expr =
+              `Apply (Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel,
+                      List.map in_args ~f:Expr.of_value)
+            in
+            let value_ctx =
+              StaticDistance.Map.to_alist in_ctx
+              |> List.map ~f:(fun (k, v) -> StaticDistance.Map.find_exn name_ctx k, v)
+              |> Ctx.of_alist_exn
+              |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
+            in
+            Eval.eval ~recursion_limit:100 value_ctx expr = out)
+      with
+      | Eval.HitRecursionLimit
+      | Eval.RuntimeError _ -> false
+    in
+
+    let compare t = match t.S.spec with
+      | FunctionExamples exs' -> compare_t exs exs'
+      | _ -> failwith "BUG: Unexpected spec variant."
+    in
+
+    let to_sexp () = sexp_of_t exs in
+    let spec = FunctionExamples exs in
+
+    { S.verify; S.compare; S.to_sexp; S.spec }
+end
+
+module Specification = struct
+  include Specification0
+
+  let increment_scope : t -> t = fun sp -> match sp.spec with
+    | Examples.Examples exs ->
       let exs =
         List.map exs ~f:(fun (in_ctx, out) ->
             let in_ctx =
@@ -653,8 +719,8 @@ module Specification = struct
             in
             (in_ctx, out))
       in
-      Examples exs
-    | FunctionExamples exs ->
+      Examples.to_spec exs
+    | FunctionExamples.FunctionExamples exs ->
       let exs =
         List.map exs ~f:(fun ((in_ctx, in_args), out) ->
             let in_ctx =
@@ -664,7 +730,8 @@ module Specification = struct
             in
             ((in_ctx, in_args), out))
       in
-      FunctionExamples exs
+      FunctionExamples.to_spec exs
+    | _ -> sp
 
   include Comparable.Make(T)
 end
@@ -675,11 +742,9 @@ module Hypothesis = struct
     
   type skeleton = Sp.t Sk.t
 
-  let compare_skel : skeleton -> skeleton -> int = Sk.compare Sp.compare
-  
   module Table = Hashcons.Make(struct
       type t = skeleton
-      let equal h1 h2 = compare_skel h1 h2 = 0
+      let equal = Sk.equal ~equal:Sp.equal
       let hash = Sk.hash
     end)
 
@@ -740,7 +805,7 @@ module Hypothesis = struct
       }
     | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
 
-  let compare_skeleton h1 h2 = compare_skel h1.skeleton.Hashcons.node h2.skeleton.Hashcons.node
+  let compare_skeleton h1 h2 = Sk.compare Sp.compare h1.skeleton.Hashcons.node h2.skeleton.Hashcons.node
   let compare_cost h1 h2 = Int.compare h1.cost h2.cost
 
   let to_expr (h: t) : Expr.t =

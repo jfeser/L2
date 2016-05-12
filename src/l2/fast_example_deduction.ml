@@ -206,7 +206,7 @@ module Abstract_example = struct
   
   let join_many : t list -> t = List.fold_left1 ~f:join
 
-  let of_spec_and_args : library:Library.t -> args:Sp.t Sk.t list -> Sp.Examples.example -> t =
+  let of_spec_and_args : library:Library.t -> args:Sp.t Sk.t list -> Examples.example -> t =
     let module AV = Abstract_value in
     fun ~library ~args spec ->
       let (ctx, ret) = spec in
@@ -235,11 +235,11 @@ module Abstract_example = struct
     let module AV = Abstract_value in
     fun ctx (ins, _) ->
       List.map ins ~f:(function
-          | AV.Top -> Sp.Top
-          | AV.Bottom -> Sp.Bottom
+          | AV.Top -> Sp.top
+          | AV.Bottom -> Sp.bottom
           | AV.Value ev -> begin match ExprValue.to_value ev with
-              | Ok v -> Sp.Examples (Sp.Examples.singleton (ctx, v))
-              | Error _ -> Sp.Top
+              | Ok v -> Examples.to_spec (Examples.singleton (ctx, v))
+              | Error _ -> Sp.top
             end)
 end
 
@@ -292,13 +292,13 @@ let infer_examples :
   -> specs:Function_spec.t String.Map.t
   -> op:string
   -> args:Sp.t Sk.t list
-  -> Sp.Examples.t
+  -> Examples.t
   -> Sp.t list =
   fun ~library ~specs ~op ~args exs ->
     let arity = List.length args in
     match Map.find specs op with
     | Some op_specs -> begin
-        let exs = Sp.Examples.to_list exs in
+        let exs = Examples.to_list exs in
         let ctxs = List.map exs ~f:Tuple.T2.get1 in
         
         let abstract_exs = List.map exs ~f:(fun ex ->
@@ -311,24 +311,24 @@ let infer_examples :
         let per_arg_specs = List.transpose_exn arg_specs in
 
         let arg_examples = List.map per_arg_specs ~f:(fun arg_spec ->
-              if List.exists arg_spec ~f:(fun sp -> sp = Sp.Bottom) then Sp.Bottom else
+              if List.exists arg_spec ~f:(Sp.equal Sp.bottom) then Sp.bottom else
                 let arg_exs =
-                  List.filter_map arg_spec ~f:(function
+                  List.filter_map arg_spec ~f:(fun sp -> match Sp.spec sp with
                       | Sp.Top -> None
-                      | Sp.Examples exs -> Some (Sp.Examples.to_list exs)
+                      | Examples.Examples exs -> Some (Examples.to_list exs)
                       | _ -> failwith "BUG: Unexpected specification.")
                   |> List.concat
                 in
                 match arg_exs with
-                | [] -> Sp.Top
-                | _ -> begin match Sp.Examples.of_list arg_exs with
-                    | Ok sp -> Sp.Examples sp
-                    | Error _ -> Sp.Bottom
+                | [] -> Sp.top
+                | _ -> begin match Examples.of_list arg_exs with
+                    | Ok sp -> Examples.to_spec sp
+                    | Error _ -> Sp.bottom
                   end)
         in
         arg_examples
       end
-    | None -> List.repeat arity Sp.Top
+    | None -> List.repeat arity Sp.top
 
 let push_specs_exn' :
   specs:Function_spec.t String.Map.t
@@ -347,8 +347,8 @@ let push_specs_exn' :
       | Sk.Let_h ((bound, body), s) -> Sk.Let_h ((push_specs_exn bound, push_specs_exn body), s)
       | Sk.Lambda_h ((num_args, body), s) -> Sk.Lambda_h ((num_args, push_specs_exn body), s)
       | Sk.Op_h ((op, args), s) ->
-        begin match s with
-          | Sp.Examples exs ->
+        begin match Sp.spec s with
+          | Examples.Examples exs ->
             let name = Expr.Op.to_string op in
             let (arg_specs, runtime) = Util.with_runtime (fun () ->
                 infer_examples ~library ~specs ~op:name ~args exs)
@@ -360,8 +360,8 @@ let push_specs_exn' :
           | _ -> Sk.Op_h ((op, List.map args ~f:push_specs_exn), s)
         end
       | Sk.Apply_h ((func, args), s) ->
-        begin match s, func with
-          | Sp.Examples exs, Sk.Id_h (Sk.Id.Name name, _) ->
+        begin match Sp.spec s, func with
+          | Examples.Examples exs, Sk.Id_h (Sk.Id.Name name, _) ->
             let (arg_specs, runtime) = Util.with_runtime (fun () ->
                 infer_examples ~library ~specs ~op:name ~args exs)
             in

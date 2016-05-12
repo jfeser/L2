@@ -13,12 +13,13 @@ exception Bottom
 let push_specs_exn : Sp.t Sk.t -> unit = 
   let rec push sps sk =
     let spec = Sk.annotation sk in
-    let sps = match spec with
+    let sps = match Sp.spec spec with
       | Sp.Top -> sps
-      | Sp.Examples _ | Sp.FunctionExamples _ ->
+      | Examples.Examples _ | FunctionExamples.FunctionExamples _ ->
         if Sp.Set.mem sps spec then raise Bottom;
         Sp.Set.add sps spec
       | Sp.Bottom -> raise Bottom
+      | _ -> sps
     in
     match sk with
     | Sk.Num_h _ | Sk.Bool_h _ | Sk.Id_h _ | Sk.Hole_h _ -> ()

@@ -75,10 +75,10 @@ let push_specs s =
     let module SE = Symbolic_execution in
     let module Sp = Specification in
     Counter.incr counter "push_spec_w_unification";
-    match Skeleton.annotation s with
-    | Sp.Examples exs ->
+    match Skeleton.annotation s |> Sp.spec with
+    | Examples.Examples exs ->
       let m_new_examples =
-        List.fold (Sp.Examples.to_list exs) ~init:(Some Hole.Id.Map.empty) ~f:(fun m_exs (ins, out_e) ->
+        List.fold (Examples.to_list exs) ~init:(Some Hole.Id.Map.empty) ~f:(fun m_exs (ins, out_e) ->
             Option.bind m_exs (fun exs -> 
                 try
                   Counter.incr counter "symb_exec_tried";
@@ -140,14 +140,14 @@ let push_specs s =
                   None))
       in
       Option.bind m_new_examples (fun new_exs ->
-          let new_exs = Hole.Id.Map.map new_exs ~f:Sp.Examples.of_list in
+          let new_exs = Hole.Id.Map.map new_exs ~f:Examples.of_list in
           if Hole.Id.Map.exists new_exs ~f:Result.is_error then None else
             Some (Hole.Id.Map.map new_exs ~f:Or_error.ok_exn))
       |>  Option.map ~f:(fun new_exs -> Skeleton.map_hole s ~f:(fun (hole, old_spec) ->
           let s = Sk.Hole_h (hole, old_spec) in
           match Hole.Id.Map.find new_exs hole.Hole.id with
-          | Some exs -> begin match old_spec with
-              | Sp.Top -> Skeleton.Hole_h (hole, Sp.Examples exs)
+          | Some exs -> begin match Sp.spec old_spec with
+              | Sp.Top -> Skeleton.Hole_h (hole, Examples.to_spec exs)
               | _ -> s
             end
           | None -> s))

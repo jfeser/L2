@@ -15,7 +15,7 @@ module Mem = Memoizer
 
 let cost_model = default_cost_model
 
-let top = Specification.Top
+let top = Specification.top
 let cost_model_tests = "cost-model" >::: [
     test_case (fun ctxt ->
         let skel_str =

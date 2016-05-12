@@ -120,7 +120,7 @@ module L2_Generalizer = struct
               (* If unification succeeds, apply the unifier to the rest of the type. *)
               let args_t = List.map args_t ~f:(Unifier.apply u) in
               let arg_holes = List.map args_t ~f:(fun t ->
-                  H.hole cost_model (Hole.create ~ctx t expression) Sp.Top)
+                  H.hole cost_model (Hole.create ~ctx t expression) Sp.top)
               in
               H.op cost_model op arg_holes spec, u)
         | _ -> None)
@@ -139,9 +139,9 @@ module L2_Generalizer = struct
               (* If unification succeeds, apply the unifier to the rest of the type. *)
               let args_t = List.map args_t ~f:(Unifier.apply u) in
               let arg_holes = List.map args_t ~f:(fun t ->
-                  H.hole cost_model (Hole.create ~ctx t expression) Sp.Top)
+                  H.hole cost_model (Hole.create ~ctx t expression) Sp.top)
               in
-              H.apply cost_model (H.id_name cost_model func Sp.Top) arg_holes spec, u)
+              H.apply cost_model (H.id_name cost_model func Sp.top) arg_holes spec, u)
         | _ -> None)
     in
     op_exprs @ apply_exprs
@@ -160,7 +160,7 @@ module L2_Generalizer = struct
           ~f:(fun ctx (arg, arg_t) -> StaticDistance.Map.add ctx ~key:arg ~data:arg_t)
       in
       let lambda =
-        H.lambda cost_model num_args (H.hole cost_model (Hole.create ~ctx:type_ctx ret_t combinator) Sp.Top) spec
+        H.lambda cost_model num_args (H.hole cost_model (Hole.create ~ctx:type_ctx ret_t combinator) Sp.top) spec
       in
       [ lambda, Unifier.empty ]
     | _ -> []
@@ -181,21 +181,21 @@ module L2_Generalizer = struct
                   | "map", [ t1; t2 ]
                   | "mapt", [ t1; t2 ]
                   | "filter", [ t1; t2 ] -> [
-                      H.hole cost_model (Hole.create ~ctx:ctx t1 identifier) Sp.Top;
-                      H.hole cost_model (Hole.create ~ctx:ctx t2 lambda) Sp.Top;
+                      H.hole cost_model (Hole.create ~ctx:ctx t1 identifier) Sp.top;
+                      H.hole cost_model (Hole.create ~ctx:ctx t2 lambda) Sp.top;
                     ]
                   | "foldr", [ t1; t2; t3 ]
                   | "foldl", [ t1; t2; t3 ]
                   | "foldt", [ t1; t2; t3 ] -> [
-                      H.hole cost_model (Hole.create ~ctx:ctx t1 identifier) Sp.Top;
-                      H.hole cost_model (Hole.create ~ctx:ctx t2 lambda) Sp.Top;
-                      H.hole cost_model (Hole.create ~ctx:ctx t3 base_case) Sp.Top;
+                      H.hole cost_model (Hole.create ~ctx:ctx t1 identifier) Sp.top;
+                      H.hole cost_model (Hole.create ~ctx:ctx t2 lambda) Sp.top;
+                      H.hole cost_model (Hole.create ~ctx:ctx t3 base_case) Sp.top;
                     ]
                   | name, args -> List.map args ~f:(function
-                      | Arrow_t _ as t -> H.hole cost_model (Hole.create ~ctx:ctx t lambda) Sp.Top
-                      | t -> H.hole cost_model (Hole.create ~ctx:ctx t expression) Sp.Top)
+                      | Arrow_t _ as t -> H.hole cost_model (Hole.create ~ctx:ctx t lambda) Sp.top
+                      | t -> H.hole cost_model (Hole.create ~ctx:ctx t expression) Sp.top)
                 in
-                H.apply cost_model (H.id_name cost_model func Sp.Top) arg_holes spec, u)
+                H.apply cost_model (H.id_name cost_model func Sp.top) arg_holes spec, u)
           | _ -> None
         else None)
 
@@ -350,17 +350,19 @@ module L2_Synthesizer = struct
     with SynthesisException s -> Ok (Some s)
 
   let initial_hypothesis s examples =
-    let exs = List.map examples ~f:(function
-        | (`Apply (_, args), out) ->
-          let ctx = StaticDistance.Map.empty in
-          let args = List.map ~f:(Eval.eval (Ctx.empty ())) args in
-          let ret = Eval.eval (Ctx.empty ()) out in
-          ((ctx, args), ret)
-        | ex -> failwiths "Unexpected example type." ex sexp_of_example)
-              |> Specification.FunctionExamples.of_list_exn
+    let spec =
+      List.map examples ~f:(function
+          | (`Apply (_, args), out) ->
+            let ctx = StaticDistance.Map.empty in
+            let args = List.map ~f:(Eval.eval (Ctx.empty ())) args in
+            let ret = Eval.eval (Ctx.empty ()) out in
+            ((ctx, args), ret)
+          | ex -> failwiths "Unexpected example type." ex sexp_of_example)
+      |> FunctionExamples.of_list_exn
+      |> FunctionExamples.to_spec
     in
     let t = Infer.Type.normalize (Example.signature examples) in
     Hypothesis.hole s.cost_model
       (Hole.create t L2_Generalizer.Symbols.lambda)
-      (Specification.FunctionExamples exs)
+      spec
 end
