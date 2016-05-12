@@ -456,6 +456,7 @@ let spec_command =
 
   Command.group ~summary:"Commands related to component specifications." [
     "print", print_command;
+    "gen", Generate_values.cmd;
   ]
 
 let commands =
