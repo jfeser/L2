@@ -36,6 +36,7 @@ let get_json testcase runtime solution config argv : Json.json =
     "search", V1_solver_engine.counter;
     "unification_deduction", Unification_deduction.counter;
     "memoizer", Synthesis_common.counter;
+    "fast_example_deduction", Fast_example_deduction.counter;
     (* "deduction", Deduction.counter; *)
   ] in
   let sexp_logs = [

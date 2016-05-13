@@ -16,6 +16,13 @@ let timer =
   t
 let run_with_time = fun name f -> Timer.run_with_time timer name f
 
+let counter =
+  let t = Counter.empty () in
+  let n = Counter.add_zero t in
+  n "abstract_specs" "Number of specs pushed to Top for being abstract.";
+  t
+let cincr = Counter.incr counter 
+
 module Abstract_value = struct
   module T = struct
     type t = 
@@ -239,7 +246,7 @@ module Abstract_example = struct
           | AV.Bottom -> Sp.Bottom
           | AV.Value ev -> begin match ExprValue.to_value ev with
               | Ok v -> Sp.Examples (Sp.Examples.singleton (ctx, v))
-              | Error _ -> Sp.Top
+              | Error _ -> cincr "abstract_specs"; Sp.Top
             end)
 end
 
