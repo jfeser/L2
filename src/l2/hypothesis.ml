@@ -1,4 +1,5 @@
 open Core.Std
+open Core_extended.Std
 
 open Collections
 open Infer
@@ -170,6 +171,92 @@ module Skeleton = struct
     | Apply_h ((x, y), _) -> sprintf "(%s %s)" (ts x) (list_to_string y)
     | Lambda_h ((num_args, body), _) -> sprintf "(lambda *%d* %s)" num_args (ts body)
     | Hole_h (h, _) -> sprintf "?%d" h.Hole.id
+
+  let rec to_pp : ?indent:int -> 'a t -> Pp.t =
+    let module SD = StaticDistance in
+    let module O = Expr.Op in
+    let open Pp in
+    fun ?(indent=4) sk ->
+      let fresh_name = Util.Fresh.mk_fresh_name_fun () in
+      let rec to_pp ?(parens = false) names =
+        let apply_parens pp = if parens then text "(" $ pp $ text ")" else pp in
+        let infix_op op x1 x2 =
+          let pp =
+            to_pp ~parens:true names x1 $/
+            text op $/
+            to_pp ~parens:true names x2
+          in
+          apply_parens pp
+        in
+        function
+        | Num_h (x, _) -> text (Int.to_string x)
+        | Bool_h (x, _) -> text (Bool.to_string x)
+        | List_h (l, _) -> text "[" $/ list ~sep:(text ";" $ break) ~f:(to_pp names) l $/ text "]"
+        | Tree_h (_, _) -> text "<tree>"
+        | Id_h (Id.StaticDistance x, _) -> begin match Map.find names x with
+            | Some name -> text name
+            | None -> failwiths "Unbound SD coordinate." x [%sexp_of:SD.t]
+          end
+        | Id_h (Id.Name x, _) -> text x
+        | Let_h ((bound, body), _) ->
+          let name = fresh_name () in
+          let names =
+            SD.map_increment_scope names
+            |> Map.add ~key:(SD.create ~distance:1 ~index:1) ~data:name
+          in
+          let pp =
+            text "let" $/ text name $/ text "=" $/
+            nest indent (to_pp names bound) $/ text "in" $/
+            to_pp names body
+          in
+          apply_parens pp
+        | Lambda_h ((num_args, body), _) ->
+          let new_names =
+            List.init num_args ~f:(fun i -> SD.create ~distance:1 ~index:(i + 1), fresh_name ())
+          in
+          let names =
+            List.fold new_names ~init:(SD.map_increment_scope names) ~f:(fun m (sd, name) ->
+                Map.add m ~key:sd ~data:name)
+          in
+          let pp =
+            text "fun" $/ list ~sep:break ~f:(fun (_, n) -> text n) new_names $/ text "->" $/
+            nest indent (to_pp names body)
+          in
+          apply_parens pp
+        | Apply_h ((func, args), _) ->
+          let pp = to_pp names func $/ list ~sep:break ~f:(to_pp ~parens:true names) args in
+          apply_parens pp
+        | Op_h ((O.Plus as op, [x1; x2]), _) 
+        | Op_h ((O.Minus as op, [x1; x2]), _) 
+        | Op_h ((O.Mul as op, [x1; x2]), _) 
+        | Op_h ((O.Div as op, [x1; x2]), _) 
+        | Op_h ((O.Mod as op, [x1; x2]), _) 
+        | Op_h ((O.Eq as op, [x1; x2]), _) 
+        | Op_h ((O.Neq as op, [x1; x2]), _) 
+        | Op_h ((O.Gt as op, [x1; x2]), _) 
+        | Op_h ((O.Geq as op, [x1; x2]), _) 
+        | Op_h ((O.Lt as op, [x1; x2]), _) 
+        | Op_h ((O.Leq as op, [x1; x2]), _) -> infix_op (Expr.Op.to_string op) x1 x2
+        | Op_h ((O.Cons, [x1; x2]), _)
+        | Op_h ((O.RCons, [x1; x2]), _) -> infix_op "::" x1 x2
+        | Op_h ((O.And, [x1; x2]), _) -> infix_op "&&" x1 x2
+        | Op_h ((O.Or, [x1; x2]), _) -> infix_op "||" x1 x2
+        | Op_h ((O.Not, [x]), _) ->
+          let pp = text "not" $/ to_pp ~parens:true names x in
+          apply_parens pp
+        | Op_h ((O.If, [x1; x2; x3]), _) ->
+          let pp =
+            text "if" $/ to_pp ~parens:true names x1 $/
+            text "then" $/ to_pp ~parens:true names x2 $/
+            text "else" $/ to_pp ~parens:true names x3
+          in
+          apply_parens pp
+        | Op_h ((op, args), _) ->
+          let pp = text (Expr.Op.to_string op) $/ list ~sep:break ~f:(to_pp ~parens:true names) args in
+          apply_parens pp
+        | Hole_h (hole, _) -> text ((Hole.Id.to_string hole.Hole.id) ^ "?")
+      in
+      to_pp SD.Map.empty sk
 
   let to_expr :
     ?ctx:Expr.t StaticDistance.Map.t

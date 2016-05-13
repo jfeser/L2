@@ -1,4 +1,5 @@
 open Core.Std
+open Core_extended.Std
 open Printf
 
 open Synthesis_common
@@ -108,7 +109,9 @@ let synthesize engine deduction cost_model library testcase =
               L2_Synthesizer.synthesize synth hypo)
           in
           match m_solution with
-          | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)
+          | Ok (Some s) ->
+            let hypo_str = Pp.to_string ~width:70 (Skeleton.to_pp (Hypothesis.skeleton s)) in
+            (`Solution hypo_str, runtime)
           | Ok None -> (`NoSolution, runtime)
           | Error err -> print_endline (Error.to_string_hum err); (`NoSolution, runtime)
         end
