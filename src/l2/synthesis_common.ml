@@ -187,11 +187,7 @@ module Memoizer = struct
     let module H = Hypothesis in
     fun m -> Sequence.filter ~f:(fun (h, _) ->
         incr "num_hypos";
-        let num_hypos = Counter.get counter "num_hypos" in
-        if num_hypos mod 1000 = 0 then begin
-          printf "%d %d\n" num_hypos (Hypothesis.cost h);
-          flush stdout
-        end;
+        Status.print_status { Status.synthesis = counter; };
         match H.kind h with
         | H.Concrete ->
           (* printf "%s\n\n" ([%sexp_of:H.t] h |> Sexp.to_string_hum); *)
