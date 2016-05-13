@@ -98,9 +98,4 @@ let print_status : status -> unit =
           print_string status_line;
           print_newline ())
     end
-
-(* let () = *)
-(*   print_status { num_hypos = 10; }; *)
-(*   Unix.sleep 1; *)
-(*   print_status { num_hypos = 20; }; *)
   
