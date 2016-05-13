@@ -1,4 +1,5 @@
 open Core.Std
+open Core_extended.Std
 open Collections
 
 open Infer
@@ -105,6 +106,7 @@ module Skeleton : sig
 
   val equal : equal:('a -> 'a -> bool) -> 'a t -> 'a t -> bool
   val to_string_hum : 'a t -> string
+  val to_pp : ?indent:int -> 'a t -> Pp.t
 
   (** Convert a skeleton to an {!Expr.t}.
       @param ctx A mapping from static distance variables to expressions. All SD variables will be replaced according to this mapping.
@@ -196,7 +198,12 @@ module Specification : sig
   type spec = ..
   type spec += private Top | Bottom
 
-  type t
+  type t = {
+    verify : 'a. Library.t -> 'a Skeleton.t -> bool;
+    compare : t -> int;
+    to_sexp : unit -> Sexp.t;
+    spec : spec;
+  }
 
   include Comparable.S with type t := t
   include Sexpable.S with type t := t
