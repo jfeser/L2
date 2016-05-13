@@ -101,7 +101,7 @@ let synthesize ?spec_dir engine deduction cost_model library testcase =
               | `Unification -> Deduction.compose d Unification_deduction.push_specs
               | `Fast_example -> begin match spec_dir with
                   | Some dir -> Deduction.compose d (Fast_example_deduction.create dir library)
-                  | None -> failwith "Expected a directory of specifications. (Use --spec DIR)."
+                  | None -> failwith "Expected a directory of specifications. (Use --spec-dir DIR)."
                 end
               | `Example -> Deduction.compose d example_deduction
               | `Random -> Deduction.compose d Random_deduction.push_specs
