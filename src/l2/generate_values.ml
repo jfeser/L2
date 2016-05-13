@@ -21,9 +21,9 @@ type example = ExprValue.t list * ExprValue.t [@@deriving sexp, bin_io]
 let cost_model =
   let module CM = CostModel in
   {
-    CM.num = (fun x -> x);
+    CM.num = (fun x -> 1);
     CM.bool = (fun _ -> 1);
-    CM.hole = (fun _ -> 1);
+    CM.hole = (fun _ -> 0);
     CM.lambda = (fun _ _ -> 1);
     CM._let = (fun _ _ -> 1);
     CM.list = (fun _ -> 1);
@@ -35,110 +35,91 @@ let cost_model =
 
 module Value_generalizer = struct
   module SD = StaticDistance
+  module T = Type
     
   let sym = Symbol.create ""
   
-  let name_of_int n = "v" ^ (Int.to_string n)
-
-  let spec_of_int x = Examples.singleton (SD.Map.empty, `Num x) |> Examples.to_spec
-  let int_of_spec s = match Sp.spec s with
-    | Examples.Examples exs ->
-      let rets =
-        Examples.to_list exs
-        |> List.map ~f:Tuple.T2.get2
-        |> List.dedup
-      in
-      begin match rets with
-        | [`Num x] -> Some x
-        | _ -> None
-      end
-    | _ -> None
-
   let generate_bool () = [
     (H.bool cost_model true Sp.top, Unifier.empty);
     (H.bool cost_model false Sp.top, Unifier.empty);
   ]
 
-  let generate_int type_ spec =
-    match int_of_spec spec with
-    | Some x -> [
-        H.num cost_model x spec, Unifier.empty;
-        H.num cost_model (-x) spec, Unifier.empty;
-        H.hole cost_model (Hole.create type_ sym) (spec_of_int (x + 1)), Unifier.empty;
-      ]
-    | None -> [
-        H.num cost_model 0 spec, Unifier.empty;
-        H.hole cost_model (Hole.create type_ sym) (spec_of_int 1), Unifier.empty;
-      ]
+  let generate_int type_ spec = [
+    H.num cost_model 0 spec, Unifier.empty;
+    H.apply cost_model
+      (H.id_name cost_model "N" Sp.top)
+      [H.hole cost_model (Hole.create (T.Const_t T.Num_t) sym) Sp.top] spec, Unifier.empty;
+    ]
               
-  let generate_var type_ spec =
-    match int_of_spec spec with
-    | Some x -> [
-        H.id_name cost_model (name_of_int x) spec, Unifier.empty;
-        H.hole cost_model (Hole.create type_ sym) (spec_of_int (x + 1)), Unifier.empty;
-      ]
-    | None -> [
-        H.id_name cost_model "v0" spec, Unifier.empty;
-        H.hole cost_model (Hole.create type_ sym) (spec_of_int 1), Unifier.empty;
-      ]
+  let generate_var type_ spec = [
+    H.apply cost_model
+      (H.id_name cost_model "V" Sp.top) [H.num cost_model 0 spec] spec, Unifier.empty;
+    H.apply cost_model
+      (H.id_name cost_model "V" Sp.top) [H.hole cost_model (Hole.create type_ sym) Sp.top] spec, Unifier.empty;
+    ]
 
-  let generate_list type_ spec elem_t = match int_of_spec spec with
-    | Some x -> [
-        H.list cost_model (List.init x ~f:(fun _ ->
-            H.hole cost_model (Hole.create elem_t sym) Sp.top))
-          spec, Unifier.empty;
-        H.hole cost_model (Hole.create type_ sym) (spec_of_int (x + 1)), Unifier.empty;
-      ]
-    | None -> [
-        H.list cost_model [] spec, Unifier.empty;
-        H.hole cost_model (Hole.create type_ sym) (spec_of_int 1), Unifier.empty;
-      ]
+  let generate_list type_ spec elem_t = [
+    H.list cost_model [] spec, Unifier.empty;
+    H.op cost_model Expr.Op.Cons [H.hole cost_model (Hole.create elem_t sym) Sp.top;
+                                  H.hole cost_model (Hole.create type_ sym) Sp.top] spec, Unifier.empty;
+    ]
 
   let rec gen ctx type_ symbol spec =
-    print_sexp type_ [%sexp_of:Type.t];
     let open Type in
-    match type_ with
-    | Const_t Num_t -> generate_int type_ spec
-    | Const_t Bool_t -> generate_bool ()
-    | App_t ("list", [elem_t]) ->
-      let out = generate_list type_ spec elem_t in
-      print_sexp out [%sexp_of:(H.t * Infer.Unifier.t) list];
-      out
-    | Var_t { contents = Quant _ } -> generate_var type_ spec
-    | Var_t { contents = Link t } -> gen ctx t symbol spec
-    | t -> failwiths "Unexpected type." t [%sexp_of:Type.t]
+    let out = match type_ with
+      | Const_t Num_t -> generate_int type_ spec
+      | Const_t Bool_t -> generate_bool ()
+      | App_t ("list", [elem_t]) -> generate_list type_ spec elem_t
+      | Var_t { contents = Quant _ } -> generate_var type_ spec
+      | Var_t { contents = Link t } -> gen ctx t symbol spec
+      | t -> failwiths "Unexpected type." t [%sexp_of:Type.t]
+    in
+    out
 
   let of_type : ImmutableType.t -> (Generalizer.t * Hypothesis.t) = fun t ->
     let init = H.hole cost_model (Hole.create (ImmutableType.to_type t) sym) Sp.top in
     (gen, init)
 end
 
-let rename_vars : 'a Sk.t -> int -> ('a Sk.t * int) = fun s init_i ->
-  let i = ref init_i in
-  let rec rename = function
-    | Sk.Num_h _
-    | Sk.Bool_h _ as sk -> sk
-    | Sk.Id_h (Sk.Id.Name name, s) ->
-      let name' = name ^ (Int.to_string !i) in
-      incr i;
-      Sk.Id_h (Sk.Id.Name name', s)
-    | Sk.Id_h (name, s) -> Sk.Id_h (name, s)
-    | Sk.Hole_h (h, s) -> Sk.Hole_h (h, s)
-    | Sk.List_h (x, s) -> Sk.List_h (List.map ~f:rename x, s)
-    | Sk.Tree_h (x, s) -> Sk.Tree_h (Tree.map ~f:rename x, s)
-    | Sk.Let_h ((x, y), s) -> Sk.Let_h ((rename x, rename y), s)
-    | Sk.Lambda_h ((x, y), s) -> Sk.Lambda_h ((x, rename y), s)
-    | Sk.Apply_h ((x, y), s) -> Sk.Apply_h ((rename x, List.map ~f:rename y), s)
-    | Sk.Op_h ((x, y), s) -> Sk.Op_h ((x, List.map ~f:rename y), s)
+let rec convert : 'a Sk.t -> 'a Sk.t =
+  let convert_var sk =
+    let rec var = function
+      | Sk.Num_h (x, _) -> x
+      | Sk.Apply_h ((Sk.Id_h (Sk.Id.Name "V", _), [v]), _) -> 1 + (var v)
+      | _ -> failwith "Malformed var."
+    in
+    Sk.Id_h (Sk.Id.Name ("v" ^ (Int.to_string (var sk))), Sp.top)
   in
-  (rename s, !i)
-
-let rename_args_vars : 'a Sk.t list -> 'a Sk.t list = fun args ->
-  let (_, args') = List.fold_left args ~init:(0, []) ~f:(fun (i, args) arg ->
-      let (arg', i') = rename_vars arg i in
-      (i', arg'::args))
+  let convert_int sk =
+    let rec int = function
+      | Sk.Num_h (x, _) -> x
+      | Sk.Apply_h ((Sk.Id_h (Sk.Id.Name "N", _), [v]), _) -> 1 + (int v)
+      | _ -> failwith "Malformed int."
+    in
+    Sk.Num_h (int sk, Sp.top)
   in
-  List.rev args'
+  let convert_list sk =
+    let rec list = function
+      | Sk.List_h ([], _) -> []
+      | Sk.Op_h ((Expr.Op.Cons, [x; xs]), _) -> x::(list xs)
+      | _ -> failwith "Malformed list."
+    in
+    Sk.List_h (list sk, Sp.top)
+  in
+  function
+  | Sk.Hole_h _ 
+  | Sk.Id_h _
+  | Sk.Num_h _
+  | Sk.Bool_h _ as sk -> sk
+  | Sk.Apply_h ((Sk.Id_h (Sk.Id.Name "V", _), _), _) as sk -> convert (convert_var sk)
+  | Sk.Apply_h ((Sk.Id_h (Sk.Id.Name "N", _), _), _) as sk -> convert (convert_int sk)
+  | Sk.Op_h ((Expr.Op.Cons, _), _) as sk -> convert (convert_list sk)
+  | Sk.Apply_h ((x, y), s) -> Sk.Apply_h ((convert x, List.map ~f:convert y), s)
+  | Sk.Op_h ((x, y), s) -> Sk.Op_h ((x, List.map ~f:convert y), s)
+  | Sk.List_h (x, s) -> Sk.List_h (List.map ~f:convert x, s)
+  | Sk.Tree_h (x, s) -> Sk.Tree_h (Tree.map ~f:convert x, s)
+  | Sk.Let_h ((x, y), s) -> Sk.Let_h ((convert x, convert y), s)
+  | Sk.Lambda_h ((x, y), s) -> Sk.Lambda_h ((x, convert y), s)
 
 let generate_examples : config:config -> Expr.t -> Type.t -> example Sequence.t =
   let module IT = ImmutableType in
@@ -159,7 +140,7 @@ let generate_examples : config:config -> Expr.t -> Type.t -> example Sequence.t 
           | Sk.List_h (args_sk, _) -> args_sk
           | sk -> failwiths "Unexpected skeleton." sk [%sexp_of:Sp.t Sk.t])
 
-      |> Sequence.map ~f:rename_args_vars
+      |> Sequence.map ~f:(List.map ~f:convert)
         
       |> Sequence.filter_map ~f:(fun args_sk ->
             let args_exprv =
