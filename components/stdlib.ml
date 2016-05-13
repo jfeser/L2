@@ -157,11 +157,12 @@ let rec delete_all l x =
 let rec union l1 l2 = dedup (append l1 l2)
 
 let rec intersect l1 l2 =
-  let x = car l1 in
-  if exists l2 x then
-    x :: (intersect (delete_all l1 x) l2)
-  else
-    intersect (delete_all l1 x) l2
+  if l1 = [] then [] else if l2 = [] then [] else
+    let x = car l1 in
+    if exists l2 x then
+      x :: (intersect (delete_all l1 x) l2)
+    else
+      intersect (delete_all l1 x) l2
 
 let rec replace l x y =
   if l = [] then [] else
