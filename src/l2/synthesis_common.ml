@@ -346,6 +346,8 @@ module Memoizer = struct
                 Sequence.map (fill_holes_in_hypothesis m p cost) ~f:(fun (filled_p, filled_u) ->
                     (filled_p, Unifier.compose ~inner:filled_u ~outer:p_u))
                 |> Sequence.to_list)
+
+            |> List.dedup
           in
 
           (* Save the computed result, so we can use it later. *)
