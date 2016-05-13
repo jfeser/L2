@@ -385,9 +385,7 @@ let push_specs_exn' :
     in
     run_with_time "total" (fun () -> push_specs_exn sk)    
 
-let spec_dir = "/Users/jack/Documents/l2/repo/component-specs"
-    
-let create library =
+let create spec_dir library =
   let specs =
     if Sys.is_directory spec_dir = `Yes then
       let spec_files =
