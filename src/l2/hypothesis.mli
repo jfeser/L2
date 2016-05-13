@@ -1,4 +1,5 @@
 open Core.Std
+open Core_extended.Std
 open Collections
 
 open Infer
@@ -105,6 +106,7 @@ module Skeleton : sig
 
   val equal : equal:('a -> 'a -> bool) -> 'a t -> 'a t -> bool
   val to_string_hum : 'a t -> string
+  val to_pp : ?indent:int -> 'a t -> Pp.t
 
   (** Convert a skeleton to an {!Expr.t}.
       @param ctx A mapping from static distance variables to expressions. All SD variables will be replaced according to this mapping.
