@@ -45,7 +45,7 @@ module Deduction = struct
 
   let bottom : t = fun sk -> 
     let rec bot sk =
-      if Sp.equal (Sk.annotation sk) Sp.Bottom then raise Bottom;
+      if Sp.equal (Sk.annotation sk) Sp.bottom then raise Bottom;
       match sk with
       | Sk.Num_h _
       | Sk.Bool_h _
