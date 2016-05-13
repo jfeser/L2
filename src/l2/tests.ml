@@ -379,20 +379,20 @@ let test_m_partition =
 let () = run_test_tt_main
     ("all-tests" >:::
      [
-       Eval_tests.tests;
+       (* Eval_tests.tests; *)
        Unify_tests.tests;
        Collections_tests.tests;
        Type_tests.tests;
        V2_engine_tests.tests;
        Hypothesis_tests.tests;
-       Component_tests.tests;
-       Automaton_tests.tests;
+       (* Component_tests.tests; *)
+       (* Automaton_tests.tests; *)
        
-       test_parse_expr;
-       test_parse_typ;
-       test_parse_example;
+       (* test_parse_expr; *)
+       (* test_parse_typ; *)
+       (* test_parse_example; *)
 
-       test_eval;
+       (* test_eval; *)
        (* test_unify; *)
        (* test_signature; *)
 

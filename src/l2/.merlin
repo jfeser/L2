@@ -10,6 +10,7 @@ PKG hashcons
 PKG yojson
 PKG ounit
 PKG ppx_sexp_conv
+PKG ppx_variants_conv
 PKG ppx_bin_prot
 PKG ppx_compare
 PKG ppx_sexp_value

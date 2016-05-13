@@ -16,6 +16,13 @@ let timer =
   t
 let run_with_time = fun name f -> Timer.run_with_time timer name f
 
+let counter =
+  let t = Counter.empty () in
+  let n = Counter.add_zero t in
+  n "abstract_specs" "Number of specs pushed to Top for being abstract.";
+  t
+let cincr = Counter.incr counter 
+
 module Abstract_value = struct
   module T = struct
     type t = 
@@ -238,8 +245,8 @@ module Abstract_example = struct
           | AV.Top -> Sp.top
           | AV.Bottom -> Sp.bottom
           | AV.Value ev -> begin match ExprValue.to_value ev with
-              | Ok v -> Examples.to_spec (Examples.singleton (ctx, v))
-              | Error _ -> Sp.top
+              | Ok v -> Examples.singleton (ctx, v) |> Examples.to_spec
+              | Error _ -> cincr "abstract_specs"; Sp.top
             end)
 end
 
@@ -385,9 +392,7 @@ let push_specs_exn' :
     in
     run_with_time "total" (fun () -> push_specs_exn sk)    
 
-let spec_dir = "/Users/jack/Documents/l2/repo/component-specs"
-    
-let create library =
+let create spec_dir library =
   let specs =
     if Sys.is_directory spec_dir = `Yes then
       let spec_files =

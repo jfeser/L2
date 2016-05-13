@@ -41,6 +41,25 @@ module Deduction = struct
 
   type t = Sp.t Sk.t -> Sp.t Sk.t Option.t
 
+  exception Bottom
+
+  let bottom : t = fun sk -> 
+    let rec bot sk =
+      if Sp.equal (Sk.annotation sk) Sp.Bottom then raise Bottom;
+      match sk with
+      | Sk.Num_h _
+      | Sk.Bool_h _
+      | Sk.Id_h _
+      | Sk.Hole_h _ -> ()
+      | Sk.List_h (l, _) -> List.iter l ~f:bot
+      | Sk.Tree_h (t, _) -> Tree.iter t ~f:bot
+      | Sk.Let_h ((bound, body), _) -> (bot bound; bot body)
+      | Sk.Lambda_h ((num_args, body), _) -> bot body
+      | Sk.Op_h ((op, args), _) -> List.iter args ~f:bot
+      | Sk.Apply_h ((func, args), _) -> (bot func; List.iter args ~f:bot)
+    in
+    try bot sk; Some sk with Bottom -> None
+
   let no_op : t = Option.return
 
   let compose : t -> t -> t = fun d1 d2 ->
@@ -187,11 +206,7 @@ module Memoizer = struct
     let module H = Hypothesis in
     fun m -> Sequence.filter ~f:(fun (h, _) ->
         incr "num_hypos";
-        let num_hypos = Counter.get counter "num_hypos" in
-        if num_hypos mod 1000 = 0 then begin
-          printf "%d %d\n" num_hypos (Hypothesis.cost h);
-          flush stdout
-        end;
+        Status.print_status { Status.synthesis = counter; };
         match H.kind h with
         | H.Concrete ->
           (* printf "%s\n\n" ([%sexp_of:H.t] h |> Sexp.to_string_hum); *)
@@ -346,6 +361,8 @@ module Memoizer = struct
                 Sequence.map (fill_holes_in_hypothesis m p cost) ~f:(fun (filled_p, filled_u) ->
                     (filled_p, Unifier.compose ~inner:filled_u ~outer:p_u))
                 |> Sequence.to_list)
+
+            |> List.dedup
           in
 
           (* Save the computed result, so we can use it later. *)

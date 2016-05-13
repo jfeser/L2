@@ -1,4 +1,5 @@
 open Core.Std
+open Core_extended.Std
 open Printf
 
 open Synthesis_common
@@ -35,6 +36,7 @@ let get_json testcase runtime solution config argv : Json.json =
     "search", V1_solver_engine.counter;
     "unification_deduction", Unification_deduction.counter;
     "memoizer", Synthesis_common.counter;
+    "fast_example_deduction", Fast_example_deduction.counter;
     (* "deduction", Deduction.counter; *)
   ] in
   let sexp_logs = [
@@ -51,7 +53,7 @@ let get_json testcase runtime solution config argv : Json.json =
     "argv", `List (Array.map argv ~f:(fun a -> `String a) |> Array.to_list);
   ]
 
-let synthesize engine deduction cost_model library testcase =
+let synthesize ?spec_dir engine deduction cost_model library testcase =
   let module T = Testcase in
   match testcase.T.case with
   | T.Examples (exs, bg) ->
@@ -97,7 +99,10 @@ let synthesize engine deduction cost_model library testcase =
               | `None -> Deduction.no_op
               | `Higher_order -> Deduction.compose d higher_order_deduction
               | `Unification -> Deduction.compose d Unification_deduction.push_specs
-              | `Fast_example -> Deduction.compose d (Fast_example_deduction.create library)
+              | `Fast_example -> begin match spec_dir with
+                  | Some dir -> Deduction.compose d (Fast_example_deduction.create dir library)
+                  | None -> failwith "Expected a directory of specifications. (Use --spec-dir DIR)."
+                end
               | `Example -> Deduction.compose d example_deduction
               | `Random -> Deduction.compose d Random_deduction.push_specs
               | `Recursive_spec -> Deduction.compose d Recursive_spec_deduction.push_specs)
@@ -108,7 +113,9 @@ let synthesize engine deduction cost_model library testcase =
               L2_Synthesizer.synthesize synth hypo)
           in
           match m_solution with
-          | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)
+          | Ok (Some s) ->
+            let hypo_str = Pp.to_string ~width:70 (Skeleton.to_pp (Hypothesis.skeleton s)) in
+            (`Solution hypo_str, runtime)
           | Ok None -> (`NoSolution, runtime)
           | Error err -> print_endline (Error.to_string_hum err); (`NoSolution, runtime)
         end
@@ -159,6 +166,12 @@ let nonempty_symbol_list : 'a. (string * 'a) list -> 'a list Command.Arg_type.t 
          |> Error.raise;
        | l -> l)
 
+let directory : string Command.Arg_type.t =
+  Command.Arg_type.create (fun str ->
+      if Sys.is_directory str = `Yes then str else
+        Error.create "Not a directory." str [%sexp_of:string]
+        |> Error.raise)
+
 let synth_command =
   let spec =
     let open Command.Spec in
@@ -193,6 +206,8 @@ let synth_command =
 
     +> flag "-l" ~aliases:["--library"] (optional file)
       ~doc:" file containing components to use for synthesis"
+
+    +> flag "--spec-dir" (optional directory) ~doc:" directory containing component specifications"
       
     +> flag "-v" ~aliases:["--verbose"] no_arg
       ~doc:" print progress messages while searching"
@@ -203,7 +218,7 @@ let synth_command =
     +> anon (maybe ("testcase" %: file))
   in
 
-  let run config_file json_file flat_cost cost_file deduction engine m_library verbose very_verbose use_solver m_testcase_name () =
+  let run config_file json_file flat_cost cost_file deduction engine m_library spec_dir verbose very_verbose use_solver m_testcase_name () =
     let initial_config = 
       match config_file with
       | Some file -> In_channel.read_all file |> Config.of_string
@@ -236,7 +251,7 @@ let synth_command =
         | None -> Ok Library.empty
       in
       
-      let m_solution, solve_time = synthesize engine deduction cost_model library testcase in
+      let m_solution, solve_time = synthesize ?spec_dir engine deduction cost_model library testcase in
 
       printf "Runtime: %s\n" (Time.Span.to_short_string solve_time);
       begin
