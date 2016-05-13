@@ -41,6 +41,25 @@ module Deduction = struct
 
   type t = Sp.t Sk.t -> Sp.t Sk.t Option.t
 
+  exception Bottom
+
+  let bottom : t = fun sk -> 
+    let rec bot sk =
+      if Sp.equal (Sk.annotation sk) Sp.Bottom then raise Bottom;
+      match sk with
+      | Sk.Num_h _
+      | Sk.Bool_h _
+      | Sk.Id_h _
+      | Sk.Hole_h _ -> ()
+      | Sk.List_h (l, _) -> List.iter l ~f:bot
+      | Sk.Tree_h (t, _) -> Tree.iter t ~f:bot
+      | Sk.Let_h ((bound, body), _) -> (bot bound; bot body)
+      | Sk.Lambda_h ((num_args, body), _) -> bot body
+      | Sk.Op_h ((op, args), _) -> List.iter args ~f:bot
+      | Sk.Apply_h ((func, args), _) -> (bot func; List.iter args ~f:bot)
+    in
+    try bot sk; Some sk with Bottom -> None
+
   let no_op : t = Option.return
 
   let compose : t -> t -> t = fun d1 d2 ->
