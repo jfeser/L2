@@ -336,3 +336,7 @@ tests
 
 coverage/
 component-specs
+
+*.mldylib
+*.mllib
+META
