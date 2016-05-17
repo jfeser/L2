@@ -182,23 +182,24 @@ module Memoizer = struct
     } [@@deriving sexp]
   end
 
+  module Config = struct
   type t = {
-    hole_table : HoleState.t HoleTable.t;
     generalize : Generalizer.t;
     cost_model : CostModel.t;
     deduction : Deduction.t;
     library : Library.t;
   }
+  end
 
-  let create : ?deduce:Deduction.t -> Library.t -> Generalizer.t -> CostModel.t -> t =
-    fun ?(deduce = Deduction.no_op) library g cm ->
-      {
-        library;
-        generalize = g;
-        cost_model = cm;
-        deduction = (fun sk -> run_with_time "deduction_time" (fun () -> deduce sk));
-        hole_table = HoleTable.create ();
+  open Config
+
+  type t = {
+    hole_table : HoleState.t HoleTable.t;
+    config     : Config.t;
       }
+
+  let create : Config.t -> t =
+    fun config -> { config; hole_table = HoleTable.create (); }
 
   let to_string m = Sexp.to_string_hum ([%sexp_of:HoleState.t HoleTable.t] m.hole_table)
 
@@ -210,8 +211,8 @@ module Memoizer = struct
         | H.Concrete -> Some (h, u)
         | H.Abstract -> 
           let sk = Hypothesis.skeleton h in
-          Option.map (m.deduction sk) (fun sk' ->
-              (Hypothesis.of_skeleton m.cost_model sk', u)))
+          Option.map (m.config.deduction sk) (fun sk' ->
+              (Hypothesis.of_skeleton m.config.cost_model sk', u)))
 
   let select_matching :
     t -> (Hypothesis.t * 'a) Sequence.t -> (Hypothesis.t * 'a) Sequence.t =
@@ -222,7 +223,7 @@ module Memoizer = struct
         match H.kind h with
         | H.Concrete ->
           (* printf "%s\n\n" ([%sexp_of:H.t] h |> Sexp.to_string_hum); *)
-          H.verify ~library:m.library h
+          H.verify ~library:m.config.library h
         | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t)
 
   (** Requires: 'm' is a memoization table. 'hypo' is a
@@ -242,7 +243,7 @@ module Memoizer = struct
 
     let holes = H.holes hypo in
     let total_hole_cost =
-      List.map holes ~f:(fun (h, _) -> m.cost_model.CostModel.hole h)
+        List.map holes ~f:(fun (h, _) -> m.config.cost_model.CostModel.hole h)
       |> List.fold_left ~init:0 ~f:(+)
     in
 
@@ -289,7 +290,9 @@ module Memoizer = struct
                       (* Fill in the hole and merge the unifiers. *)
                         Seq.map children ~f:(fun (c, c_u) ->
                           let u = Unifier.compose ~outer:p_u ~inner:c_u in
-                          let h = H.fill_hole m.cost_model hole ~parent:p ~child:c in
+                            let h =
+                              H.fill_hole m.config.cost_model hole ~parent:p ~child:c
+                            in
                           h, u)
                         
                       |> perform_deduction m)))
@@ -337,7 +340,7 @@ module Memoizer = struct
             {
               S.hypotheses = CostTable.create ();
               S.generalizations = Lazy.from_fun (fun () ->
-                  m.generalize
+                    m.config.generalize
                     key.Key.hole.Key.Hole_without_id.ctx
                     key.Key.hole.Key.Hole_without_id.type_
                     key.Key.hole.Key.Hole_without_id.symbol

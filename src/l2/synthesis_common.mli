@@ -30,9 +30,19 @@ val sexp_log : SexpLog.t
 
 module Memoizer : sig
   type t
-  val create : ?deduce:Deduction.t -> Library.t -> Generalizer.t -> CostModel.t -> t
-  val to_string : t -> string
 
+  module Config : sig
+    type t = {
+      generalize      : Generalizer.t;
+      cost_model      : CostModel.t;
+      deduction       : Deduction.t;
+      library         : Library.t;
+    }
+  end
+
+  val create : Config.t -> t
+  val to_string : t -> string
+    
   val fill_holes_in_hypothesis :
     t
     -> Hypothesis.t
