@@ -157,6 +157,7 @@ let generate_examples : config:config -> Expr.t -> Type.t -> example Sequence.t 
           library = Library.empty;
           generalize = Generalizer.compose_all_exn gens;
           deduction = Deduction.no_op;
+          search_space_out = None;
           cost_model;
         } in
       Memoizer.to_flat_sequence memo ~max_cost:config.max_cost init

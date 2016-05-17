@@ -289,6 +289,7 @@ module L2_Synthesizer = struct
           library; cost_model;
           deduction = deduce;
           generalize = gen_no_lambdas;
+          search_space_out = None;
         };
     }
   

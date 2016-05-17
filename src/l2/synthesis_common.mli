@@ -33,10 +33,11 @@ module Memoizer : sig
 
   module Config : sig
     type t = {
-      generalize      : Generalizer.t;
-      cost_model      : CostModel.t;
-      deduction       : Deduction.t;
-      library         : Library.t;
+      generalize       : Generalizer.t;
+      cost_model       : CostModel.t;
+      deduction        : Deduction.t;
+      library          : Library.t;
+      search_space_out : Out_channel.t Option.t;
     }
   end
 
