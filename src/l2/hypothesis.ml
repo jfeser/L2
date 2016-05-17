@@ -178,7 +178,7 @@ module Skeleton = struct
         | Tree_h (_, _) -> text "<tree>"
         | Id_h (Id.StaticDistance x, _) -> begin match Map.find names x with
             | Some name -> text name
-            | None -> failwiths "Unbound SD coordinate." x [%sexp_of:SD.t]
+            | None -> text (SD.to_string x)
           end
         | Id_h (Id.Name x, _) -> text x
         | Let_h ((bound, body), _) ->
