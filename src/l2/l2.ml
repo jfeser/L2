@@ -119,17 +119,6 @@ let synthesize ?spec_dir engine deduction cost_model library testcase =
           | Ok None -> (`NoSolution, runtime)
           | Error err -> print_endline (Error.to_string_hum err); (`NoSolution, runtime)
         end
-
-      | `Automata -> begin
-          let open Hypothesis in
-          let (m_solution, runtime) = Util.with_runtime (fun () ->
-              Automaton.Synthesizer.synthesize_from_examples ~max_cost:50 Component.stdlib exs)
-          in
-          match m_solution with
-          | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)
-          | Ok None -> (`NoSolution, runtime)
-          | Error err -> print_endline (Error.to_string_hum err); (`NoSolution, runtime)
-        end
     end
 
 let parse_symbol_exn symbols s =
@@ -200,8 +189,7 @@ let synth_command =
       (optional_with_default `V2
          (symbol ["v1", `V1;
                   "v1_solver", `V1_solver;
-                  "v2", `V2;
-                  "automata", `Automata]))
+                  "v2", `V2;]))
       ~doc:" the synthesis algorithm to use"
 
     +> flag "-l" ~aliases:["--library"] (optional file)
