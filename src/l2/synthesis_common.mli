@@ -32,11 +32,32 @@ module Memoizer : sig
   type t
   val create : ?deduce:Deduction.t -> Library.t -> Generalizer.t -> CostModel.t -> t
   val to_string : t -> string
-  val fill_holes_in_hypothesis : t -> Hypothesis.t -> int -> (Hypothesis.t * Unifier.t) Sequence.t
-  val get : t -> Hole.t -> Specification.t -> cost:int -> (Hypothesis.t * Unifier.t) list
 
-  val to_sequence : t -> ?min_cost:int -> ?max_cost:int -> Hypothesis.t -> (Hypothesis.t * Unifier.t) Sequence.t Sequence.t
-  val to_flat_sequence : t -> ?min_cost:int -> ?max_cost:int -> Hypothesis.t -> (Hypothesis.t * Unifier.t) Sequence.t
+  val fill_holes_in_hypothesis :
+    t
+    -> Hypothesis.t
+    -> int
+    -> (Hypothesis.t * Unifier.t) Sequence.t
+      
+  val get :
+    t
+    -> Hole.t
+    -> Specification.t
+    -> cost:int -> (Hypothesis.t * Unifier.t) list
+
+  val to_sequence :
+    t
+    -> ?min_cost:int
+    -> ?max_cost:int
+    -> Hypothesis.t
+    -> (Hypothesis.t * Unifier.t) Sequence.t Sequence.t
+      
+  val to_flat_sequence :
+    t
+    -> ?min_cost:int
+    -> ?max_cost:int
+    -> Hypothesis.t
+    -> (Hypothesis.t * Unifier.t) Sequence.t
 end
 
 module Synthesizer : sig

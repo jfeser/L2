@@ -7,7 +7,12 @@ open Infer
 let print_sexp x s = print_endline (Sexp.to_string_hum (s x))
 
 module Generalizer = struct
-  type t = Type.t StaticDistance.Map.t -> Type.t -> Symbol.t -> Specification.t -> (Hypothesis.t * Unifier.t) list
+  type t =
+    Type.t StaticDistance.Map.t
+    -> Type.t
+    -> Symbol.t
+    -> Specification.t
+    -> (Hypothesis.t * Unifier.t) list
 
   type params = {
     cost_model : CostModel.t;
@@ -20,8 +25,12 @@ module Generalizer = struct
       (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
       ~init:[ hypo ]
       ~f:(fun hypos (hole, spec) ->
-          let children = List.filter (generalize hole.Hole.ctx hole.Hole.type_ hole.Hole.symbol spec) ~f:(fun (c, _) ->
-              kind c = Abstract || Specification.verify ~library:params.library spec (skeleton c))
+          let children =
+            List.filter
+              (generalize hole.Hole.ctx hole.Hole.type_ hole.Hole.symbol spec)
+              ~f:(fun (c, _) ->
+                  kind c = Abstract
+                  || Specification.verify ~library:params.library spec (skeleton c))
           in
           List.map hypos ~f:(fun p -> List.map children ~f:(fun (c, u) ->
               apply_unifier (fill_hole params.cost_model hole ~parent:p ~child:c) u))
@@ -95,7 +104,8 @@ let sexp_log =
   s
 let set_sexp = SexpLog.set sexp_log
 
-(** Maps (hole, spec) pairs to the hypotheses that can fill in the hole and match the spec.
+(** Maps (hole, spec) pairs to the hypotheses that can fill in the
+    hole and match the spec.
 
     The memoizer can be queried with a hole, a spec and a cost.
 
@@ -192,7 +202,8 @@ module Memoizer = struct
 
   let to_string m = Sexp.to_string_hum ([%sexp_of:HoleState.t HoleTable.t] m.hole_table)
 
-  let perform_deduction : t -> (Hypothesis.t * Unifier.t) Sequence.t -> (Hypothesis.t * Unifier.t) Sequence.t =
+  let perform_deduction :
+    t -> (Hypothesis.t * 'a) Sequence.t -> (Hypothesis.t * 'a) Sequence.t =
     let module H = Hypothesis in
     fun m -> Sequence.filter_map ~f:(fun (h, u) ->
         match H.kind h with
@@ -202,7 +213,8 @@ module Memoizer = struct
           Option.map (m.deduction sk) (fun sk' ->
               (Hypothesis.of_skeleton m.cost_model sk', u)))
 
-  let select_matching : t -> (Hypothesis.t * Unifier.t) Sequence.t -> (Hypothesis.t * Unifier.t) Sequence.t =
+  let select_matching :
+    t -> (Hypothesis.t * 'a) Sequence.t -> (Hypothesis.t * 'a) Sequence.t =
     let module H = Hypothesis in
     fun m -> Sequence.filter ~f:(fun (h, _) ->
         incr "num_hypos";
@@ -220,10 +232,13 @@ module Memoizer = struct
       'hypo' and have cost 'cost'. Uses the memoization table to avoid
       as much computation as possible.  
   *)
-  let rec fill_holes_in_hypothesis m hypo cost =
+  let rec fill_holes_in_hypothesis :
+    t -> Hypothesis.t -> int -> (Hypothesis.t * Unifier.t) Sequence.t =
+    let module Seq = Sequence in
+    let module H = Hypothesis in
+    fun m hypo cost ->
     (* printf "Fill %s %d\n" (Hypothesis.to_string_hum hypo) cost; *)
     (* flush stdout; *)
-    let module H = Hypothesis in
 
     let holes = H.holes hypo in
     let total_hole_cost =
@@ -235,9 +250,9 @@ module Memoizer = struct
 
     match H.kind hypo with
     | H.Concrete -> if spine_cost = cost then
-        Sequence.singleton (hypo, Unifier.empty)
-      else Sequence.empty
-    | H.Abstract -> if spine_cost >= cost then Sequence.empty else
+          Seq.singleton (hypo, Unifier.empty)
+        else Seq.empty
+      | H.Abstract -> if spine_cost >= cost then Seq.empty else
         (* Determine all possible ways to fill in the holes in this
            generalization. We compute the total cost of all holes because
            this is the part of the hypothesis that will be replaced when
@@ -245,22 +260,22 @@ module Memoizer = struct
         let all_hole_costs =
           let num_holes = List.length holes in
           Combinat.m_partition (cost - spine_cost) num_holes
-          |> Sequence.concat_map ~f:Combinat.permutations
+            |> Seq.concat_map ~f:Combinat.permutations
         in
-        let holes = Sequence.of_list holes in
+          let holes = Seq.of_list holes in
 
         (* For each list of hole costs... *)
-        Sequence.concat_map all_hole_costs ~f:(fun hole_costs ->
+          Seq.concat_map all_hole_costs ~f:(fun hole_costs ->
             let hole_costs = Array.to_sequence hole_costs in
 
-            Sequence.zip holes hole_costs
+              Seq.zip holes hole_costs
 
             (* Fold over the holes and their corresponding cost... *)
-            |> Sequence.fold
-              ~init:(Sequence.singleton (hypo, Unifier.empty))
+              |> Seq.fold
+                ~init:(Seq.singleton (hypo, Unifier.empty))
               ~f:(fun hs ((hole, _), hole_cost) ->
                   (* And select all hypotheses which could be used to fill them. *)
-                  Sequence.concat_map hs ~f:(fun (p, p_u) ->
+                    Seq.concat_map hs ~f:(fun (p, p_u) ->
                       let spec = List.find_map_exn (H.holes p) ~f:(fun (h, s) ->
                           if Hole.equal hole h then Some s else None)
                       in
@@ -268,11 +283,11 @@ module Memoizer = struct
                       let hole = Hole.apply_unifier p_u hole in
                       let children =
                         get m hole spec ~cost:hole_cost
-                        |> Sequence.of_list 
+                          |> Seq.of_list 
                       in
 
                       (* Fill in the hole and merge the unifiers. *)
-                      Sequence.map children ~f:(fun (c, c_u) ->
+                        Seq.map children ~f:(fun (c, c_u) ->
                           let u = Unifier.compose ~outer:p_u ~inner:c_u in
                           let h = H.fill_hole m.cost_model hole ~parent:p ~child:c in
                           h, u)
@@ -282,11 +297,13 @@ module Memoizer = struct
         (* Only return concrete hypotheses which match the specification. *)
         |> select_matching m
   
-  and get m hole spec ~cost =
-    if cost < 0 then failwiths "Argument out of range." cost [%sexp_of:int] else
-    if cost = 0 then [] else
+  and get :
+    t -> Hole.t -> Specification.t -> cost:int -> (Hypothesis.t * Unifier.t) list =
       let module S = HoleState in
       let module H = Hypothesis in
+    fun m hole spec ~cost ->
+      if cost < 0 then failwiths "Argument out of range." cost [%sexp_of:int] else
+      if cost = 0 then [] else
 
       (* For the given hole and specification, select the 'state'
          object, which contains previously generated hypotheses for this
@@ -358,7 +375,8 @@ module Memoizer = struct
             Lazy.force state.S.generalizations
 
             |> List.concat_map ~f:(fun (p, p_u) ->
-                Sequence.map (fill_holes_in_hypothesis m p cost) ~f:(fun (filled_p, filled_u) ->
+                  Sequence.map (fill_holes_in_hypothesis m p cost)
+                    ~f:(fun (filled_p, filled_u) ->
                     (filled_p, Unifier.compose ~inner:filled_u ~outer:p_u))
                 |> Sequence.to_list)
 
@@ -397,7 +415,12 @@ module Memoizer = struct
           let u' = denormalize_unifier u map in
           (h, u'))
 
-  let to_sequence : t -> ?min_cost:int -> ?max_cost:int -> Hypothesis.t -> (Hypothesis.t * Unifier.t) Sequence.t Sequence.t =
+  let to_sequence :
+    t
+    -> ?min_cost:int
+    -> ?max_cost:int
+    -> Hypothesis.t
+    -> (Hypothesis.t * Unifier.t) Sequence.t Sequence.t =
     fun m ?(min_cost = 0) ?max_cost hypo ->
       match max_cost with
       | Some max_cost -> 
@@ -412,7 +435,12 @@ module Memoizer = struct
         Sequence.unfold ~init:min_cost ~f:(fun cost ->
             Some (fill_holes_in_hypothesis m hypo cost, cost + 1))
 
-  let to_flat_sequence : t -> ?min_cost:int -> ?max_cost:int -> Hypothesis.t -> (Hypothesis.t * Unifier.t) Sequence.t =
+  let to_flat_sequence :
+    t
+    -> ?min_cost:int
+    -> ?max_cost:int
+    -> Hypothesis.t
+    -> (Hypothesis.t * Unifier.t) Sequence.t =
     fun m ?(min_cost = 0) ?max_cost hypo  ->
       to_sequence m ~min_cost ?max_cost hypo
       (* |> Sequence.map ~f:Sequence.of_list *)
