@@ -26,8 +26,7 @@ Executable l2
     core,
     core_extended,
     yojson,
-    hashcons,
-    Z3
+    hashcons
   ByteOpt: -thread -custom -cclib -lz3
   NativeOpt: -thread -g
 
@@ -107,8 +106,7 @@ Executable test_l2
     core,
     core_extended,
     yojson,
-    hashcons,
-    Z3
+    hashcons
 
 Test test_l2
   Command: $test_l2
