@@ -155,23 +155,6 @@ module Skeleton = struct
     | Hole_h (h1, s1), Hole_h (h2, s2) -> Hole.equal h1 h2 && e s1 s2
     | _ -> false
 
-  let rec to_string_hum s =
-    let ts = to_string_hum in
-    let list_to_string l : string = String.concat ~sep:" " (List.map ~f:ts l) in
-    match s with
-    | Num_h (x, _) -> Int.to_string x
-    | Bool_h (true, _) -> "#t"
-    | Bool_h (false, _) -> "#f"
-    | Id_h (Id.StaticDistance x, _) -> StaticDistance.to_string x
-    | Id_h (Id.Name x, _) -> x
-    | List_h (x, _) -> sprintf "[%s]" (list_to_string x)
-    | Tree_h (x, _) -> Tree.to_string x ~str:ts
-    | Op_h ((op, args), _) -> sprintf "(%s %s)" (Expr.Op.to_string op) (list_to_string args)
-    | Let_h ((bound, body), _) -> sprintf "(let *1* %s %s)" (ts bound) (ts body)
-    | Apply_h ((x, y), _) -> sprintf "(%s %s)" (ts x) (list_to_string y)
-    | Lambda_h ((num_args, body), _) -> sprintf "(lambda *%d* %s)" num_args (ts body)
-    | Hole_h (h, _) -> sprintf "?%d" h.Hole.id
-
   let rec to_pp : ?indent:int -> 'a t -> Pp.t =
     let module SD = StaticDistance in
     let module O = Expr.Op in
@@ -258,6 +241,8 @@ module Skeleton = struct
       in
       to_pp SD.Map.empty sk
 
+  let rec to_string_hum : 'a t -> string = fun s -> to_pp s |> Pp.to_string
+  
   let to_expr :
     ?ctx:Expr.t StaticDistance.Map.t
     -> ?fresh_name:(unit -> string)
