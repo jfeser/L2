@@ -221,7 +221,7 @@ module Skeleton = struct
         | Op_h ((O.Lt as op, [x1; x2]), _) 
         | Op_h ((O.Leq as op, [x1; x2]), _) -> infix_op (Expr.Op.to_string op) x1 x2
         | Op_h ((O.Cons, [x1; x2]), _)
-        | Op_h ((O.RCons, [x1; x2]), _) -> infix_op "::" x1 x2
+        | Op_h ((O.RCons, [x2; x1]), _) -> infix_op "::" x1 x2
         | Op_h ((O.And, [x1; x2]), _) -> infix_op "&&" x1 x2
         | Op_h ((O.Or, [x1; x2]), _) -> infix_op "||" x1 x2
         | Op_h ((O.Not, [x]), _) ->
