@@ -172,7 +172,7 @@ module Skeleton = struct
         function
         | Num_h (x, _) -> text (Int.to_string x)
         | Bool_h (x, _) -> text (Bool.to_string x)
-        | List_h (l, _) -> text "[" $/ list ~sep:(text ";" $ break) ~f:(to_pp names) l $/ text "]"
+        | List_h (l, _) -> text "[" $ list ~sep:(text ";" $ break) ~f:(to_pp names) l $ text "]"
         | Tree_h (_, _) -> text "<tree>"
         | Id_h (Id.StaticDistance x, _) -> begin match Map.find names x with
             | Some name -> text name
