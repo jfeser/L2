@@ -21,9 +21,8 @@ let () =
 let recursion_limit = 100
 
 let sterm_of_result r =
-  let open Expr.Op in
   let fresh_name = Util.Fresh.mk_fresh_name_fun () in
-  let ctx = ref Hole.Id.Map.empty in
+  let ctx = ref Int.Map.empty in
   let module U = Unify in
   let rec f r =
     let module SE = Symbolic_execution in
@@ -35,14 +34,14 @@ let sterm_of_result r =
     | SE.List_r (x::xs) -> U.Cons (f x, f (SE.List_r xs))
     | SE.Id_r (Sk.Id.StaticDistance sd) -> U.V (StaticDistance.to_string sd)
     | SE.Id_r (Sk.Id.Name id) -> U.V id
-    | SE.Op_r (RCons, [xs; x])
-    | SE.Op_r (Cons, [x; xs]) -> U.Cons (f x, f xs)
+    | SE.Op_r (Expr.Op.RCons, [xs; x])
+    | SE.Op_r (Expr.Op.Cons, [x; xs]) -> U.Cons (f x, f xs)
     | SE.Symbol_r id -> 
-      let var = match Hole.Id.Map.find !ctx id with
+      let var = match Map.find !ctx id with
         | Some var -> var
         | None ->
           let var = fresh_name () in
-          ctx := Hole.Id.Map.add !ctx ~key:id ~data:var; var
+          ctx := Map.add !ctx ~key:id ~data:var; var
       in
       U.V var
     | SE.Apply_r _ -> U.V (fresh_name ())
@@ -52,7 +51,7 @@ let sterm_of_result r =
   in
   try
     let sterm = f r in
-    let ctx = Hole.Id.Map.to_alist !ctx |> List.map ~f:Tuple.T2.swap |> String.Map.of_alist_exn in
+    let ctx = Map.to_alist !ctx |> List.map ~f:Tuple.T2.swap |> String.Map.of_alist_exn in
     Ok (sterm, ctx)
   with U.Unknown -> Error (Error.of_string "Unhandled construct.")
 
@@ -78,14 +77,14 @@ let push_specs s =
     match Skeleton.annotation s with
     | Sp.Examples exs ->
       let m_new_examples =
-        List.fold (Sp.Examples.to_list exs) ~init:(Some Hole.Id.Map.empty) ~f:(fun m_exs (ins, out_e) ->
+        List.fold (Sp.Examples.to_list exs) ~init:(Some Int.Map.empty) ~f:(fun m_exs (ins, out_e) ->
             Option.bind m_exs (fun exs -> 
                 try
                   Counter.incr counter "symb_exec_tried";
 
                   (* Try symbolically executing the candidate in the example context. *)
                   let out_a = SE.partially_evaluate ~recursion_limit
-                      ~ctx:(StaticDistance.Map.map ins ~f:SE.result_of_value) s
+                      ~ctx:(Map.map ins ~f:SE.result_of_value) s
                   in
 
                   match out_a with
@@ -110,9 +109,9 @@ let push_specs s =
                                 let sub = Unify.unify_one (Unify.translate out_a) (Unify.translate out_e) in
                                 Counter.incr counter "unification_succeeded";
                                 Some (List.fold sub ~init:exs ~f:(fun exs (var, term) ->
-                                    match String.Map.find symbol_names var with
+                                    match Map.find symbol_names var with
                                     | Some id ->
-                                      Hole.Id.Map.add_multi exs ~key:id ~data:(ins, value_of_term term)
+                                      Map.add_multi exs ~key:id ~data:(ins, value_of_term term)
                                     | None -> exs))
                               with Unify.Non_unifiable ->
                                 Counter.incr counter "unification_pruned";
@@ -140,12 +139,12 @@ let push_specs s =
                   None))
       in
       Option.bind m_new_examples (fun new_exs ->
-          let new_exs = Hole.Id.Map.map new_exs ~f:Sp.Examples.of_list in
-          if Hole.Id.Map.exists new_exs ~f:Result.is_error then None else
-            Some (Hole.Id.Map.map new_exs ~f:Or_error.ok_exn))
+          let new_exs = Map.map new_exs ~f:Sp.Examples.of_list in
+          if Map.exists new_exs ~f:Result.is_error then None else
+            Some (Map.map new_exs ~f:Or_error.ok_exn))
       |>  Option.map ~f:(fun new_exs -> Skeleton.map_hole s ~f:(fun (hole, old_spec) ->
           let s = Sk.Hole_h (hole, old_spec) in
-          match Hole.Id.Map.find new_exs hole.Hole.id with
+          match Map.find new_exs hole.Hole.id with
           | Some exs -> begin match old_spec with
               | Sp.Top -> Skeleton.Hole_h (hole, Sp.Examples exs)
               | _ -> s

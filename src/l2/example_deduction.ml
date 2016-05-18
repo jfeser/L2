@@ -169,14 +169,14 @@ let infer_examples :
                 try
                   let expr_ctx = StaticDistance.Map.map ctx ~f:Expr.of_value in
                   let fresh_name = Util.Fresh.mk_fresh_name_fun () in
-                  let hole_names = Hole.Id.Table.create () in
+                  let hole_names = Int.Table.create () in
                   let arg_evals =
                     List.map args ~f:(Sk.to_expr ~ctx:expr_ctx ~of_hole:(fun hole ->
-                        match Hole.Id.Table.find hole_names hole.Hole.id with
+                        match Hashtbl.find hole_names hole.Hole.id with
                         | Some name -> `Id name
                         | None ->
                           let name = fresh_name () in
-                          Hole.Id.Table.add_exn hole_names ~key:hole.Hole.id ~data:name;
+                          Hashtbl.add_exn hole_names ~key:hole.Hole.id ~data:name;
                           `Id name
                       ))
                     |> List.map ~f:ExprValue.of_expr

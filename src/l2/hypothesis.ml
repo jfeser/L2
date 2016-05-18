@@ -84,10 +84,8 @@ module Symbol = struct
 end
 
 module Hole = struct
-  module Id = Int
-  
   type t = {
-    id  : Id.t;
+    id  : int;
     ctx : Type.t StaticDistance.Map.t;
     type_ : Type.t;
     symbol : Symbol.t;
@@ -96,7 +94,7 @@ module Hole = struct
   let counter = ref 0
 
   let equal h1 h2 = compare h1 h2 = 0
-  let equal_id h1 h2 = Id.equal h1.id h2.id
+  let equal_id h1 h2 = h1.id = h2.id
   
   let to_string h = Sexp.to_string_hum (sexp_of_t h)
 
@@ -237,7 +235,7 @@ module Skeleton = struct
         | Op_h ((op, args), _) ->
           let pp = text (Expr.Op.to_string op) $/ list ~sep:break ~f:(to_pp ~parens:true names) args in
           apply_parens pp
-        | Hole_h (hole, _) -> text ((Hole.Id.to_string hole.Hole.id) ^ "?")
+        | Hole_h (hole, _) -> text ((Int.to_string hole.Hole.id) ^ "?")
       in
       to_pp SD.Map.empty sk
 
