@@ -178,7 +178,7 @@ type result =
   | Id_r of Skeleton.Id.t
   | Apply_r of result * result list
   | Op_r of Expr.Op.t * result list
-  | Symbol_r of Hole.Id.t
+  | Symbol_r of int
   | Closure_r of Specification.t Skeleton.t * result StaticDistance.Map.t ref
 [@@deriving compare, sexp]
 

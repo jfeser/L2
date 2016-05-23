@@ -55,16 +55,8 @@ end
     type context, and a symbol which defines the set of expressions which
     can be used to fill the hole. *)
 module Hole : sig
-  module Id : sig
-    type t
-    include Sexpable.S with type t := t
-    include Comparable.S with type t := t
-    include Stringable.S with type t := t
-    module Table : Hashtbl.S with type key := t
-  end
-  
-  type t = {
-    id : Id.t;
+  type t = private {
+    id : int;
     ctx : Type.t StaticDistance.Map.t;
     type_ : Type.t;
     symbol : Symbol.t;

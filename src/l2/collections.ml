@@ -585,3 +585,11 @@ module Tree = struct
         Option.map (List.map c ~f:all |> Option.all) (fun c ->
             Node (x, c)))
 end
+
+module SequenceExt = struct
+  include Sequence
+      
+  let inspect : 'a t -> f:('a -> unit) -> 'a t =
+    fun s ~f -> map s ~f:(fun x -> f x; x)
+end
+module Sequence = SequenceExt

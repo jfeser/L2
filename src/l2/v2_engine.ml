@@ -283,7 +283,14 @@ module L2_Synthesizer = struct
     let gen_no_components = L2_Generalizer.No_components.create cost_model library in
     {
       gen_no_lambdas; gen_no_components; deduce; cost_model; library; 
-      memoizer = Memoizer.create ~deduce library gen_no_lambdas cost_model;
+      memoizer =
+        let open Memoizer.Config in
+        Memoizer.create {
+          library; cost_model;
+          deduction = deduce;
+          generalize = gen_no_lambdas;
+          search_space_out = None;
+        };
     }
   
   let search s ~check_cost ~found hypo initial_cost =  

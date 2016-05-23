@@ -1,0 +1,26 @@
+opam-version: "1.2"
+name:         "L2"
+version:      "1.0"
+maintainer:   "Jack Feser <jack.feser@gmail.com>"
+authors:      "Jack Feser <jack.feser@gmail.com>"
+homepage:     "https://github.com/jfeser/L2"
+bug-reports:  "https://github.com/jfeser/L2/issues"
+license:      "GPLv3"
+dev-repo:     "https://github.com/jfeser/L2.git"
+build: [
+  ["./configure" "--prefix=%{prefix}%"]
+  [make]
+]
+install: [make "install"]
+remove: ["ocamlfind" "remove" "L2"]
+depends: [
+  "ocamlfind"      {build}
+  "core"           {build}
+  "core_extended"  {build}
+  "ctypes"         {build}
+  "ctypes-foreign" {build}
+  "yojson"         {build}
+  "ounit"          {build}
+  "hashcons"       {build}
+  "menhir"         {build}
+]

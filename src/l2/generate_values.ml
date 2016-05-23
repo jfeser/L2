@@ -131,9 +131,16 @@ let generate_examples : config:config -> Expr.t -> Type.t -> example Sequence.t 
         List.map args_t ~f:Value_generalizer.of_type
         |> List.unzip
       in
-      let gen = Generalizer.compose_all_exn gens in
       let init = H.list cost_model inits Sp.top in
-      let memo = Memoizer.create Library.empty gen cost_model in
+      let memo =
+        let open Memoizer.Config in
+        Memoizer.create {
+          library = Library.empty;
+          generalize = Generalizer.compose_all_exn gens;
+          deduction = Deduction.no_op;
+          search_space_out = None;
+          cost_model;
+        } in
       Memoizer.to_flat_sequence memo ~max_cost:config.max_cost init
         
       |> Sequence.map ~f:(fun (args, _) -> match H.skeleton args with

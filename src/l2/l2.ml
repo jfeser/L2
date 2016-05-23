@@ -15,9 +15,6 @@ let deduction_timer =
 let higher_order_deduction = fun sk ->
   Timer.run_with_time deduction_timer "higher_order" (fun () -> Higher_order_deduction.push_specs sk)
 
-let example_deduction = fun sk ->
-  Timer.run_with_time deduction_timer "example" (fun () -> Example_deduction.push_specs sk)
-
 (** Get a JSON object containing all captured information from a single run. *)
 let get_json testcase runtime solution config argv : Json.json =
   let solution_str = match solution with
@@ -28,15 +25,11 @@ let get_json testcase runtime solution config argv : Json.json =
     "search", V1_solver_engine.timer;
     "memoizer", Synthesis_common.timer;
     "deduction", deduction_timer;
-    "example_deduction", Example_deduction.timer;
-    "fast_example_deduction", Fast_example_deduction.timer;
     (* "deduction", Deduction.timer; *)
   ] in
   let counters = [
     "search", V1_solver_engine.counter;
-    "unification_deduction", Unification_deduction.counter;
     "memoizer", Synthesis_common.counter;
-    "fast_example_deduction", Fast_example_deduction.counter;
     (* "deduction", Deduction.counter; *)
   ] in
   let sexp_logs = [
@@ -98,12 +91,6 @@ let synthesize ?spec_dir engine deduction cost_model library testcase =
           let deduce = List.fold_left deduction ~init:Deduction.no_op ~f:(fun d -> function
               | `None -> Deduction.no_op
               | `Higher_order -> Deduction.compose d higher_order_deduction
-              | `Unification -> Deduction.compose d Unification_deduction.push_specs
-              | `Fast_example -> begin match spec_dir with
-                  | Some dir -> Deduction.compose d (Fast_example_deduction.create dir library)
-                  | None -> failwith "Expected a directory of specifications. (Use --spec-dir DIR)."
-                end
-              | `Example -> Deduction.compose d example_deduction
               | `Random -> Deduction.compose d Random_deduction.push_specs
               | `Recursive_spec -> Deduction.compose d Recursive_spec_deduction.push_specs)
           in
@@ -116,17 +103,6 @@ let synthesize ?spec_dir engine deduction cost_model library testcase =
           | Ok (Some s) ->
             let hypo_str = Pp.to_string ~width:70 (Skeleton.to_pp (Hypothesis.skeleton s)) in
             (`Solution hypo_str, runtime)
-          | Ok None -> (`NoSolution, runtime)
-          | Error err -> print_endline (Error.to_string_hum err); (`NoSolution, runtime)
-        end
-
-      | `Automata -> begin
-          let open Hypothesis in
-          let (m_solution, runtime) = Util.with_runtime (fun () ->
-              Automaton.Synthesizer.synthesize_from_examples ~max_cost:50 Component.stdlib exs)
-          in
-          match m_solution with
-          | Ok (Some s) -> (`Solution (Hypothesis.to_string s), runtime)
           | Ok None -> (`NoSolution, runtime)
           | Error err -> print_endline (Error.to_string_hum err); (`NoSolution, runtime)
         end
@@ -189,9 +165,6 @@ let synth_command =
          (nonempty_symbol_list
             ["higher_order", `Higher_order;
              "recursive_spec", `Recursive_spec;
-             "unification", `Unification;
-             "example", `Example;
-             "fast_example", `Fast_example;
              "random", `Random;
              "none", `None]))
       ~doc:" deduction routines to use during synthesis (only applies when using v2 engine)"
@@ -200,8 +173,7 @@ let synth_command =
       (optional_with_default `V2
          (symbol ["v1", `V1;
                   "v1_solver", `V1_solver;
-                  "v2", `V2;
-                  "automata", `Automata]))
+                  "v2", `V2;]))
       ~doc:" the synthesis algorithm to use"
 
     +> flag "-l" ~aliases:["--library"] (optional file)
@@ -417,69 +389,11 @@ module AbstractExample = struct
   include Comparable.Make(T)
 end
 
-let spec_command =
-  let print_command =
-    let spec =
-      let open Command.Spec in
-      empty
-      +> anon (maybe ("source" %: file))
-    in
-
-    let run m_source_fn () =
-      let exs = match m_source_fn with
-        | Some fn -> Example_deduction.examples_of_file fn
-        | None -> Example_deduction.examples_of_channel In_channel.stdin
-      in
-
-      let exs = List.map ~f:AbstractExample.normalize exs in
-
-      let num_args =
-        List.hd_exn exs
-        |> Tuple.T2.get1
-        |> List.length
-      in
-
-      let map =
-        List.range 0 num_args
-        |> List.fold_left ~init:AbstractExample.Map.empty ~f:(fun m n ->
-            List.fold_left exs ~init:m ~f:(fun m (ins, out) ->
-                Map.add_multi m ~key:(List.take ins n, out) ~data:(ins, out)))
-        |> Map.map ~f:List.dedup
-      in
-      
-      Map.iteri map ~f:(fun ~key ~data ->
-          let (ins, out) = key in
-          let ins = ins @ (List.repeat (num_args - List.length ins) (`Id "T")) in
-          AbstractExample.print (ins, out);
-          
-          print_string "\t";
-          AbstractExample.print (AbstractExample.join_many data);
-          print_newline ())
-
-      (* List.iter exs ~f:(fun (ins, out) -> *)
-      (*     print_string "("; *)
-      (*     List.map ins ~f:ExprValue.to_string *)
-      (*     |> List.intersperse ~sep:", " *)
-      (*     |> List.iter ~f:print_string; *)
-      (*     print_string ") -> "; *)
-      (*     print_string (ExprValue.to_string out); *)
-      (*     print_newline ()) *)
-    in
-    
-    Command.basic ~summary:"Print out a component specification." spec run
-  in
-
-  Command.group ~summary:"Commands related to component specifications." [
-    "print", print_command;
-    "gen", Generate_values.cmd;
-  ]
-
 let commands =
   Command.group ~summary:"A suite of tools for synthesizing and running L2 programs." [
     "synth", synth_command;
     "eval", eval_command;
     "library", library_command;
-    "spec", spec_command;
   ]
 
 let () = Command.run commands

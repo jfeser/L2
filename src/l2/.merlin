@@ -5,7 +5,6 @@ S .
 
 PKG core
 PKG core_extended
-PKG Z3
 PKG hashcons
 PKG yojson
 PKG ounit
