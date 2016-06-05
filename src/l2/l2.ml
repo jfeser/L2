@@ -9,6 +9,7 @@ let deduction_timer =
   let t = Timer.empty () in
   let n = Timer.add_zero t in
   n "higher_order" "Total time in higher-order deduction.";
+  n "fast_example" "Total time in fast example deduction.";
   n "example" "Total time in example deduction.";
   t
   
@@ -92,7 +93,18 @@ let synthesize ?spec_dir engine deduction cost_model library testcase =
               | `None -> Deduction.no_op
               | `Higher_order -> Deduction.compose d higher_order_deduction
               | `Random -> Deduction.compose d Random_deduction.push_specs
-              | `Recursive_spec -> Deduction.compose d Recursive_spec_deduction.push_specs)
+              | `Recursive_spec -> Deduction.compose d Recursive_spec_deduction.push_specs
+              | `Fast_example ->
+                let open Fast_example_deduction in
+                let push_specs = match spec_dir with
+                  | Some dir -> create dir library
+                  | None -> failwith "Must pass spec-dir parameter."
+                in
+                let push_specs sk =
+                  Timer.run_with_time deduction_timer "fast_example"
+                    (fun () -> push_specs sk)
+                in
+                Deduction.compose d push_specs)
           in
           let (m_solution, runtime) = Util.with_runtime (fun () ->
               let synth = L2_Synthesizer.create deduce ?cost_model library in
@@ -163,7 +175,8 @@ let synth_command =
     +> flag "-dd" ~aliases:["--deduction"]
       (optional_with_default [`Higher_order]
          (nonempty_symbol_list
-            ["higher_order", `Higher_order;
+            ["fast_example", `Fast_example;
+             "higher_order", `Higher_order;
              "recursive_spec", `Recursive_spec;
              "random", `Random;
              "none", `None]))
