@@ -33,7 +33,9 @@ module Type : sig
   val normalize : t -> t
   val are_unifiable : t -> t -> bool
   val arity : t -> int
-  val of_string : string -> t
+
+  val of_string_exn : string -> t
+  val of_string : string -> t Or_error.t
   val to_string : t -> string
 
   val of_expr : ?ctx:t String.Map.t -> Expr.t -> (t * t Int.Map.t)

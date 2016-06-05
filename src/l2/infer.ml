@@ -84,12 +84,15 @@ module Type0 = struct
     | _ -> 0
 
   (** Parse a type from a string. *)
-  let of_string (s: string) : t =
+  let of_string_exn : string -> t = fun s ->
     let lexbuf = Lexing.from_string s in
     try Parser.typ_eof Lexer.token lexbuf with
     | Parser.Error -> raise (ParseError s)
     | Lexer.SyntaxError _ -> raise (ParseError s)
     | Parsing.Parse_error -> raise (ParseError s)
+
+  let of_string : string -> t Or_error.t = fun s ->
+    Or_error.try_with (fun () -> of_string_exn s)
 
   (** Convert a type to a string. *)
   let rec to_string (t: t) : string =
@@ -486,7 +489,7 @@ let stdlib_tctx = [
   "zip", "(list[a], list[a]) -> list[list[a]]";
 
   "inf", "num";
-] |> List.map ~f:(fun (name, str) -> name, Type0.of_string str) |> Ctx.of_alist_exn
+] |> List.map ~f:(fun (name, str) -> name, Type0.of_string_exn str) |> Ctx.of_alist_exn
 
 (** Infer the type of an expression in context. Returns an expression
 tree annotated with types. *)

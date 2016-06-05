@@ -79,7 +79,7 @@ let test_parse_expr =
     ]
 
 let test_parse_typ =
-  make_tests ~in_f:Type.of_string ~out_f:identity
+  make_tests ~in_f:Type.of_string_exn ~out_f:identity
     ~in_str:identity ~out_str:Type.to_string ~res_str:Type.to_string
     "parse_typ"
     [ "num", Const_t Num_t;
