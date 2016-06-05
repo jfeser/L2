@@ -3,6 +3,7 @@ open Core_extended.Std
 
 open Collections
 open Hypothesis
+open Infer
 
 module Sp = Specification
 module Sk = Skeleton
@@ -55,29 +56,34 @@ module Abstract_example = struct
     let out_str = Abstract_value.to_string out in
     "(" ^ ins_str ^ ") -> " ^ out_str
 
-  let lift : t -> (t * string ExprValue.Map.t) =
+  let lift : Type.t -> t -> (t * string ExprValue.Map.t) =
     let open Abstract_value in
-    fun (ins, out) ->
+    let open Type in
+    fun type_ (ins, out) ->
       let ctx = ref ExprValue.Map.empty in
       let ctr = ref 0 in
       
       let rec normalize_value = function
-        | `Unit
-        | `Num _
-        | `Bool _ 
-        | `Id _ as e -> e
-        | `List l -> `List (List.map l ~f:(fun v ->
-            let id = sprintf "v%d" !ctr in
-            ctx := Map.add !ctx ~key:v ~data:id;
-            incr ctr;
-            `Id id))
-        | _ -> failwith "Unexpected case."
+        | Const_t _ -> Fn.id
+        | Var_t _ -> fun v ->
+          let id = sprintf "v%d" !ctr in
+          ctx := Map.add !ctx ~key:v ~data:id;
+          incr ctr;
+          `Id id
+        | App_t ("list", [val_t]) -> begin function
+            | `List l -> `List (List.map ~f:(normalize_value val_t) l)
+            | v -> v
+          end
+        | App_t _ -> Fn.id
+        | Arrow_t _ as t -> fun v ->
+          failwiths "Higher-order values are not supported."
+            (t, v) [%sexp_of:Type.t * ExprValue.t]
       in
 
-      let normalize = function
+      let normalize t = function
         | Top 
         | Bottom as e -> e
-        | Value v -> Value (normalize_value v)
+        | Value v -> Value (normalize_value t v)
       in
       
       let rec sub_value = fun e ->
@@ -97,8 +103,12 @@ module Abstract_example = struct
         | Top | Bottom as e -> e
         | Value v -> Value (sub_value v)
       in
-                       
-      let out' = normalize out in
+
+      let ret_type = match type_ with
+        | Arrow_t (_, t) -> t
+        | t -> t
+      in
+      let out' = normalize ret_type out in
       let ins' = List.map ins ~f:sub in
       ((ins', out'), !ctx)
 
@@ -297,20 +307,30 @@ end
 let infer_examples :
   library:Library.t
   -> specs:Function_spec.t String.Map.t
-  -> op:string
+  -> op:[`Builtin of Expr.Op.t | `Func of string]
   -> args:Sp.t Sk.t list
   -> Examples.t
   -> Sp.t list =
   fun ~library ~specs ~op ~args exs ->
     let arity = List.length args in
-    match Map.find specs op with
+    let op_type = match op with
+      | `Builtin op -> Expr.Op.typ op
+      | `Func op -> Map.find_exn library.Library.type_ctx op
+    in
+    let op_str = match op with
+      | `Builtin op -> Expr.Op.to_string op
+      | `Func op -> op
+    in
+    match Map.find specs op_str with
     | Some op_specs -> begin
         let exs = Examples.to_list exs in
         let ctxs = List.map exs ~f:Tuple.T2.get1 in
         
         let abstract_exs = List.map exs ~f:(fun ex ->
             let (ax, m) =
-              Abstract_example.lift (Abstract_example.of_spec_and_args ~library ~args ex)
+              Abstract_example.lift
+                op_type
+                (Abstract_example.of_spec_and_args ~library ~args ex)
             in
             Abstract_example.lower (Function_spec.find op_specs ax) m)
         in
@@ -356,9 +376,8 @@ let push_specs_exn' :
       | Sk.Op_h ((op, args), s) ->
         begin match Sp.spec s with
           | Examples.Examples exs ->
-            let name = Expr.Op.to_string op in
             let (arg_specs, runtime) = Util.with_runtime (fun () ->
-                infer_examples ~library ~specs ~op:name ~args exs)
+                infer_examples ~library ~specs ~op:(`Builtin op) ~args exs)
             in
             let args = List.map2_exn args arg_specs ~f:(fun arg sp ->
                 Sk.map_annotation arg ~f:(fun _ -> sp))
@@ -370,7 +389,7 @@ let push_specs_exn' :
         begin match Sp.spec s, func with
           | Examples.Examples exs, Sk.Id_h (Sk.Id.Name name, _) ->
             let (arg_specs, runtime) = Util.with_runtime (fun () ->
-                infer_examples ~library ~specs ~op:name ~args exs)
+                infer_examples ~library ~specs ~op:(`Func name) ~args exs)
             in
             let args = List.map2_exn args arg_specs ~f:(fun arg sp ->
                 Sk.map_annotation arg ~f:(fun _ -> sp))
