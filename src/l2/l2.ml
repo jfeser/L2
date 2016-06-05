@@ -330,78 +330,7 @@ let library_command =
   in
 
   Command.basic ~summary:"Load a library and print." spec run
-
-module AbstractExample = struct
-  module T = struct
-    type t = ExprValue.t list * ExprValue.t [@@deriving compare, sexp]
-  end
-  include T
-
-  let normalize : t -> t = fun (ins, out) ->
-    let ctx = ref String.Map.empty in
-    let ctr = ref 0 in
-    let rec normalize = function
-      | `Unit
-      | `Num _
-      | `Bool _ as e -> e
-      | `Id id -> begin
-          let id' = sprintf "v%d" !ctr in
-          ctx := String.Map.add !ctx ~key:id ~data:id';
-          incr ctr;
-          `Id id'
-        end
-      | `List l -> `List (List.map l ~f:normalize)
-      | _ -> failwith "Unexpected case."
-    in
-    let rec sub = function
-      | `Unit
-      | `Num _
-      | `Bool _ as e -> e
-      | `Id id -> begin match String.Map.find !ctx id with
-          | Some id' -> `Id id'
-          | None -> `Id id
-        end
-      | `List l -> `List (List.map l ~f:sub)
-      | _ -> failwith "Unexpected case."
-    in      
-    let out' = normalize out in
-    let ins' = List.map ins ~f:sub in
-    (ins', out')
-
-  let print (ins, out) =
-    print_string "(";
-    List.map ins ~f:ExprValue.to_string
-    |> List.intersperse ~sep:", "
-    |> List.iter ~f:print_string;
-    print_string ") -> ";
-    print_string (ExprValue.to_string out);
-    print_newline ()
-
-  let join : t -> t -> t = fun e1 e2 ->
-    let fresh_int = Util.Fresh.mk_fresh_int_fun () in
-    let fresh_var = fun () -> `Id (sprintf "T%d" (fresh_int ())) in
-    let rec join_val = fun v1 v2 -> match v1, v2 with
-      | `Unit, `Unit -> `Unit
-      | `Num _, `Num _ 
-      | `Bool _, `Bool _ 
-      | `Id _, `Id _ -> 
-        if v1 = v2 then v1 else fresh_var ()
-      | (`Id _ as v), _ | _, (`Id _ as v) -> v
-      | `List l1, `List l2 ->
-        if List.length l1 = List.length l2 then
-          `List (List.map2_exn l1 l2 ~f:join_val)
-        else fresh_var ()
-      | _ -> failwiths "Unexpected case." (v1, v2) [%sexp_of:ExprValue.t * ExprValue.t]
-    in
-    let (i1, o1) = e1 in
-    let (i2, o2) = e2 in
-    (List.map2_exn i1 i2 ~f:join_val, join_val o1 o2)
-
-  let join_many : t list -> t = List.fold_left1 ~f:join
-
-  include Comparable.Make(T)
-end
-
+    
 let commands =
   Command.group ~summary:"A suite of tools for synthesizing and running L2 programs." [
     "synth", synth_command;
