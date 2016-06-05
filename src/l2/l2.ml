@@ -235,6 +235,11 @@ let synth_command =
         | Some fn -> Library.from_file fn
         | None -> Ok Library.empty
       in
+
+      (* Remove functions on the blacklist from the library. *)
+      let library = Library.filter_keys library
+          ~f:(fun k -> not (List.mem testcase.Testcase.blacklist k))
+      in
       
       let m_solution, solve_time = synthesize ?spec_dir engine deduction cost_model library testcase in
 

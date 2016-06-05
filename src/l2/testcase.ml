@@ -1,5 +1,5 @@
 open Core.Std
-module Json = Yojson.Safe
+open Collections
 
 type case =
   | Examples of Example.t list * ((string * Expr.t) list)
@@ -8,6 +8,7 @@ type t = {
   name : string;
   desc : string;
   case : case;
+  blacklist : string list;
 }
 
 let json_error str json = Or_error.error str (Json.pretty_to_string json) [%sexp_of:string]
@@ -35,18 +36,21 @@ let examples_of_json j =
   | _ -> json_error "Contents are malformed for kind 'examples'." j
 
 let of_json j =
-  let open Or_error.Monad_infix in
-  match j with
-  | `Assoc [
-      "name", `String name;
-      "description", `String desc;
-      "kind", `String kind;
-      "contents", contents;
-    ] -> begin match kind with
-      | "examples" -> examples_of_json contents >>| fun case -> { name; desc; case; }
-      | _ -> error "Unexpected kind." (kind, Json.pretty_to_string j) [%sexp_of:string * string]
-    end
-  | j -> json_error "Test case is malformed." j
+  let open Json.Util in
+  Or_error.try_with (fun () -> {
+        name = j |> member "name" |> to_string;
+        desc = j |> member "description" |> to_string;
+        blacklist = begin
+          match j |> member "blacklist" with
+          | `Null -> []
+          | bj -> bj |> to_list |> List.map ~f:to_string
+        end;
+        case = begin
+          match j |> member "kind" |> to_string with
+          | "examples" -> j |> member "contents" |> examples_of_json |> ok_exn
+          | kind -> failwiths "Unexpected kind." kind [%sexp_of:string]
+        end;
+      })
 
 let from_file ~filename:fn =
   try Json.from_file ~fname:fn fn |> of_json with
@@ -66,6 +70,7 @@ let to_json t =
   `Assoc ([
     "name", `String t.name;
     "description", `String t.desc;
+    "blacklist", `List (List.map t.blacklist ~f:(fun x -> `String x));
   ] @ rest)
 
 let to_file ~format:fmt ~filename:fn t =

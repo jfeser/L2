@@ -62,3 +62,11 @@ let from_file_exn : string -> t = fun fn ->
 
 let from_file : string -> t Or_error.t = fun fn ->
   Or_error.try_with (fun () -> from_file_exn fn)
+
+let filter_keys : t -> f:(string -> bool) -> t = fun t ~f ->
+  {
+    expr_ctx = Map.filter_keys t.expr_ctx ~f;
+    value_ctx = Map.filter_keys t.value_ctx ~f;
+    exprvalue_ctx = Map.filter_keys t.exprvalue_ctx ~f;
+    type_ctx = Map.filter_keys t.type_ctx ~f;
+  }
