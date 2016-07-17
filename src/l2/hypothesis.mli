@@ -202,6 +202,7 @@ module Specification : sig
     verify : 'a. Library.t -> 'a Skeleton.t -> bool;
     compare : t -> int;
     to_sexp : unit -> Sexp.t;
+    to_string : unit -> string;
     spec : spec;
   }
 

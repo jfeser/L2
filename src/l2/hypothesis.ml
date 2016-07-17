@@ -613,6 +613,7 @@ module Specification0 = struct
       verify : 'a. Library.t -> 'a Skeleton.t -> bool;
       compare : t -> int;
       to_sexp : unit -> Sexp.t;
+      to_string : unit -> string;
       spec : spec;
     }
 
@@ -629,7 +630,7 @@ module Specification0 = struct
     | Top
     | Bottom
 
-  let to_string s = Sexp.to_string (s.to_sexp ())
+  let to_string s = s.to_string ()
 
   let verify : 'a. t -> ?library:Library.t -> 'a Skeleton.t -> bool =
     fun spec ?(library=Library.empty) skel -> spec.verify library skel
@@ -642,9 +643,10 @@ module Specification0 = struct
       | Top -> 0
       | _ -> failwith "BUG: Unexpected spec variant."
     in
+    let to_string () = "T" in
     let to_sexp () = Sexp.Atom "Top" in
     let spec = Top in
-    { verify; compare; to_sexp; spec }
+    { verify; compare; to_sexp; to_string; spec }
 
   let bottom =
     let verify _ _ = false in
@@ -652,17 +654,19 @@ module Specification0 = struct
       | Bottom -> 0
       | _ -> failwith "BUG: Unexpected spec variant."
     in
+    let to_string () = "⊥" in
     let to_sexp () = Sexp.Atom "Bottom" in
     let spec = Bottom in
-    { verify; compare; to_sexp; spec }
+    { verify; compare; to_sexp; to_string; spec }
 end
 
 module Examples = struct
   module S = Specification0
+  module SD = StaticDistance
     
   module Input = struct
     module T = struct
-      type t = Ast.value StaticDistance.Map.t [@@deriving sexp, compare]
+      type t = Ast.value SD.Map.t [@@deriving sexp, compare]
     end
     include T
     include Comparable.Make(T)
@@ -694,19 +698,19 @@ module Examples = struct
   
   let context = function
     | [] -> []
-    | (inp, out)::_ -> StaticDistance.Map.keys inp
+    | (inp, out)::_ -> Map.keys inp
 
   let to_spec : t -> S.t = fun exs ->
     let verify library skel =
       try
         List.for_all exs ~f:(fun (in_ctx, out) ->
             let fresh_name = Fresh.mk_fresh_name_fun () in
-            let name_ctx = StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
-            let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
+            let name_ctx = Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
+            let id_ctx = Map.map name_ctx ~f:(fun name -> `Id name) in
             let expr = Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel in
             let value_ctx =
-              StaticDistance.Map.to_alist in_ctx
-              |> List.map ~f:(fun (k, v) -> StaticDistance.Map.find_exn name_ctx k, v)
+              Map.to_alist in_ctx
+              |> List.map ~f:(fun (k, v) -> Map.find_exn name_ctx k, v)
               |> Ctx.of_alist_exn
               |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
             in
@@ -722,17 +726,24 @@ module Examples = struct
     in
 
     let to_sexp () = sexp_of_t exs in
+    let to_string () =
+      List.map exs ~f:(fun (i, o) ->
+          sprintf "%s -> %s" (SD.Map.to_string Value.to_string i) (Value.to_string o))
+      |> String.concat ~sep:"\n"
+    in
     let spec = Examples exs in
 
-    { S.verify; S.compare; S.to_sexp; S.spec }
+    { S.verify; S.compare; S.to_sexp; S.to_string; S.spec }
 end
 
 module FunctionExamples = struct
   module S = Specification0
+
+  module SD = StaticDistance
     
   module Input = struct
     module T = struct
-      type t = Ast.value StaticDistance.Map.t * Ast.value list [@@deriving sexp, compare]
+      type t = Ast.value SD.Map.t * Ast.value list [@@deriving sexp, compare]
     end
     include T
     include Comparable.Make(T)
@@ -788,9 +799,21 @@ module FunctionExamples = struct
     in
 
     let to_sexp () = sexp_of_t exs in
+
+    let to_string () =
+      List.map exs ~f:(fun ((ctx, args), o) ->
+          let ctx = SD.Map.to_string Value.to_string ctx in
+          let args =
+            List.map args ~f:Value.to_string
+            |> String.concat ~sep:", "
+          in
+          sprintf "%s (%s) -> %s" ctx args (Value.to_string o))
+      |> String.concat ~sep:"\n"
+    in
+
     let spec = FunctionExamples exs in
 
-    { S.verify; S.compare; S.to_sexp; S.spec }
+    { S.verify; S.compare; S.to_sexp; S.to_string; S.spec }
 end
 
 module Specification = struct
