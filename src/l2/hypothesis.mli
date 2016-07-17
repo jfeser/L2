@@ -247,6 +247,10 @@ module FunctionExamples : sig
 
   val of_list : example list -> t Or_error.t
   val of_list_exn : example list -> t
+
+  val of_input_output_list : (Value.t list * Value.t) list -> t Or_error.t
+  val of_input_output_list_exn : (Value.t list * Value.t) list -> t
+
   val to_list : t -> example list
   val singleton : example -> t
 

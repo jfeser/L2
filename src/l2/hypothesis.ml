@@ -765,15 +765,22 @@ module FunctionExamples = struct
     List.fold exs ~init:(Ok I.Map.empty) ~f:(fun m ((ctx, args), ret) ->
         let key = (ctx, args) in
         m >>= fun m ->
-        match I.Map.find m key with
+        match Map.find m key with
         | Some ret' when ret' = ret -> Ok m
         | Some _ -> error_string "Different return value for same input."
-        | None -> Ok (I.Map.add m ~key ~data:ret))
+        | None -> Ok (Map.add m ~key ~data:ret))
     |> ignore
     >>| fun () -> List.dedup ~compare:compare_example exs
-
-  let singleton : example -> t = fun ex -> [ex]
   let of_list_exn exs = of_list exs |> Or_error.ok_exn    
+
+  let of_input_output_list : (Value.t list * Value.t) list -> t Or_error.t =
+    fun io ->
+      List.map io ~f:(fun (i, o) -> (SD.Map.empty, i), o)
+      |> of_list
+  let of_input_output_list_exn : (Value.t list * Value.t) list -> t = 
+    fun io -> of_input_output_list io |> Or_error.ok_exn
+  
+  let singleton : example -> t = fun ex -> [ex]
   let to_list t = t
 
   let to_spec : t -> S.t = fun exs ->
