@@ -18,8 +18,8 @@ let m_expr_to_string = function Some e -> Expr.to_string e | None -> "None"
 (* let vals_to_string (res:(value list * value) list) = *)
 (*   let val_to_string (v: value list * value) = *)
 (*     let (inputs, result) = v in *)
-(*     let inputs_strs = List.map inputs ~f:value_to_string in *)
-(*     (Ast.sexp "(" inputs_strs ")") ^ " = " ^ (value_to_string result) in *)
+(*     let inputs_strs = List.map inputs ~f:Value.to_string in *)
+(*     (Ast.sexp "(" inputs_strs ")") ^ " = " ^ (Value.to_string result) in *)
 (*   let vals_strs = List.map res ~f:val_to_string in *)
 (*   Ast.sexp "[" vals_strs "]" *)
 
@@ -99,7 +99,7 @@ let test_eval =
   let open Collections.Tree in
   make_tests ~in_f:(fun str -> str |> Expr.of_string_exn |> (eval (Ctx.empty ())))
     ~out_f:identity
-    ~in_str:identity ~out_str:value_to_string ~res_str:value_to_string
+    ~in_str:identity ~out_str:Value.to_string ~res_str:Value.to_string
     "eval"
     [ "1", `Num 1;
       "#t", `Bool true;

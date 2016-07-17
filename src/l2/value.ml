@@ -1,4 +1,5 @@
 open Core.Std
+open Collections
 
 module T = struct
   type t = Ast.value [@@deriving compare]
@@ -10,9 +11,9 @@ module T = struct
     | `Num x -> list [atom "Num"; [%sexp_of:int] x]
     | `Bool x -> list [atom "Bool"; [%sexp_of:bool] x]
     | `List x -> list [atom "List"; [%sexp_of:t list] x]
-    | `Tree x -> list [atom "Tree"; [%sexp_of:t Collections.Tree.t] x]
+    | `Tree x -> list [atom "Tree"; [%sexp_of:t Tree.t] x]
     | `Closure (expr, ctx) ->
-      let ctx_sexp = [%sexp_of:string list] (Collections.Ctx.keys ctx) in
+      let ctx_sexp = [%sexp_of:string list] (Ctx.keys ctx) in
       list [atom "Closure"; [%sexp_of:Expr.t] expr; ctx_sexp]
     | `Unit -> atom "Unit"
 
@@ -22,5 +23,14 @@ module T = struct
 end
 include T
 
+let rec to_string : t -> string = function
+  | `Num x  -> sprintf "%d" x
+  | `Bool true -> "true"
+  | `Bool false -> "false"
+  | `Tree x -> Tree.to_string x ~str:to_string
+  | `List x ->
+    "[" ^ (List.map x ~f:to_string |> String.concat ~sep:"; ") ^ "]"
+  | `Closure _ -> "<closure>"
+  | `Unit -> "()"
 
 include Comparable.Make(T)

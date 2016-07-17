@@ -5,18 +5,7 @@ open Collections
 
 (** Exceptions that can be thrown by the evaluation and type-checking functions. *)
 exception RuntimeError of Error.t
-
 exception HitRecursionLimit
-
-let rec value_to_string v =
-  let join = String.concat ~sep:" " in
-  match v with
-  | `Num x  -> Expr.to_string (`Num x)
-  | `Bool x -> Expr.to_string (`Bool x)
-  | `Tree x -> Tree.to_string x ~str:value_to_string
-  | `List x -> "[" ^ (join (List.map x ~f:value_to_string)) ^ "]"
-  | `Closure (e, _) -> Expr.to_string e
-  | `Unit -> "unit"
 
 (** Raise a bad argument error. *)
 let arg_error expr =

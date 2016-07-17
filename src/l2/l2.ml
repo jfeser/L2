@@ -281,29 +281,36 @@ let eval_command =
     empty
     +> flag "--untyped" no_arg ~doc:" disable type-checking before evaluation"
     +> flag "--syntax"
-      (optional_with_default `Sexp (symbol ["sexp", `Sexp; "ml", `Ml]))
+      (optional_with_default `Ml (symbol ["sexp", `Sexp; "ml", `Ml]))
       ~doc:" syntax to use for parsing expressions"
+    +> flag "--library" (optional file)
+      ~doc:" component library to load before evaluating"
     +> anon (maybe ("source" %: file))
   in
 
-  let run untyped syntax m_source_fn () =
+  let run untyped syntax library_fn m_source_fn () =
     let source = match m_source_fn with
       | Some fn -> In_channel.read_all fn
       | None -> In_channel.input_all In_channel.stdin
     in
 
-    let open Or_error.Monad_infix in
-
-    let m_output = 
-      Expr.of_string ~syntax source
-      >>= (fun expr -> (* Perform type inference and report type errors, unless disabled. *)
-          if untyped then Ok expr else
-            Infer.infer (Ctx.empty ()) expr |> Or_error.map ~f:(fun _ -> expr))
-      >>| fun expr -> Eval.eval (Ctx.empty ()) expr |> Eval.value_to_string
+    let output =
+      let open Or_error.Let_syntax in
+      let%bind library = match library_fn with
+        | Some fn -> Library.from_file fn
+        | None -> Library.empty |> Or_error.return
+      in
+      let%bind expr = Expr.of_string ~syntax source in
+      let%map () =
+        if untyped then Ok () else
+          Infer.infer (ref library.Library.type_ctx) expr
+          |> Or_error.ignore
+      in
+      Eval.eval (ref library.Library.value_ctx) expr
     in
-
-    match m_output with
-    | Ok value_str -> print_string value_str
+        
+    match output with
+    | Ok value -> print_string (Value.to_string value)
     | Error err -> print_string ("Error: " ^ (Error.to_string_hum err) ^ "\n")
   in
   
