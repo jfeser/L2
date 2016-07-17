@@ -19,6 +19,21 @@ module Generalizer = struct
     library : Library.t;
   }
 
+  let generalize_single : params -> t -> Hypothesis.t -> Hypothesis.t list =
+    let open Hypothesis in
+    fun params generalize hypo -> 
+      holes hypo
+      |> List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2)
+      |> List.map ~f:(fun (hole, spec) ->
+          generalize hole.Hole.ctx hole.Hole.type_ hole.Hole.symbol spec
+          |> List.filter ~f:(fun (c, _) ->
+              kind c = Abstract
+              || Specification.verify ~library:params.library spec (skeleton c))
+          |> List.map ~f:(fun (c, u) ->
+              let h = fill_hole params.cost_model hole ~parent:hypo ~child:c in
+              apply_unifier h u))
+      |> List.concat
+
   let generalize_all params generalize hypo =
     let open Hypothesis in
     List.fold_left

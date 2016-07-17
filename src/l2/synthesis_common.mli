@@ -12,6 +12,7 @@ module Generalizer : sig
     library : Library.t;
   }
 
+  val generalize_single : params -> t -> Hypothesis.t -> Hypothesis.t list
   val generalize_all : params -> t -> Hypothesis.t -> Hypothesis.t list
   val compose : t -> t -> t
   val compose_all_exn : t list -> t
