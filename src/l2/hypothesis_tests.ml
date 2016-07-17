@@ -52,7 +52,26 @@ let cost_model_tests = "cost-model" >::: [
       );
   ]
 
+let spec_tests =
+  let module Sp = Specification in
+  "specifications" >::: [
+    test_case (fun ctxt ->
+        let module FE = FunctionExamples in
+        let s1 = FE.of_input_output_list_exn [[`Num 0], `Num 1] |> FE.to_spec in
+        let s2 = FE.of_input_output_list_exn [[`Num 0], `Num 2] |> FE.to_spec in
+        assert_bool "specs are not equal" (Sp.compare s1 s2 <> 0) 
+      );
+
+    test_case (fun ctxt ->
+        let module FE = FunctionExamples in
+        let s1 = FE.of_input_output_list_exn [[`Num 0], `Num 1] |> FE.to_spec in
+        let s2 = FE.of_input_output_list_exn [[`Num 0], `Num 1] |> FE.to_spec in
+        assert_bool "specs are equal" (Sp.compare s1 s2 = 0) 
+      );
+  ]
+
 let tests = "hypothesis" >::: [
     static_distance_tests;
     cost_model_tests;
+    spec_tests;
   ]
