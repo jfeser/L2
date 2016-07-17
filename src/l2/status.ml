@@ -63,39 +63,45 @@ let escape esc =
   let prefix = "\027" in
   prefix ^ (suffix esc)
 
+let enabled = ref true
+
+let enable : unit -> unit = fun () -> enabled := true
+let disable : unit -> unit = fun () -> enabled := false
+
 let print_status : status -> unit =
   let last_print = ref Time.epoch in
   let tick = ref 0 in
   fun status ->
-    let diff = Time.diff (Time.now ()) !last_print in
-    if Time.Span.(>) diff (Time.Span.of_ms 500.0) then begin
-      incr tick;
-      last_print := Time.now ();
+    if !enabled then
+      let diff = Time.diff (Time.now ()) !last_print in
+      if Time.Span.(>) diff (Time.Span.of_ms 500.0) then begin
+        incr tick;
+        last_print := Time.now ();
 
-      let dots = [""; "."; ".."; "..."] in
+        let dots = [""; "."; ".."; "..."] in
 
-      let hits = Counter.get status.synthesis "hole_hits" in
-      let misses = Counter.get status.synthesis "hole_misses" in
-      let rate = (Float.of_int hits /. Float.of_int (hits + misses)) *. 100.0 in
-      
-      let subs = [
-        "NUM_HYPOS", Int.to_string (Counter.get status.synthesis "num_hypos");
-        "NUM_SAVED", Int.to_string (Counter.get status.synthesis "num_saved_hypos");
-        "HIT_RATE", Float.to_string_hum ~decimals:2 rate;
-        "DOTS", List.nth_exn dots (!tick % List.length dots)
-      ] in
+        let hits = Counter.get status.synthesis "hole_hits" in
+        let misses = Counter.get status.synthesis "hole_misses" in
+        let rate = (Float.of_int hits /. Float.of_int (hits + misses)) *. 100.0 in
 
-      print_string (escape `Cursor_upper_left);
-      print_string (escape `Reset);
-      List.zip_exn logo_lines status_lines
-      |> List.iter ~f:(fun (logo, status_line) ->
-          let status_line =
-            List.fold subs ~init:status_line ~f:(fun line (pattern, with_) ->
-                String.substr_replace_first line ~pattern ~with_)
-          in
-          print_string logo;
-          print_string "   ";
-          print_string status_line;
-          print_newline ())
-    end
-  
+        let subs = [
+          "NUM_HYPOS", Int.to_string (Counter.get status.synthesis "num_hypos");
+          "NUM_SAVED", Int.to_string (Counter.get status.synthesis "num_saved_hypos");
+          "HIT_RATE", Float.to_string_hum ~decimals:2 rate;
+          "DOTS", List.nth_exn dots (!tick % List.length dots)
+        ] in
+
+        print_string (escape `Cursor_upper_left);
+        print_string (escape `Reset);
+        List.zip_exn logo_lines status_lines
+        |> List.iter ~f:(fun (logo, status_line) ->
+            let status_line =
+              List.fold subs ~init:status_line ~f:(fun line (pattern, with_) ->
+                  String.substr_replace_first line ~pattern ~with_)
+            in
+            print_string logo;
+            print_string "   ";
+            print_string status_line;
+            print_newline ())
+      end
+
