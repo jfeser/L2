@@ -621,7 +621,13 @@ module Specification0 = struct
     let t_of_sexp : Sexp.t -> t = fun _ -> failwith "Unimplemented."
 
     let compare : t -> t -> int = fun t1 t2 ->
-      let cmp = Int.compare (Obj.extension_id t1.spec) (Obj.extension_id t2.spec) in
+      (* Each specification variant has a comparison function that
+         puts a total order on specifications of that variant. To get a
+         total order on all specifications, we need an order on
+         variants. Here, we use the extension ids to get that
+         ordering. *)
+      let get_id spec = spec |> Obj.extension_constructor |> Obj.extension_id in
+      let cmp = Int.compare (get_id t1.spec) (get_id t2.spec) in
       if cmp = 0 then t1.compare t2 else cmp
   end
   include T
