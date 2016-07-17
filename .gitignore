@@ -340,3 +340,4 @@ component-specs
 *.mldylib
 *.mllib
 META
+*.json
