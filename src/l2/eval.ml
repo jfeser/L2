@@ -20,77 +20,6 @@ let argn_error expr sexp =
 let divide_by_zero_error () =
   raise (RuntimeError (Error.of_string "Divide by zero."))
 
-let stdlib = ["inf", `Num Int.max_value] @ ([
-    "foldr", "(lambda (l f i) (if (= l []) i (f (foldr (cdr l) f i) (car l))))";
-    "foldl", "(lambda (l f i) (if (= l []) i (foldl (cdr l) f (f i (car l)))))";
-    "map", "(lambda (l f) (if (= l []) [] (cons (f (car l)) (map (cdr l) f))))";
-    "filter", "(lambda (l f) (if (= l []) []
-             (if (f (car l))
-             (cons (car l) (filter (cdr l) f))
-             (filter (cdr l) f))))";
-    "mapt", "(lambda (t f)
-           (if (= t {}) {}
-           (tree (f (value t)) (map (children t) (lambda (c) (mapt c f))))))";
-    "foldt", "(lambda (t f i)
-            (if (= t {}) i
-            (f (map (children t) (lambda (ct) (foldt ct f i)))
-                (value t))))";
-    "merge", "(lambda (x y) (if (= x []) y (if (= y []) x (let a (car x) (let b (car y) (if (< a b) (cons a (merge (cdr x) y)) (cons b (merge x (cdr y)))))))))";
-    "take", "(lambda (l x) (if (= [] l) [] (if (> x 0) (cons (car l) (take (cdr l) (- x 1))) [])))";
-    "zip", "(lambda (x y)
-            (if (| (= x []) (= y []))
-            []
-            (cons (cons (car x) (cons (car y) [])) (zip (cdr x) (cdr y)))))";
-    "intersperse",
-    "(lambda (l e)
-  (if (= l []) []
-    (let xs (cdr l)
-      (if (= xs []) l
-        (cons (car l) (cons e (intersperse xs e)))))))";
-    "append",
-    "(lambda (l1 l2)
-  (if (= l1 []) l2
-    (if (= l2 []) l1
-      (cons (car l1) (append (cdr l1) l2)))))";
-    "reverse",
-    "(lambda (l)
-  (if (= l []) []
-    (append (reverse (cdr l)) [(car l)])))";
-    "concat",
-    "(lambda (l)
-  (if (= l []) []
-    (append (car l) (concat (cdr l)))))";
-    "drop",
-    "(lambda (l x)
-  (if (= x 0) l
-    (drop (cdr l) (- x 1))))";
-    "sort",
-    "(lambda (l)
-  (if (= l []) []
-    (let p (car l)
-         (let lesser (filter (cdr l) (lambda (e) (< e p)))
-              (let greater (filter (cdr l) (lambda (e) (>= e p)))
-                   (append (sort lesser) (cons p (sort greater))))))))";
-    "dedup",
-    "(lambda (l)
-    (if (= l []) []
-      (if (= (cdr l) []) l
-        (let sl (sort l)
-             (let x1 (car sl)
-                  (let x2 (car (cdr sl))
-                       (if (= x1 x2) (dedup (cdr sl)) (cons x1 (dedup (cdr sl))))))))))"
-  ] |> List.map ~f:(fun (name, str) -> name, Expr.of_string_exn str))
-
-let eval_ctx_of_alist =
-  List.fold_left ~init:(Ctx.empty ())
-    ~f:(fun ctx (name, lambda) ->
-        let ctx' = Ctx.bind ctx name `Unit in
-        let value = `Closure (lambda, ctx') in
-        Ctx.update ctx' name value;
-        Ctx.bind ctx name value)
-
-let (stdlib_vctx: Value.t Ctx.t) = eval_ctx_of_alist stdlib
-
 (** Evaluate an expression in the provided context. *)
 let eval ?recursion_limit ctx expr =
   let rec eval limit ctx expr =
@@ -216,14 +145,6 @@ let eval ?recursion_limit ctx expr =
   match recursion_limit with
   | Some limit -> eval limit ctx expr
   | None -> eval (-1) ctx expr
-
-let (stdlib_evctx: ExprValue.t Ctx.t) =
-  List.fold_left stdlib ~init:(Ctx.empty ())
-    ~f:(fun ctx (name, lambda) ->
-        let ctx' = Ctx.bind ctx name `Unit in
-        let value = `Closure (ExprValue.of_expr lambda, ctx') in
-        Ctx.update ctx' name value;
-        Ctx.bind ctx name value)
 
 let partial_eval : ?recursion_limit:int -> ?ctx:ExprValue.t Ctx.t -> ExprValue.t -> ExprValue.t =
   fun ?recursion_limit:(limit = (-1)) ?(ctx = Ctx.empty ()) expr ->

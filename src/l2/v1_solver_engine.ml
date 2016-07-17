@@ -458,7 +458,7 @@ let solve_single
                     run_with_time "partial_eval" (fun () ->
                         Eval.partial_eval
                           ~recursion_limit:100
-                          ~ctx:Eval.stdlib_evctx
+                          ~ctx:(failwith "TODO: Replace with library.")
                           expr)
                   in
                   match Unify.sterm_of_expr_value lhs, result_sterm with
@@ -567,7 +567,7 @@ let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
         Ctx.bind ctx name (TypedExpr.to_type (infer_exn ctx impl)))
   in
   let vctx =
-    List.fold_left bk ~init:Eval.stdlib_vctx
+    List.fold_left bk ~init:(failwith "TODO: Replace with library.")
       ~f:(fun ctx (name, impl) ->
           Ctx.bind ctx name (`Closure (impl, ctx)))
   in

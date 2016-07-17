@@ -183,7 +183,9 @@ let infer_examples :
                     |> List.map ~f:(fun ev ->
                         try
                           run_with_time "eval" (fun () ->
-                              Eval.partial_eval ~ctx:Eval.stdlib_evctx ~recursion_limit:100 ev)
+                              Eval.partial_eval
+                                ~ctx:(failwith "TODO: Replace with library.")
+                                ~recursion_limit:100 ev)
                         with Eval.HitRecursionLimit -> `Id (fresh_name ()))
                   in
                   let ret_eval = ExprValue.of_value ret in
