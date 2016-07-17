@@ -1,6 +1,8 @@
 open Core.Std
 open Collections
 
+open Hypothesis
+
 type case =
   | Examples of Example.t list * ((string * Expr.t) list)
 
@@ -73,7 +75,7 @@ let to_json t =
     "blacklist", `List (List.map t.blacklist ~f:(fun x -> `String x));
   ] @ rest)
 
-let to_file ~format:fmt ~filename:fn t =
+let to_file ?format:(fmt = `Pretty) ~filename:fn t =
   let json = to_json t in
   let ch = Out_channel.create fn in
   try
@@ -82,6 +84,9 @@ let to_file ~format:fmt ~filename:fn t =
     | `Compact -> Ok (Json.to_channel ~std:true ch json)
   with
   | Yojson.Json_error err -> Or_error.error_string err
+
+let to_file_exn ?format:(fmt = `Pretty) ~filename:fn t =
+  to_file ~format:fmt ~filename:fn t |> Or_error.ok_exn
     
 let from_channel ch =
   try Json.from_channel ch |> of_json with
