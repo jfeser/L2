@@ -11,7 +11,15 @@ module StaticDistance : sig
   type t
 
   include Sexpable.S with type t := t
-  include Comparable.S with type t := t
+
+  module Map : sig
+    include Map.S with type Key.t = t
+
+    val increment_scope : 'a t -> 'a t
+    val to_string : ('a -> string) -> 'a t -> string
+  end
+  
+  (* include Comparable.S with type t := t and module Map := Map *)
 
   (** Increment the scope of a coordinate. *)
   val increment_scope : t -> t

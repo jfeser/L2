@@ -11,24 +11,23 @@ module StaticDistance = struct
   end
 
   include T
-  include Comparable.Make(T)
 
-  let increment_scope x =
-    let (a, b) = x in
-    (a + 1, b)
-
-  let map_increment_scope x =
-    Map.to_alist x
-    |> List.map ~f:(fun (k, v) -> (increment_scope k, v))
-    |> Map.of_alist_exn
-
+  module C = Comparable.Make(T)
+  include (C : module type of C with module Map := C.Map)
+    
   let create ~distance ~index =
     let open Int in
-    if distance <= 0 || index <= 0 then raise (Invalid_argument "Argument out of range.") else
+    if distance <= 0 || index <= 0 then
+      raise (Invalid_argument "Argument out of range.")
+    else
       (distance, index)
 
   let distance x = let (a, _) = x in a
   let index x = let (_, b) = x in b
+
+  let increment_scope x =
+    let (a, b) = x in
+    (a + 1, b)
 
   let args num =
     List.range ~stride:1 ~start:`inclusive ~stop:`inclusive 1 num
@@ -37,6 +36,25 @@ module StaticDistance = struct
   let to_string x =
     let (a, b) = x in
     sprintf "%d_%d" a b
+
+  module Map = struct
+    include C.Map
+
+    let increment_scope : 'a t -> 'a t = fun x ->
+      to_alist x
+      |> List.map ~f:(fun (k, v) -> (increment_scope k, v))
+      |> of_alist_exn
+
+    let to_string : ('a -> string) -> 'a t -> string = fun ts m ->
+      let str =
+        to_alist m
+        |> List.map ~f:(fun (k, v) -> sprintf "%s : %s" (to_string k) (ts v))
+        |> String.concat ~sep:", "
+      in
+      "{ " ^ str ^ " }"
+  end
+  
+  let map_increment_scope = Map.increment_scope
 end
 
 module Symbol = struct
