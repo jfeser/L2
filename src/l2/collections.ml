@@ -40,6 +40,12 @@ module ListExt = struct
 
   (* diag [1,2,3] 0 = [[0,2,3], [1,0,3], [1,2,0]] *)
   let diag l x = List.init (List.length l) ~f:(fun i -> (List.take l i) @ [x] @ (List.drop l (i + 1)))
+
+  let random : ?state:Random.State.t -> 'a list -> 'a option =
+    fun ?(state = Random.State.default) l ->
+      let len = List.length l in
+      if len = 0 then None else
+        Some (List.nth_exn l (Random.State.int state len))
 end
 module List = ListExt
 
