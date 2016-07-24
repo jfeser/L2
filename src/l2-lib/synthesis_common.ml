@@ -345,23 +345,23 @@ module Memoizer = struct
         let state = match HoleTable.find m.hole_table key with
           | Some state -> incr "hole_hits"; state
           | None ->
-            let distinct_specs =
-              m.hole_table
-              |> HoleTable.keys
-              |> List.map ~f:(fun k -> k.Key.spec)
-              |> List.dedup ~compare:Specification.compare
-            in
-            Counter.set counter "num_distinct_specs" (List.length distinct_specs);
-            set_sexp "specs" ([%sexp_of:Specification.t list] distinct_specs);
+            (* let distinct_specs = *)
+            (*   m.hole_table *)
+            (*   |> HoleTable.keys *)
+            (*   |> List.map ~f:(fun k -> k.Key.spec) *)
+            (*   |> List.dedup ~compare:Specification.compare *)
+            (* in *)
+            (* Counter.set counter "num_distinct_specs" (List.length distinct_specs); *)
+            (* set_sexp "specs" ([%sexp_of:Specification.t list] distinct_specs); *)
 
-            let num_distinct_types =
-              m.hole_table
-              |> HoleTable.keys
-              |> List.map ~f:(fun k -> k.Key.hole.Key.Hole_without_id.type_)
-              |> List.dedup ~compare:Type.compare
-              |> List.length
-            in
-            Counter.set counter "num_distinct_types" num_distinct_types;
+            (* let num_distinct_types = *)
+            (*   m.hole_table *)
+            (*   |> HoleTable.keys *)
+            (*   |> List.map ~f:(fun k -> k.Key.hole.Key.Hole_without_id.type_) *)
+            (*   |> List.dedup ~compare:Type.compare *)
+            (*   |> List.length *)
+            (* in *)
+            (* Counter.set counter "num_distinct_types" num_distinct_types; *)
 
             incr "hole_misses";
 
@@ -391,16 +391,16 @@ module Memoizer = struct
           (* Otherwise, we will need to use the available
              generalizations to generate hypothesis of the current cost. *)
           | None ->
-            let (top_key, _) = Key.of_hole_spec hole Specification.top in
-            let top_match_count = begin match HoleTable.find m.hole_table top_key with
-              | Some state -> begin match CostTable.find state.S.hypotheses cost with
-                  | Some hs -> List.length hs
-                  | None -> 0
-                end
-              | None -> 0
-            end
-            in
-            Counter.set counter "top_match_count" top_match_count;
+            (* let (top_key, _) = Key.of_hole_spec hole Specification.top in *)
+            (* let top_match_count = begin match HoleTable.find m.hole_table top_key with *)
+            (*   | Some state -> begin match CostTable.find state.S.hypotheses cost with *)
+            (*       | Some hs -> List.length hs *)
+            (*       | None -> 0 *)
+            (*     end *)
+            (*   | None -> 0 *)
+            (* end *)
+            (* in *)
+            (* Counter.set counter "top_match_count" top_match_count; *)
 
             let hs =
               (* For each possible generalization, fill in its holes so
@@ -419,28 +419,28 @@ module Memoizer = struct
             (* Save the computed result, so we can use it later. *)
             CostTable.add_exn state.S.hypotheses ~key:cost ~data:hs;
 
-            let all_saved_hypos =
-              m.hole_table
-              |> HoleTable.to_alist 
-              |> List.map ~f:(fun (_, data) ->
-                  data.HoleState.hypotheses
-                  |> CostTable.to_alist
-                  |> List.map ~f:(fun (_, hs) -> hs)
-                  |> List.concat)
-              |> List.concat
-            in
-            let num_distinct_hypos =
-              all_saved_hypos
-              |> List.map ~f:Tuple.T2.get1
-              |> List.dedup ~compare:H.compare_skeleton
-              |> List.length
-            in
-            Counter.set counter "num_distinct_hypos" num_distinct_hypos;
-            let num_saved_hypos =
-              all_saved_hypos
-              |> List.length
-            in
-            Counter.set counter "num_saved_hypos" num_saved_hypos;
+            (* let all_saved_hypos = *)
+            (*   m.hole_table *)
+            (*   |> HoleTable.to_alist  *)
+            (*   |> List.map ~f:(fun (_, data) -> *)
+            (*       data.HoleState.hypotheses *)
+            (*       |> CostTable.to_alist *)
+            (*       |> List.map ~f:(fun (_, hs) -> hs) *)
+            (*       |> List.concat) *)
+            (*   |> List.concat *)
+            (* in *)
+            (* let num_distinct_hypos = *)
+            (*   all_saved_hypos *)
+            (*   |> List.map ~f:Tuple.T2.get1 *)
+            (*   |> List.dedup ~compare:H.compare_skeleton *)
+            (*   |> List.length *)
+            (* in *)
+            (* Counter.set counter "num_distinct_hypos" num_distinct_hypos; *)
+            (* let num_saved_hypos = *)
+            (*   all_saved_hypos *)
+            (*   |> List.length *)
+            (* in *)
+            (* Counter.set counter "num_saved_hypos" num_saved_hypos; *)
 
             hs
         in
