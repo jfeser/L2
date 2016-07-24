@@ -23,7 +23,7 @@ module type S = sig
     -> result
 end
 
-module Make (PI : Process_info.S) = struct
+module Make (PI : Process_info.S) : S = struct
   type result = {
     runtime : Time_ns.Span.t;
     peak_memory : Int64.t;
