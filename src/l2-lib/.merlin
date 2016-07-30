@@ -1,6 +1,6 @@
 REC
 
-B ../../_build/src/l2
+B ../../_build/src/l2-lib
 S .
 
 PKG core
