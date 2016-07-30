@@ -284,30 +284,28 @@ let push_specs_exn' :
     in
     push_specs_exn sk
 
-let push_specs' : specs:((ExprValue.t list * ExprValue.t) list) String.Map.t -> Sp.t Sk.t -> Sp.t Sk.t Option.t = fun ~specs sk ->
-  try
-    let sk' = push_specs_exn' ~specs sk in
-    Some sk'
-  with Bottom -> None
-
-let of_spec_files : string list -> (Sp.t Sk.t -> Sp.t Sk.t Option.t) = fun spec_files ->
-  let name_to_examples =
-    List.map spec_files ~f:(fun sf ->
-        let exs = examples_of_file sf in
-        let name = Filename.chop_suffix (Filename.basename sf) "-examples.sexp" in
-        (name, exs))
-    |> String.Map.of_alist_exn
-  in
-  push_specs' ~specs:name_to_examples
-
 let spec_dir = "/Users/jack/Documents/l2/repo/component-specs"
     
-let push_specs =
+let specs : (ExprValue.t list * ExprValue.t) list String.Map.t Lazy.t =
   if Sys.is_directory spec_dir = `Yes then
     let spec_files =
       Sys.ls_dir spec_dir
       |> List.map ~f:(fun f -> spec_dir ^ "/" ^ f)
     in
-    of_spec_files spec_files
+    lazy begin
+      List.map spec_files ~f:(fun sf ->
+          let exs = examples_of_file sf in
+          let name = Filename.chop_suffix (Filename.basename sf) "-examples.sexp" in
+          (name, exs))
+      |> String.Map.of_alist_exn
+    end
   else
-    fun _ -> failwith "Could not load component specifications."
+    lazy String.Map.empty
+
+let push_specs : Sp.t Sk.t -> Sp.t Sk.t Option.t = fun sk ->
+  try
+    let specs = Lazy.force specs in
+    let sk' = push_specs_exn' ~specs sk in
+    Some sk'
+  with Bottom -> None
+
