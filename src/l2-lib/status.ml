@@ -3,6 +3,7 @@ open Collections
 
 type status = {
   synthesis : Counter.t;
+  hashcons : Counter.t;
 }
 
 let logo_lines = [
@@ -37,10 +38,10 @@ let status_lines = [
   "";
   "Memoization table hit rate: HIT_RATE";
   "";
-  "";
-  "";
-  "";
-  "";
+  "Hashcons table equals calls: EQUALS_CALLS (EQUALS_TRUE t, EQUALS_FALSE f)";
+  "Hashcons table hash calls: HASH_CALLS, hashcons calls: HASHCONS_CALLS";
+  "Hashcons table len: TABLE_LEN, num entries: NUM_ENTRIES";
+  "Hashcons bucket sum: BUCKET_SUM, min: BUCKET_MIN, med: BUCKET_MED, max: BUCKET_MAX";
   "";
   "";
   "";
@@ -88,6 +89,17 @@ let print_status : status -> unit =
           "NUM_HYPOS", Int.to_string (Counter.get status.synthesis "num_hypos");
           "NUM_SAVED", Int.to_string (Counter.get status.synthesis "num_saved_hypos");
           "HIT_RATE", Float.to_string_hum ~decimals:2 rate;
+          "EQUALS_CALLS", Int.to_string (Counter.get status.hashcons "equal");
+          "EQUALS_TRUE", Int.to_string (Counter.get status.hashcons "equal_true");
+          "EQUALS_FALSE", Int.to_string (Counter.get status.hashcons "equal_false");
+          "HASH_CALLS", Int.to_string (Counter.get status.hashcons "hash");
+          "HASHCONS_CALLS", Int.to_string (Counter.get status.hashcons "hashcons");
+          "TABLE_LEN", Int.to_string (Counter.get status.hashcons "table_len");
+          "NUM_ENTRIES", Int.to_string (Counter.get status.hashcons "num_entries");
+          "BUCKET_SUM", Int.to_string (Counter.get status.hashcons "sum_bucket_len");
+          "BUCKET_MIN", Int.to_string (Counter.get status.hashcons "min_bucket_len");
+          "BUCKET_MED", Int.to_string (Counter.get status.hashcons "med_bucket_len");
+          "BUCKET_MAX", Int.to_string (Counter.get status.hashcons "max_bucket_len");
           "DOTS", List.nth_exn dots (!tick % List.length dots)
         ] in
 

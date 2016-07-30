@@ -235,7 +235,7 @@ module Memoizer = struct
     let module H = Hypothesis in
     fun m -> Sequence.filter ~f:(fun (h, _) ->
         incr "num_hypos";
-        Status.print_status { Status.synthesis = counter; };
+        Status.(print_status { synthesis = counter; hashcons = Hypothesis.Table.counter; });
         match H.kind h with
         | H.Concrete ->
           (* printf "%s\n\n" ([%sexp_of:H.t] h |> Sexp.to_string_hum); *)

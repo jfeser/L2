@@ -269,6 +269,10 @@ module Hypothesis : sig
 
   include Sexpable.S with type t := t
 
+  module Table : sig
+    val counter : Counter.t
+  end
+
   val skeleton : t -> skeleton
   val cost : t -> int
   val kind : t -> kind

@@ -865,12 +865,37 @@ module Hypothesis = struct
   module Sp = Specification
     
   type skeleton = Sp.t Sk.t
+  
+  module Table = struct
+      let counter =
+        let c = Counter.empty () in
+        let n = Counter.add_zero c in
+        n "equal" "Number of calls to Skeleton.equal.";
+        n "equal_true" "Number of calls to Skeleton.equal returning true.";
+        n "equal_false" "Number of calls to Skeleton.equal returning true.";
+        n "hash" "Number of calls to Skeleton.hash.";
+        n "hashcons" "Number of calls to Hypothesis.Table.hashcons.";
+        c
 
-  module Table = Hashcons.Make(struct
-      type t = skeleton
-      let equal = Sk.equal ~equal:Sp.equal
-      let hash = Sk.hash
-    end)
+    include Hashcons.Make(struct
+        type t = skeleton
+          
+        let equal h1 h2 =
+          Counter.incr counter "equal";
+          if Sk.equal ~equal:Sp.equal h1 h2 then begin
+            Counter.incr counter "equal_true"; true
+          end else begin
+            Counter.incr counter "equal_false"; false
+          end
+
+        let hash : t -> int = fun h ->
+          Counter.incr counter "hash";
+          Sk.hash h
+      end)
+
+    let hashcons t k =
+      Counter.incr counter "hashcons"; hashcons t k
+  end
 
   type kind =
     | Abstract
@@ -892,7 +917,16 @@ module Hypothesis = struct
     holes : (Hole.t * Sp.t) list;
   }
 
-  let table = Table.create 100
+  let table = Table.create 49157
+
+  let () =
+    let nf = Counter.add_func Table.counter in
+    nf "table_len" "" (fun () -> let (x, _, _, _, _, _) = Table.stats table in x);
+    nf "num_entries" "" (fun () -> let (_, x, _, _, _, _) = Table.stats table in x);
+    nf "sum_bucket_len" "" (fun () -> let (_, _, x, _, _, _) = Table.stats table in x);
+    nf "min_bucket_len" "" (fun () -> let (_, _, _, x, _, _) = Table.stats table in x);
+    nf "med_bucket_len" "" (fun () -> let (_, _, _, _, x, _) = Table.stats table in x);
+    nf "max_bucket_len" "" (fun () -> let (_, _, _, _, _, x) = Table.stats table in x)
 
   let skeleton h = h.skeleton.Hashcons.node
   let cost h = h.cost

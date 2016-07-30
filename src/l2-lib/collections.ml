@@ -393,40 +393,56 @@ module Timer = struct
 end
 
 module Counter = struct
+  type count =
+    | Simple of int ref
+    | Func of (unit -> int)
+        
   type counter_info = {
-    count : int;
+    count : count;
     desc : string;
-  }
+  } 
 
-  type t = counter_info Ctx.t
+  type t = counter_info String.Table.t
 
-  let empty () : t = Ctx.empty ()
+  let empty () : t = String.Table.create ()
 
-  let add_zero (t: t) (name: string) (desc: string) : unit =
-    Ctx.update t name { count = 0; desc; }
+  let add_zero : t -> string -> string -> unit = fun t name desc ->
+    Hashtbl.set t name { count = Simple (ref 0); desc; }
 
-  let get (t: t) (name: string) : int =
-    (Ctx.lookup_exn t name).count
+  let add_func : t -> string -> string -> (unit -> int) -> unit =
+    fun t name desc f ->
+      Hashtbl.set t name { count = Func f; desc; }
+  
+  let get_count : count -> int = function
+    | Simple c -> !c
+    | Func f -> f ()
+
+  let get : t -> string -> int = fun t name ->
+    get_count (Hashtbl.find_exn t name).count 
 
   let set : t -> string -> int -> unit = fun t name v ->
-    let info = Ctx.lookup_exn t name in
-    Ctx.update t name { info with count = v }
+    match (Hashtbl.find_exn t name).count with
+    | Simple c -> c := v
+    | Func f -> failwith "Cannot set a function counter."
 
-  let incr (t: t) (name: string) : unit =
-    let info = Ctx.lookup_exn t name in
-    Ctx.update t name { info with count = info.count + 1 }
+  let incr : t -> string -> unit = fun t name ->
+    match (Hashtbl.find_exn t name).count with
+    | Simple c -> incr c
+    | Func f -> failwith "Cannot incr a function counter."
 
-  let to_strings (t: t) : string list =
-    List.map (Ctx.data t) ~f:(fun { desc = d; count = c } ->
-        sprintf "%s: %s" d (Int.to_string c))
+  let to_strings : t -> string list = fun t ->
+    Hashtbl.data t
+    |> List.map  ~f:(fun { desc = d; count = c } ->
+        sprintf "%s: %d" d (get_count c))
 
   (** Serialize a counter to JSON. This creates an object of the form
       \{ name: count, ... \}. *)
   let to_json (t: t) : Json.json =
-    `Assoc (Ctx.to_alist t |> List.map ~f:(fun (k, v) -> (k, `Assoc [
-        "count", `Int v.count;
-        "description", `String v.desc;
-      ])))
+    `Assoc (Hashtbl.to_alist t
+            |> List.map ~f:(fun (k, v) -> (k, `Assoc [
+                "count", `Int (get_count v.count);
+                "description", `String v.desc;
+              ])))
 end
 
 module SexpLog = struct
