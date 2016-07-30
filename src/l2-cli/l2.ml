@@ -348,7 +348,6 @@ let commands =
     "synth", synth_command;
     "eval", eval_command;
     "library", library_command;
-    "gen-func", Generate_functions.cmd;
   ]
 
 let () = Command.run commands
