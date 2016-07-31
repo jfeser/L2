@@ -41,8 +41,6 @@ Library l2
     Expr,
     ExprValue,
     Fast_example_deduction,
-    Generate_functions,
-    Generate_values,
     Higher_order_deduction,
     Hypothesis,
     Infer,
@@ -55,7 +53,6 @@ Library l2
     Sstream,
     Status,
     Structure,
-    Symbolic_execution,
     Synthesis_common,
     Testcase,
     Unify,
@@ -66,10 +63,23 @@ Library l2
     Value,
     Verify
 
-Executable l2_cli
+Executable l2_cli_native
   Path: src/l2-cli
   MainIs: l2.ml
   CompiledObject: native
+  NativeOpt: -thread -g
+  ByteOpt: -thread -g
+  BuildDepends:
+    l2,
+    core,
+    core_extended,
+    yojson,
+    hashcons
+
+Executable l2_cli_byte
+  Path: src/l2-cli
+  MainIs: l2.ml
+  CompiledObject: byte
   NativeOpt: -thread -g
   ByteOpt: -thread -g
   BuildDepends:

@@ -58,6 +58,7 @@ module Op = struct
   }
 
   let equal o1 o2 = compare_op o1 o2 = 0
+  let hash = Hashtbl.hash
 
   let metadata_by_op =
     let t s =

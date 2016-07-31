@@ -90,23 +90,60 @@ module Skeleton : sig
     include Comparable.S with type t := t
   end
 
-  type 'a t =
-    | Num_h of int * 'a
-    | Bool_h of bool * 'a
-    | List_h of 'a t list * 'a
-    | Tree_h of 'a t Tree.t * 'a
-    | Id_h of Id.t * 'a
-    | Let_h of ('a t * 'a t) * 'a
-    | Lambda_h of (int * 'a t) * 'a
-    | Apply_h of ('a t * 'a t list) * 'a
-    | Op_h of (Expr.Op.t * 'a t list) * 'a
-    | Hole_h of Hole.t * 'a
+  type spec_data = ..
 
-  include Sexpable.S1 with type 'a t := 'a t
+  type ast = private
+    | Num    of int
+    | Bool   of bool
+    | List   of t list
+    | Tree   of t Tree.t
+    | Id     of Id.t
+    | Hole   of Hole.t
+    | Let    of { bound : t; body : t }
+    | Lambda of { num_args : int; body : t }
+    | Apply  of { func : t; args : t list }
+    | Op     of { op : Expr.Op.t; args : t list }
+  and spec = {
+    verify : Library.t -> t -> bool;
+    compare : spec -> int;
+    to_sexp : unit -> Sexp.t;
+    to_string : unit -> string;
+    data : spec_data;
+  }
+  and skel = {
+    spec : spec;
+    ast : ast;
+  }
+  and t = skel Hashcons.hash_consed
 
-  val equal : equal:('a -> 'a -> bool) -> 'a t -> 'a t -> bool
-  val to_string_hum : 'a t -> string
-  val to_pp : ?indent:int -> 'a t -> Pp.t
+  (** Accessor functions for record fields. *)
+  val spec : t -> spec
+  val ast : t -> ast
+
+  (** Replacement functions for record fields. *)
+  val replace_spec : t -> spec -> t
+
+  (** Constructors for variants. *)
+  val num : int -> spec -> t
+  val bool : bool -> spec -> t
+  val list : t list -> spec -> t
+  val tree : t Tree.t -> spec -> t
+  val id : Id.t -> spec -> t
+  val hole : Hole.t -> spec -> t
+  val let_ : t -> t -> spec -> t
+  val lambda : int -> t -> spec -> t
+  val apply : t -> t List.t -> spec -> t
+  val op : Expr.Op.t -> t List.t -> spec -> t
+  
+  include Sexpable.S with type t := t
+    
+  module Table : sig
+    val counter : Counter.t
+  end
+
+  val equal : t -> t -> bool
+  val to_string_hum : t -> string
+  val to_pp : ?indent:int -> t -> Pp.t
 
   (** Convert a skeleton to an {!Expr.t}.
       @param ctx A mapping from static distance variables to expressions. All SD variables will be replaced according to this mapping.
@@ -116,7 +153,7 @@ module Skeleton : sig
     ?ctx:Expr.t StaticDistance.Map.t
     -> ?fresh_name:(unit -> string)
     -> ?of_hole:(Hole.t -> Expr.t)
-    -> 'a t
+    -> t
     -> Expr.t
          
   (** Convert a skeleton to an {!Expr.t}. Throws an exception if a {!Hole.t} is encountered.
@@ -125,40 +162,8 @@ module Skeleton : sig
   val to_expr_exn :
     ?ctx:Expr.t StaticDistance.Map.t
     -> ?fresh_name:(unit -> string)
-    -> 'a t
+    -> t
     -> Expr.t
-
-  val of_expr : 'a -> Expr.t -> 'a t
-  val of_string : 'a -> string -> 'a t Or_error.t
-  val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
-  val hash : 'a -> int
-
-  (** Fill a hole in a skeleton with another skeleton.
-      @param parent The skeleton which contains the hole.
-      @param child The skeleton used to fill the hole. *)
-  val fill_hole : Hole.t -> parent:'a t -> child:'a t -> 'a t
-
-  (** Get the annotation on the root node of a skeleton. *)
-  val annotation : 'a t -> 'a
-
-  (** Map over the holes in a skeleton. *)
-  val map_hole : f:(Hole.t * 'a -> 'a t) -> 'a t -> 'a t
-
-  (** Map over the annotations in a skeleton. *)
-  val map_annotation : f:('a -> 'a) -> 'a t -> 'a t
-
-  (** Map over all variants of a skeleton. *)
-  val map :
-    ?num:(int -> 'a -> int * 'a) ->
-    ?bool:(bool -> 'a -> bool * 'a) ->
-    ?id:(Id.t -> 'a -> Id.t * 'a) ->
-    ?hole:(Hole.t -> 'a -> Hole.t * 'a) ->
-    ?list:('a t list -> 'a -> 'a t list * 'a) ->
-    ?tree:('a t Tree.t -> 'a -> 'a t Tree.t * 'a) ->
-    ?let_:('a t * 'a t -> 'a -> ('a t * 'a t) * 'a) ->
-    ?lambda:(int * 'a t -> 'a -> (int * 'a t) * 'a) ->
-    ?op:(Expr.Op.t * 'a t list -> 'a -> (Expr.Op.t * 'a t list) * 'a) ->
-    ?apply:('a t * 'a t list -> 'a -> ('a t * 'a t list) * 'a) -> 'a t -> 'a t
 end
 
 (** A CostModel assigns a cost to each variant of a skeleton. The
@@ -184,7 +189,7 @@ module CostModel : sig
   val zero : t
 
   (** Compute the cost of a skeleton. *)
-  val cost_of_skeleton : t -> 'a Skeleton.t -> int
+  val cost_of_skeleton : t -> Skeleton.t -> int
 end
 
 module PerFunctionCostModel : sig
@@ -195,24 +200,24 @@ module PerFunctionCostModel : sig
 end
 
 module Specification : sig
-  type spec = ..
-  type spec += private Top | Bottom
+  type data = Skeleton.spec_data = ..
+  type data += private Top | Bottom
 
-  type t = {
-    verify : 'a. Library.t -> 'a Skeleton.t -> bool;
+  type t = Skeleton.spec = {
+    verify : 'a. Library.t -> Skeleton.t -> bool;
     compare : t -> int;
     to_sexp : unit -> Sexp.t;
     to_string : unit -> string;
-    spec : spec;
+    data : data;
   }
 
   include Comparable.S with type t := t
   include Sexpable.S with type t := t
   
   val to_string : t -> string
-  val verify : t -> ?library:Library.t -> 'a Skeleton.t -> bool
+  val verify : t -> ?library:Library.t -> Skeleton.t -> bool
   val equal : t -> t -> bool
-  val spec : t -> spec
+  val data : t -> data
   val top : t
   val bottom : t
 
@@ -223,7 +228,7 @@ module Examples : sig
   type t
   type example = Value.t StaticDistance.Map.t * Value.t [@@deriving sexp]
 
-  type Specification.spec += private Examples of t
+  type Specification.data += private Examples of t
 
   include Sexpable.S with type t := t
 
@@ -241,7 +246,7 @@ module FunctionExamples : sig
   type t
   type example = (Value.t StaticDistance.Map.t * Value.t list) * Value.t [@@deriving sexp]
 
-  type Specification.spec += private FunctionExamples of t
+  type Specification.data += private FunctionExamples of t
   
   include Sexpable.S with type t := t
 
@@ -259,8 +264,6 @@ end
 
 (** Hypotheses are {! Skeleton}s which are annotated with {!Specification}s. *)
 module Hypothesis : sig
-  type skeleton = Specification.t Skeleton.t
-
   type kind =
     | Abstract
     | Concrete
@@ -269,11 +272,7 @@ module Hypothesis : sig
 
   include Sexpable.S with type t := t
 
-  module Table : sig
-    val counter : Counter.t
-  end
-
-  val skeleton : t -> skeleton
+  val skeleton : t -> Skeleton.t
   val cost : t -> int
   val kind : t -> kind
   val holes : t -> (Hole.t * Specification.t) list
@@ -290,7 +289,7 @@ module Hypothesis : sig
   val fill_hole : CostModel.t -> Hole.t -> parent:t -> child:t -> t
   val verify : ?library:Library.t -> t -> bool
 
-  val of_skeleton : CostModel.t -> skeleton -> t
+  val of_skeleton : CostModel.t -> Skeleton.t -> t
 
   (** Constructors *)
   val num : CostModel.t -> int -> Specification.t -> t

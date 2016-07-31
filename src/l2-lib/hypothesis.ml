@@ -113,6 +113,7 @@ module Hole = struct
 
   let equal h1 h2 = compare h1 h2 = 0
   let equal_id h1 h2 = h1.id = h2.id
+  let hash = Hashtbl.hash
   
   let to_string h = Sexp.to_string_hum (sexp_of_t h)
 
@@ -139,46 +140,196 @@ module Skeleton = struct
       [@@deriving compare, sexp]
     end
 
+    let hash = Hashtbl.hash
+
     include T
     include Comparable.Make(T)
   end
 
-  type 'a t =
-    | Num_h of int * 'a
-    | Bool_h of bool * 'a
-    | List_h of 'a t list * 'a
-    | Tree_h of 'a t Tree.t * 'a
-    | Id_h of Id.t * 'a
-    | Let_h of ('a t * 'a t) * 'a
-    | Lambda_h of (int * 'a t) * 'a
-    | Apply_h of ('a t * ('a t list)) * 'a
-    | Op_h of (Expr.Op.t * ('a t list)) * 'a
-    | Hole_h of Hole.t * 'a
-  [@@deriving compare, sexp]
+  type spec_data = ..
 
-  let rec equal ~equal:e h1 h2 = match h1, h2 with
-    | Num_h (x1, s1), Num_h (x2, s2) -> Int.equal x1 x2 && e s1 s2
-    | Bool_h (x1, s1), Bool_h (x2, s2) -> Bool.equal x1 x2 && e s1 s2
-    | List_h (l1, s1), List_h (l2, s2) -> List.equal l1 l2 ~equal:(equal ~equal:e) && e s1 s2
-    | Tree_h (t1, s1), Tree_h (t2, s2) -> Tree.equal t1 t2 ~equal:(equal ~equal:e) && e s1 s2
-    | Id_h (id1, s1), Id_h (id2, s2) -> id1 = id2 && e s1 s2
-    | Let_h ((x1, y1), s1), Let_h ((x2, y2), s2) -> equal x1 x2 ~equal:e && equal y1 y2 ~equal:e && e s1 s2
-    | Lambda_h ((x1, y1), s1), Lambda_h ((x2, y2), s2) -> Int.equal x1 x2 && equal y1 y2 ~equal:e && e s1 s2
-    | Apply_h ((x1, a1), s1), Apply_h ((x2, a2), s2) ->
-      equal x1 x2 ~equal:e && List.equal a1 a2 ~equal:(equal ~equal:e) && e s1 s2
-    | Op_h ((o1, a1), s1), Op_h ((o2, a2), s2) ->
-      Expr.Op.equal o1 o2 && List.equal a1 a2 ~equal:(equal ~equal:e) && e s1 s2
-    | Hole_h (h1, s1), Hole_h (h2, s2) -> Hole.equal h1 h2 && e s1 s2
-    | _ -> false
+  type ast =
+    | Num    of int
+    | Bool   of bool
+    | List   of t list
+    | Tree   of t Tree.t
+    | Id     of Id.t
+    | Hole   of Hole.t
+    | Let    of { bound : t; body : t }
+    | Lambda of { num_args : int; body : t }
+    | Apply  of { func : t; args : t list }
+    | Op     of { op : Expr.Op.t; args : t list }
+  and spec = {
+    verify : Library.t -> t -> bool;
+    compare : spec -> int;
+    to_sexp : unit -> Sexp.t;
+    to_string : unit -> string;
+    data : spec_data;
+  }
+  and skel = {
+    spec : spec;
+    ast : ast;
+  }
+  and t = skel Hashcons.hash_consed
 
-  let rec to_pp : ?indent:int -> 'a t -> Pp.t =
+  let compare s1 s2 = Int.compare s1.Hashcons.tag s2.Hashcons.tag
+  let equal s1 s2 = compare s1 s2 = 0
+
+  let rec sexp_of_ast =
+    let module S = Sexp in
+    function
+    | Num x -> S.List [S.Atom "Num"; [%sexp_of:int] x]
+    | Bool x -> S.List [S.Atom "Bool"; [%sexp_of:bool] x]
+    | List x -> S.List [S.Atom "List"; [%sexp_of:t list] x]
+    | Tree x -> S.List [S.Atom "Tree"; [%sexp_of:t Tree.t] x]
+    | Id x -> S.List [S.Atom "Id"; [%sexp_of:Id.t] x]
+    | Hole x -> S.List [S.Atom "Hole"; [%sexp_of:Hole.t] x]
+    | Let { bound; body } ->
+      S.List [S.Atom "Let"; [%sexp_of:t] bound; [%sexp_of:t] body]
+    | Lambda { num_args; body } ->
+      S.List [S.Atom "Lambda"; [%sexp_of:int] num_args; [%sexp_of:t] body]
+    | Apply { func; args } ->
+      S.List [S.Atom "Apply"; [%sexp_of:t] func; [%sexp_of:t list] args]
+    | Op { op; args } ->
+      S.List [S.Atom "Op"; [%sexp_of:Expr.Op.t] op; [%sexp_of:t list] args]
+                 
+  and sexp_of_spec sp = sp.to_sexp ()
+
+  and sexp_of_skel : skel -> Sexp.t =
+    let open Sexp in
+    fun { spec; ast } ->
+      List [ [%sexp_of:ast] ast; [%sexp_of:spec] spec ]
+    
+  and sexp_of_t : t -> Sexp.t =
+    fun sk -> [%sexp_of:skel] sk.Hashcons.node
+
+  let t_of_sexp _ = failwith "Implement me!"
+
+  (** Hashconsing table for storing skeletons. *)
+  module Table = struct
+      let counter =
+        let c = Counter.empty () in
+        let n = Counter.add_zero c in
+        n "equal" "Number of calls to Skeleton.equal.";
+        n "equal_true" "Number of calls to Skeleton.equal returning true.";
+        n "equal_false" "Number of calls to Skeleton.equal returning true.";
+        n "hash" "Number of calls to Skeleton.hash.";
+        n "hashcons" "Number of calls to Hypothesis.Table.hashcons.";
+        c
+
+      include Hashcons.Make(struct
+          type t = skel
+
+          (* Can only use physical equality on sub-terms. *)
+          let equal_t = phys_equal
+
+          let equal_ast h1 h2 =
+            match h1, h2 with
+            | Num x, Num y -> x = y
+            | Bool x, Bool y -> x = y
+            | Id x, Id y -> x = y
+            | Hole x, Hole y -> Hole.equal_id x y
+            | List x, List y -> List.equal x y ~equal:equal_t
+            | Tree x, Tree y -> Tree.equal x y ~equal:equal_t
+            | Let { bound = x1; body = x2 },
+              Let { bound = y1; body = y2 } -> equal_t x1 y1 && equal_t x2 y2
+            | Lambda { num_args = x1; body = x2 },
+              Lambda { num_args = y1; body = y2 } ->
+              equal_t x1 y1 && equal_t x2 y2
+            | Apply { func = x1; args = x2 }, Apply { func = y1; args = y2 } ->
+              equal_t x1 y1 && List.equal x2 y2 ~equal:equal_t
+            | Op { op = x1; args = x2 }, Op { op = y1; args = y2 } ->
+              equal_t x1 y1 && List.equal x2 y2 ~equal:equal_t
+            | _ -> false
+
+          let equal_spec s1 s2 = s1.compare s2 = 0
+
+          let equal_skel s1 s2 =
+            equal_ast s1.ast s2.ast && equal_spec s1.spec s2.spec
+
+          let hash_t s = s.Hashcons.hkey
+                           
+          let hash_spec = Hashtbl.hash
+                            
+          let hash_ast = function
+            | Num x -> Int.hash x
+            | Bool x -> Bool.hash x
+            | List x -> List.hash x ~hash_elem:hash_t
+            | Tree x -> Tree.hash x ~hash_elem:hash_t
+            | Id x -> Id.hash x
+            | Hole x -> Hole.hash x
+            | Let { bound; body } -> Hash.combine (hash_t bound) (hash_t body)
+            | Lambda { num_args; body } ->
+              Hash.combine (Int.hash num_args) (hash_t body)
+            | Apply { func; args } ->
+              Hash.combine (hash_t func) (List.hash args ~hash_elem:hash_t)
+            | Op { op; args } ->
+              Hash.combine (Expr.Op.hash op) (List.hash args ~hash_elem:hash_t)
+                
+          let hash_skel sk = Hash.combine (hash_spec sk.spec) (hash_ast sk.ast)
+              
+          let equal h1 h2 =
+            Counter.incr counter "equal";
+            let ret = equal_skel h1 h2 in
+            if ret then
+              Counter.incr counter "equal_true"
+            else
+              Counter.incr counter "equal_false";
+            ret
+
+          let hash h = 
+            Counter.incr counter "hash";
+            hash_skel h
+        end)
+
+    let hashcons t k =
+      Counter.incr counter "hashcons"; hashcons t k
+  end
+  let table = Table.create 49157
+  let () =
+    let nf = Counter.add_func Table.counter in
+    nf "table_len" "" (fun () -> let (x, _, _, _, _, _) = Table.stats table in x);
+    nf "num_entries" "" (fun () -> let (_, x, _, _, _, _) = Table.stats table in x);
+    nf "sum_bucket_len" "" (fun () -> let (_, _, x, _, _, _) = Table.stats table in x);
+    nf "min_bucket_len" "" (fun () -> let (_, _, _, x, _, _) = Table.stats table in x);
+    nf "med_bucket_len" "" (fun () -> let (_, _, _, _, x, _) = Table.stats table in x);
+    nf "max_bucket_len" "" (fun () -> let (_, _, _, _, _, x) = Table.stats table in x)
+
+  (** Accessor functions for record fields. *)
+  let ast sk = sk.Hashcons.node.ast
+  let spec sk = sk.Hashcons.node.spec
+
+  (** Constructor functions which correctly compute hashes. *)
+  let node sk = sk.Hashcons.node
+
+  let num x s = Table.hashcons table { ast = Num x; spec = s }
+  let bool x s = Table.hashcons table { ast = Bool x; spec = s }
+  let list x s = Table.hashcons table { ast = List x; spec = s }
+  let tree x s = Table.hashcons table { ast = Tree x; spec = s }
+  let id x s = Table.hashcons table { ast = Id x; spec = s }
+  let hole x s = Table.hashcons table { ast = Hole x; spec = s }
+  let let_ bound body s =
+    Table.hashcons table { ast = Let { bound; body }; spec = s }
+  let lambda num_args body s =
+    Table.hashcons table { ast = Lambda { num_args; body }; spec = s }
+  let apply func args s =
+    Table.hashcons table { ast = Apply { func; args }; spec = s }
+  let op op args s =
+    Table.hashcons table { ast = Op { op; args }; spec = s }
+
+  (** Replacement functions for record fields. *)
+  let replace_spec sk spec = Table.hashcons table { sk.Hashcons.node with spec }
+  
+  let rec to_pp : ?indent:int -> t -> Pp.t =
     let module SD = StaticDistance in
     let module O = Expr.Op in
     let open Pp in
-    fun ?(indent=4) sk ->
+    fun ?(indent=4) ->
       let fresh_name = Util.Fresh.mk_fresh_name_fun () in
-      let rec to_pp ?(parens = false) names =
+      
+      let rec to_pp ?(parens = false) names sk =
         let apply_parens pp = if parens then text "(" $ pp $ text ")" else pp in
+        
         let infix_op op x1 x2 =
           let pp =
             to_pp ~parens:true names x1 $/
@@ -187,17 +338,20 @@ module Skeleton = struct
           in
           apply_parens pp
         in
-        function
-        | Num_h (x, _) -> text (Int.to_string x)
-        | Bool_h (x, _) -> text (Bool.to_string x)
-        | List_h (l, _) -> text "[" $ list ~sep:(text ";" $ break) ~f:(to_pp names) l $ text "]"
-        | Tree_h (_, _) -> text "<tree>"
-        | Id_h (Id.StaticDistance x, _) -> begin match Map.find names x with
+        
+        match ast sk with
+        | Num x -> text (Int.to_string x)
+        | Bool x -> text (Bool.to_string x)
+        | List l -> text "[" $ list ~sep:(text ";" $ break) ~f:(to_pp names) l $ text "]"
+        | Tree _ -> text "<tree>"
+        | Id (Id.StaticDistance x) ->
+          begin match Map.find names x with
             | Some name -> text name
             | None -> text (SD.to_string x)
           end
-        | Id_h (Id.Name x, _) -> text x
-        | Let_h ((bound, body), _) ->
+        | Id (Id.Name x) -> text x
+                              
+        | Let { bound; body } ->
           let name = fresh_name () in
           let names =
             SD.map_increment_scope names
@@ -209,260 +363,177 @@ module Skeleton = struct
             to_pp names body
           in
           apply_parens pp
-        | Lambda_h ((num_args, body), _) ->
+            
+        | Lambda { num_args; body } ->
           let new_names =
-            List.init num_args ~f:(fun i -> SD.create ~distance:1 ~index:(i + 1), fresh_name ())
+            List.init num_args ~f:(fun i ->
+                SD.create ~distance:1 ~index:(i + 1), fresh_name ())
           in
           let names =
-            List.fold new_names ~init:(SD.map_increment_scope names) ~f:(fun m (sd, name) ->
-                Map.add m ~key:sd ~data:name)
+            List.fold ~f:(fun m (sd, name) -> Map.add m ~key:sd ~data:name)
+              new_names ~init:(SD.map_increment_scope names)
           in
           let pp =
             text "fun" $/ list ~sep:break ~f:(fun (_, n) -> text n) new_names $/ text "->" $/
             nest indent (to_pp names body)
           in
           apply_parens pp
-        | Apply_h ((func, args), _) ->
-          let pp = to_pp names func $/ list ~sep:break ~f:(to_pp ~parens:true names) args in
+            
+        | Apply { func; args } ->
+          let pp =
+            to_pp names func $/ list ~sep:break ~f:(to_pp ~parens:true names) args
+          in
           apply_parens pp
-        | Op_h ((O.Plus as op, [x1; x2]), _) 
-        | Op_h ((O.Minus as op, [x1; x2]), _) 
-        | Op_h ((O.Mul as op, [x1; x2]), _) 
-        | Op_h ((O.Div as op, [x1; x2]), _) 
-        | Op_h ((O.Mod as op, [x1; x2]), _) 
-        | Op_h ((O.Eq as op, [x1; x2]), _) 
-        | Op_h ((O.Neq as op, [x1; x2]), _) 
-        | Op_h ((O.Gt as op, [x1; x2]), _) 
-        | Op_h ((O.Geq as op, [x1; x2]), _) 
-        | Op_h ((O.Lt as op, [x1; x2]), _) 
-        | Op_h ((O.Leq as op, [x1; x2]), _) -> infix_op (Expr.Op.to_string op) x1 x2
-        | Op_h ((O.Cons, [x1; x2]), _)
-        | Op_h ((O.RCons, [x2; x1]), _) -> infix_op "::" x1 x2
-        | Op_h ((O.And, [x1; x2]), _) -> infix_op "&&" x1 x2
-        | Op_h ((O.Or, [x1; x2]), _) -> infix_op "||" x1 x2
-        | Op_h ((O.Not, [x]), _) ->
+
+        | Op { op = O.Plus as op; args = [x1; x2] }
+        | Op { op = O.Minus as op; args = [x1; x2] }
+        | Op { op = O.Mul as op; args = [x1; x2] }
+        | Op { op = O.Div as op; args = [x1; x2] }
+        | Op { op = O.Mod as op; args = [x1; x2] }
+        | Op { op = O.Eq as op; args = [x1; x2] }
+        | Op { op = O.Neq as op; args = [x1; x2] }
+        | Op { op = O.Gt as op; args = [x1; x2] }
+        | Op { op = O.Geq as op; args = [x1; x2] }
+        | Op { op = O.Lt as op; args = [x1; x2] }
+        | Op { op = O.Leq as op; args = [x1; x2] } ->
+          infix_op (Expr.Op.to_string op) x1 x2
+        | Op { op = O.Cons; args = [x1; x2] }
+        | Op { op = O.RCons; args = [x1; x2] } -> infix_op "::" x1 x2
+        | Op { op = O.And; args = [x1; x2] } -> infix_op "&&" x1 x2
+        | Op { op = O.Or; args = [x1; x2] } -> infix_op "||" x1 x2
+        | Op { op = O.Not; args = [x] } ->
           let pp = text "not" $/ to_pp ~parens:true names x in
           apply_parens pp
-        | Op_h ((O.If, [x1; x2; x3]), _) ->
+        | Op { op = O.If; args = [x1; x2; x3] } ->
           let pp =
             text "if" $/ to_pp ~parens:true names x1 $/
             text "then" $/ to_pp ~parens:true names x2 $/
             text "else" $/ to_pp ~parens:true names x3
           in
           apply_parens pp
-        | Op_h ((op, args), _) ->
-          let pp = text (Expr.Op.to_string op) $/ list ~sep:break ~f:(to_pp ~parens:true names) args in
+        | Op { op; args } -> 
+          let pp =
+            text (Expr.Op.to_string op) $/
+            list ~sep:break ~f:(to_pp ~parens:true names) args
+          in
           apply_parens pp
-        | Hole_h (hole, _) -> text ((Int.to_string hole.Hole.id) ^ "?")
-      in
-      to_pp SD.Map.empty sk
 
-  let rec to_string_hum : 'a t -> string = fun s -> to_pp s |> Pp.to_string
+        | Hole hole -> text ((Int.to_string hole.Hole.id) ^ "?")
+      in
+      to_pp SD.Map.empty
+
+  let rec to_string_hum : t -> string =
+    fun s -> to_pp s |> Pp.to_string
   
   let to_expr :
     ?ctx:Expr.t StaticDistance.Map.t
     -> ?fresh_name:(unit -> string)
     -> ?of_hole:(Hole.t -> Expr.t)
-    -> 'a t
+    -> t
     -> Expr.t =
-    fun ?(ctx = StaticDistance.Map.empty) ?fresh_name ?of_hole s ->
+    let module SD = StaticDistance in
+    fun ?(ctx = SD.Map.empty) ?fresh_name ?of_hole s ->
       let of_hole = match of_hole with
         | Some f -> f
         | None -> fun _ ->
           failwiths "Unexpected hole." s (fun s -> [%sexp_of:string] (to_string_hum s))
       in
       let fresh_name = match fresh_name with
-        | Some fresh -> fresh
+        | Some f -> f
         | None -> Fresh.mk_fresh_name_fun ()
       in
-      let rec to_expr ctx s =
-        match s with
-        | Num_h (x, _) -> `Num x
-        | Bool_h (x, _) -> `Bool x
-        | Id_h (Id.StaticDistance x, _) ->
-          (match StaticDistance.Map.find ctx x with
-           | Some expr -> expr
-           | None ->
-             failwiths "Context does not contain coordinate." (s, x, ctx) 
-               (Tuple.T3.sexp_of_t
-                  (sexp_of_t (fun _ -> Sexp.Atom "?"))
-                  [%sexp_of:StaticDistance.t]
-                  [%sexp_of:Expr.t StaticDistance.Map.t]))
-        | Id_h (Id.Name x, _) -> `Id x
-        | List_h (elems, _) -> `List (List.map elems ~f:(to_expr ctx))
-        | Tree_h (elems, _) -> `Tree (Tree.map elems ~f:(to_expr ctx))
-        | Let_h ((bound, body), _) ->
+
+      let rec to_expr ctx sk =
+        match ast sk with
+        | Num x -> `Num x
+        | Bool x -> `Bool x
+        | Id (Id.StaticDistance x) ->
+          begin
+            match Map.find ctx x with
+            | Some expr -> expr
+            | None ->
+              failwiths "Context does not contain coordinate." (s, x, ctx) 
+                (Tuple.T3.sexp_of_t
+                   (fun _ -> Sexp.Atom "Implement sexp_of_skeleton")
+                   [%sexp_of:SD.t]
+                   [%sexp_of:Expr.t SD.Map.t])
+          end
+        | Id (Id.Name x) -> `Id x
+        | List elems -> `List (List.map elems ~f:(to_expr ctx))
+        | Tree elems -> `Tree (Tree.map elems ~f:(to_expr ctx))
+        | Let { bound; body } ->
           let name = fresh_name () in
           let ctx =
-            StaticDistance.map_increment_scope ctx
-            |> StaticDistance.Map.add
-              ~key:(StaticDistance.create ~distance:1 ~index:1)
-              ~data:(`Id name)
+            SD.Map.increment_scope ctx
+            |> Map.add ~key:(SD.create ~distance:1 ~index:1) ~data:(`Id name)
           in
           `Let (name, to_expr ctx bound, to_expr ctx body)
-        | Lambda_h ((num_args, body), _) ->
-          let ctx = StaticDistance.map_increment_scope ctx in
+        | Lambda { num_args; body } ->
+          let ctx = SD.Map.increment_scope ctx in
           let arg_names = List.init num_args ~f:(fun _ -> fresh_name ()) in
-          let ctx = List.fold (List.zip_exn arg_names (StaticDistance.args num_args)) ~init:ctx
-              ~f:(fun ctx (name, sd) -> Map.add ctx ~key:sd ~data:(`Id name))
+          let ctx =
+            List.fold2_exn arg_names (SD.args num_args) ~init:ctx
+              ~f:(fun ctx name sd -> Map.add ctx ~key:sd ~data:(`Id name))
           in
           `Lambda (arg_names, to_expr ctx body)
-        | Apply_h ((func, args), _) -> `Apply (to_expr ctx func, List.map ~f:(to_expr ctx) args)
-        | Op_h ((op, args), _) -> `Op (op, List.map ~f:(to_expr ctx) args)
-        | Hole_h (x, _) -> of_hole x
+        | Apply { func; args } ->
+          `Apply (to_expr ctx func, List.map ~f:(to_expr ctx) args)
+        | Op { op; args } ->
+          `Op (op, List.map ~f:(to_expr ctx) args)
+        | Hole x -> of_hole x
       in
       to_expr ctx s
 
   let to_expr_exn ?(ctx = StaticDistance.Map.empty) ?(fresh_name) s =
-    match fresh_name with
-    | Some fresh ->
-      to_expr ~ctx ~fresh_name:fresh s
-    | None -> to_expr ~ctx s
+    to_expr ~ctx ?fresh_name s
+      
+  let rec map_hole ~f sk =
+    let spec = spec sk in
+    match ast sk with
+    | Num _
+    | Bool _
+    | Id _ -> sk
+    | List x -> let x' = List.map ~f:(map_hole ~f) x in list x' spec
+    | Tree x -> let x' = Tree.map ~f:(map_hole ~f) x in tree x' spec
+    | Let { bound; body } -> let_ (map_hole ~f bound) (map_hole ~f body) spec
+    | Lambda { num_args; body } -> lambda num_args (map_hole ~f body) spec
+    | Apply { func; args } ->
+      apply (map_hole ~f func) (List.map ~f:(map_hole ~f) args) spec
+    | Op { op = op'; args } -> op op' (List.map ~f:(map_hole ~f) args) spec
+    | Hole h -> hole (f h) spec
 
-  let of_expr spec e =
-    let rec of_expr ctx = function
-      | `Num x -> Num_h (x, spec)
-      | `Bool x -> Bool_h (x, spec)
-      | `Id id ->
-        (match String.Map.find ctx id with
-         | Some sd -> Id_h (Id.StaticDistance sd, spec)
-         | None -> Id_h (Id.Name id, spec))
-      | `List l -> List_h (List.map l ~f:(of_expr ctx), spec)
-      | `Tree t -> Tree_h (Tree.map t ~f:(of_expr ctx), spec)
-      | `Let (id, bound, body) ->
-        let ctx = String.Map.map ctx ~f:StaticDistance.increment_scope in
-        let ctx = String.Map.add ctx ~key:id ~data:(StaticDistance.create ~distance:1 ~index:1) in
-        Let_h ((of_expr ctx bound, of_expr ctx body), spec)
-      | `Lambda (args, body) ->
-        let ctx = String.Map.map ctx ~f:StaticDistance.increment_scope in
-        let num_args = List.length args in
-        let ctx =
-          List.fold2_exn args (StaticDistance.args num_args) ~init:ctx
-            ~f:(fun ctx arg_id arg_sd -> String.Map.add ctx ~key:arg_id ~data:arg_sd)
-        in
-        Lambda_h ((num_args, of_expr ctx body), spec)
-      | `Apply (func, args) ->
-        Apply_h ((of_expr ctx func, List.map args ~f:(of_expr ctx)), spec)
-      | `Op (op, args) -> Op_h ((op, List.map args ~f:(of_expr ctx)), spec)
+  let fill_hole h ~parent ~child =
+    let rec fill h ~child parent = 
+      let spec = spec parent in
+      match ast parent with
+      | Num _
+      | Bool _
+      | Id _ -> parent
+      | List x -> list (List.map ~f:(fill h ~child) x) spec
+      | Tree x -> tree (Tree.map ~f:(fill h ~child) x) spec
+      | Let { bound; body } ->
+        let_ (fill h ~child bound) (fill h ~child body) spec
+      | Lambda { num_args; body } -> lambda num_args (fill h ~child body) spec
+      | Apply { func; args } ->
+        apply (fill h ~child func) (List.map ~f:(fill h ~child) args) spec
+      | Op { op = op'; args } ->
+        op op' (List.map ~f:(fill h ~child) args) spec
+      | Hole h' -> if Hole.equal_id h h' then child else parent
     in
-    of_expr String.Map.empty e
-
-  let of_string : 'a. 'a -> string -> 'a t Or_error.t = fun spec str ->
-    let module Let_syntax = Or_error.Let_syntax.Let_syntax in
-    let%map expr = Expr.of_string str in
-    of_expr spec expr
-
-  let compare = compare_t
-  let hash = Hashtbl.hash
-
-  let annotation = function
-    | Num_h (_, a)
-    | Bool_h (_, a)
-    | Id_h (_, a)
-    | List_h (_, a)
-    | Tree_h (_, a)
-    | Let_h (_, a)
-    | Lambda_h (_, a)
-    | Apply_h (_, a)
-    | Op_h (_, a)
-    | Hole_h (_, a) -> a
-
-  let map_annotation ~f s = match s with
-    | Num_h (x, a) -> Num_h (x, f a)
-    | Bool_h (x, a) -> Bool_h (x, f a)
-    | Id_h (x, a) -> Id_h (x, f a)
-    | List_h (x, a) -> List_h (x, f a)
-    | Tree_h (x, a) -> Tree_h (x, f a)
-    | Let_h (x, a) -> Let_h (x, f a)
-    | Lambda_h (x, a) -> Lambda_h (x, f a)
-    | Apply_h (x, a) -> Apply_h (x, f a)
-    | Op_h (x, a) -> Op_h (x, f a)
-    | Hole_h (x, a) -> Hole_h (x, f a)
-
-  let default x s = (x, s)
-  let map
-      ?(num = default)
-      ?(bool = default)
-      ?(id = default)
-      ?(hole = default)
-      ?(list = default)
-      ?(tree = default)
-      ?(let_ = default)
-      ?(lambda = default)
-      ?(op = default)
-      ?(apply = default)
-      skel =
-    let rec ps = function
-      | Num_h (x, s) ->
-        let (x', s') = num x s in
-        Num_h (x', s')      
-      | Bool_h (x, s) ->
-        let (x', s') = bool x s in
-        Bool_h (x', s')      
-      | Id_h (x, s) ->
-        let (x', s') = id x s in
-        Id_h (x', s')      
-      | Hole_h (x, s) ->
-        let (x', s') = hole x s in
-        Hole_h (x', s')      
-      | List_h (x, s) ->
-        let (x', s') = list x s in
-        let x'' = List.map x' ~f:ps in
-        List_h (x'', s')
-      | Tree_h (x, s) ->
-        let (x', s') = tree x s in
-        let x'' = Tree.map x' ~f:ps in
-        Tree_h (x'', s')
-      | Let_h (x, s) ->
-        let ((bound, body), s') = let_ x s in
-        let bound' = ps bound in
-        let body' = ps body in
-        Let_h ((bound', body'), s')
-      | Lambda_h (x, s) ->
-        let ((num_args, body), s') = lambda x s in
-        let body' = ps body in
-        Lambda_h ((num_args, body'), s')
-      | Op_h (x, s) ->
-        let ((op, args), s') = op x s in
-        let args' = List.map args ~f:ps in
-        Op_h ((op, args'), s')
-      | Apply_h (x, s) ->
-        let ((func, args), s') = apply x s in
-        let func' = ps func in
-        let args' = List.map args ~f:ps in
-        Apply_h ((func', args'), s')
-    in
-    ps skel
-
-  let rec map_hole ~f s =
-    match s with
-    | Num_h _
-    | Bool_h _
-    | Id_h _ -> s
-    | Hole_h (h, s) -> f (h, s)
-    | List_h (x, s) -> List_h (List.map ~f:(map_hole ~f) x, s)
-    | Tree_h (x, s) -> Tree_h (Tree.map ~f:(map_hole ~f) x, s)
-    | Let_h ((x, y), s) -> Let_h ((map_hole ~f x, map_hole ~f y), s)
-    | Lambda_h ((x, y), s) -> Lambda_h ((x, map_hole ~f y), s)
-    | Apply_h ((x, y), s) -> Apply_h ((map_hole ~f x, List.map ~f:(map_hole ~f) y), s)
-    | Op_h ((x, y), s) -> Op_h ((x, List.map ~f:(map_hole ~f) y), s)
-
-  let rec fill_hole hole ~parent:p ~child:c =
-    map_hole p ~f:(fun (hole', spec) ->
-        if Hole.equal_id hole hole' then (map_annotation c ~f:(fun _ -> spec))
-        else Hole_h (hole', spec))
-
-  let rec holes = function
-    | Num_h _
-    | Bool_h _
-    | Id_h _ -> []
-    | List_h (x, _) -> List.concat_map x ~f:holes
-    | Tree_h (x, _) -> List.concat_map (Tree.flatten x) ~f:holes
-    | Let_h ((bound, body), _) -> (holes bound) @ (holes body)
-    | Lambda_h ((_, body), _) -> holes body
-    | Apply_h ((func, args), _) -> (holes func) @ (List.concat_map args ~f:holes)
-    | Op_h ((_, args), _) -> List.concat_map args ~f:holes
-    | Hole_h (hole, spec) -> [ (hole, spec) ]
+    fill h parent ~child
+      
+  let rec holes sk =
+    match ast sk with
+    | Num _
+    | Bool _
+    | Id _ -> []
+    | List x -> List.concat_map x ~f:holes
+    | Tree x -> Tree.flatten x |> List.concat_map ~f:holes
+    | Let { bound; body } -> (holes bound) @ (holes body)
+    | Lambda { body } -> holes body
+    | Apply { func; args } -> (holes func) @ (List.concat_map args ~f:holes)
+    | Op { args } -> List.concat_map args ~f:holes
+    | Hole hole -> [ (hole, spec sk) ]
 end
 
 module CostModel = struct
@@ -495,18 +566,21 @@ module CostModel = struct
   let zero = constant 0
 
   let cost_of_skeleton cm sk =
-    let module Sk = Skeleton in
-    let rec cost = function
-      | Sk.Num_h (x, _) -> cm.num x
-      | Sk.Bool_h (x, _) -> cm.bool x
-      | Sk.Hole_h (x, _) -> cm.hole x
-      | Sk.Id_h (x, _) -> cm.id x
-      | Sk.List_h (x, _) -> cm.list x + List.int_sum (List.map x ~f:cost)
-      | Sk.Tree_h (x, _) -> cm.tree x + List.int_sum (List.map (Tree.flatten x) ~f:cost)
-      | Sk.Let_h ((x, y), _) -> cm._let x y + cost x + cost y
-      | Sk.Lambda_h ((x, y), _) -> cm.lambda x y + cost y
-      | Sk.Apply_h ((x, y), _) -> cm.apply x y + cost x + List.int_sum (List.map y ~f:cost)
-      | Sk.Op_h ((x, y), _) -> cm.op x y + List.int_sum (List.map y ~f:cost)
+    let open Skeleton in
+    let rec cost sk =
+      match ast sk with
+      | Num x -> cm.num x
+      | Bool x -> cm.bool x
+      | Hole x -> cm.hole x
+      | Id x -> cm.id x
+      | List x -> cm.list x + List.int_sum (List.map x ~f:cost)
+      | Tree x -> cm.tree x + List.int_sum (List.map (Tree.flatten x) ~f:cost)
+      | Let { bound = x; body = y } -> cm._let x y + cost x + cost y
+      | Lambda { num_args = x; body = y } -> cm.lambda x y + cost y
+      | Apply { func = x; args = y } ->
+        cm.apply x y + cost x + List.int_sum (List.map y ~f:cost)
+      | Op { op = x; args = y } ->
+        cm.op x y + List.int_sum (List.map y ~f:cost)
     in
     cost sk
 end
@@ -606,18 +680,18 @@ module PerFunctionCostModel = struct
 end
 
 module Specification0 = struct
-  type spec = ..
+  module T = struct 
+    type data = Skeleton.spec_data = ..
 
-  module T = struct
-    type t = {
-      verify : 'a. Library.t -> 'a Skeleton.t -> bool;
+    type t = Skeleton.spec = {
+      verify : Library.t -> Skeleton.t -> bool;
       compare : t -> int;
       to_sexp : unit -> Sexp.t;
       to_string : unit -> string;
-      spec : spec;
+      data : data;
     }
 
-    let sexp_of_t : t -> Sexp.t = fun t -> t.to_sexp ()
+    let sexp_of_t : t -> Sexp.t = fun t -> t.Skeleton.to_sexp ()
     let t_of_sexp : Sexp.t -> t = fun _ -> failwith "Unimplemented."
 
     let compare : t -> t -> int = fun t1 t2 ->
@@ -627,43 +701,43 @@ module Specification0 = struct
          variants. Here, we use the extension ids to get that
          ordering. *)
       let get_id spec = spec |> Obj.extension_constructor |> Obj.extension_id in
-      let cmp = Int.compare (get_id t1.spec) (get_id t2.spec) in
-      if cmp = 0 then t1.compare t2 else cmp
+      let cmp = Int.compare (get_id t1.Skeleton.data) (get_id t2.Skeleton.data) in
+      if cmp = 0 then t1.Skeleton.compare t2 else cmp
   end
   include T
 
-  type spec +=
+  type data +=
     | Top
     | Bottom
 
   let to_string s = s.to_string ()
 
-  let verify : 'a. t -> ?library:Library.t -> 'a Skeleton.t -> bool =
+  let verify : 'a. t -> ?library:Library.t -> Skeleton.t -> bool =
     fun spec ?(library=Library.empty) skel -> spec.verify library skel
 
-  let spec : t -> spec = fun t -> t.spec
+  let data : t -> data = fun t -> t.data
 
   let top =
     let verify _ _ = true in
-    let compare t = match t.spec with
+    let compare t = match t.data with
       | Top -> 0
       | _ -> failwith "BUG: Unexpected spec variant."
     in
     let to_string () = "T" in
     let to_sexp () = Sexp.Atom "Top" in
-    let spec = Top in
-    { verify; compare; to_sexp; to_string; spec }
+    let data = Top in
+    { verify; compare; to_sexp; to_string; data }
 
   let bottom =
     let verify _ _ = false in
-    let compare t = match t.spec with
+    let compare t = match t.data with
       | Bottom -> 0
       | _ -> failwith "BUG: Unexpected spec variant."
     in
     let to_string () = "⊥" in
     let to_sexp () = Sexp.Atom "Bottom" in
-    let spec = Bottom in
-    { verify; compare; to_sexp; to_string; spec }
+    let data = Bottom in
+    { verify; compare; to_sexp; to_string; data }
 end
 
 module Examples = struct
@@ -682,7 +756,7 @@ module Examples = struct
 
   type t = example list [@@deriving sexp, compare]
 
-  type S.spec += Examples of t
+  type S.data += Examples of t
 
   let of_list exs =
     let module I = Input in
@@ -726,7 +800,7 @@ module Examples = struct
       | Eval.RuntimeError _ -> false
     in
 
-    let compare t = match t.S.spec with
+    let compare t = match t.S.data with
       | Examples exs' -> compare_t exs exs'
       | _ -> failwith "BUG: Unexpected spec variant."
     in
@@ -737,9 +811,9 @@ module Examples = struct
           sprintf "%s -> %s" (SD.Map.to_string Value.to_string i) (Value.to_string o))
       |> String.concat ~sep:"\n"
     in
-    let spec = Examples exs in
+    let data = Examples exs in
 
-    { S.verify; S.compare; S.to_sexp; S.to_string; S.spec }
+    { S.verify; S.compare; S.to_sexp; S.to_string; S.data }
 end
 
 module FunctionExamples = struct
@@ -757,7 +831,7 @@ module FunctionExamples = struct
 
   type example = (Input.t * Ast.value) [@@deriving sexp, compare]
   type t = example list [@@deriving sexp, compare]
-  type S.spec += FunctionExamples of t
+  type S.data += FunctionExamples of t
 
   let of_list exs =
     let module I = Input in
@@ -806,7 +880,7 @@ module FunctionExamples = struct
       | Eval.RuntimeError _ -> false
     in
 
-    let compare t = match t.S.spec with
+    let compare t = match t.S.data with
       | FunctionExamples exs' -> compare_t exs exs'
       | _ -> failwith "BUG: Unexpected spec variant."
     in
@@ -824,15 +898,15 @@ module FunctionExamples = struct
       |> String.concat ~sep:"\n"
     in
 
-    let spec = FunctionExamples exs in
+    let data = FunctionExamples exs in
 
-    { S.verify; S.compare; S.to_sexp; S.to_string; S.spec }
+    { S.verify; S.compare; S.to_sexp; S.to_string; S.data }
 end
 
 module Specification = struct
   include Specification0
 
-  let increment_scope : t -> t = fun sp -> match sp.spec with
+  let increment_scope : t -> t = fun sp -> match sp.data with
     | Examples.Examples exs ->
       let exs =
         List.map exs ~f:(fun (in_ctx, out) ->
@@ -864,80 +938,24 @@ module Hypothesis = struct
   module Sk = Skeleton
   module Sp = Specification
     
-  type skeleton = Sp.t Sk.t
-  
-  module Table = struct
-      let counter =
-        let c = Counter.empty () in
-        let n = Counter.add_zero c in
-        n "equal" "Number of calls to Skeleton.equal.";
-        n "equal_true" "Number of calls to Skeleton.equal returning true.";
-        n "equal_false" "Number of calls to Skeleton.equal returning true.";
-        n "hash" "Number of calls to Skeleton.hash.";
-        n "hashcons" "Number of calls to Hypothesis.Table.hashcons.";
-        c
-
-    include Hashcons.Make(struct
-        type t = skeleton
-          
-        let equal h1 h2 =
-          Counter.incr counter "equal";
-          if Sk.equal ~equal:Sp.equal h1 h2 then begin
-            Counter.incr counter "equal_true"; true
-          end else begin
-            Counter.incr counter "equal_false"; false
-          end
-
-        let hash : t -> int = fun h ->
-          Counter.incr counter "hash";
-          Sk.hash h
-      end)
-
-    let hashcons t k =
-      Counter.incr counter "hashcons"; hashcons t k
-  end
-
   type kind =
     | Abstract
     | Concrete
     [@@deriving sexp]
 
-  (* module HoleList = SortedList.Make_using_comparator(struct *)
-  (*     type t = Hole.t * Sp.t *)
-  (*     include Comparator.Make (struct *)
-  (*         type t = Hole.t * Sp.t [@@deriving sexp] *)
-  (*         let compare (h1, _) (h2, _) = Hole.compare h1 h2 *)
-  (*       end) *)
-  (*   end) *)
-
   type t = {
-    skeleton : skeleton Hashcons.hash_consed;
+    skeleton : Sk.t;
     cost : int;
     kind : kind;
     holes : (Hole.t * Sp.t) list;
-  }
+  } [@@deriving fields]
 
-  let table = Table.create 49157
-
-  let () =
-    let nf = Counter.add_func Table.counter in
-    nf "table_len" "" (fun () -> let (x, _, _, _, _, _) = Table.stats table in x);
-    nf "num_entries" "" (fun () -> let (_, x, _, _, _, _) = Table.stats table in x);
-    nf "sum_bucket_len" "" (fun () -> let (_, _, x, _, _, _) = Table.stats table in x);
-    nf "min_bucket_len" "" (fun () -> let (_, _, _, x, _, _) = Table.stats table in x);
-    nf "med_bucket_len" "" (fun () -> let (_, _, _, _, x, _) = Table.stats table in x);
-    nf "max_bucket_len" "" (fun () -> let (_, _, _, _, _, x) = Table.stats table in x)
-
-  let skeleton h = h.skeleton.Hashcons.node
-  let cost h = h.cost
-  let kind h = h.kind
-  let holes h = h.holes
-  let spec h = Sk.annotation (skeleton h)
+  let spec h = Sk.spec h.skeleton
 
   let sexp_of_t h =
     let open Sexp in
     List [
-      List [ Atom "skeleton"; Sk.sexp_of_t Sp.sexp_of_t (skeleton h) ];
+      List [ Atom "skeleton"; [%sexp_of:Sk.t] (skeleton h) ];
       List [ Atom "cost"; sexp_of_int h.cost ];
       List [ Atom "kind"; sexp_of_kind h.kind ];
       List [
@@ -956,14 +974,14 @@ module Hypothesis = struct
         List [ Atom "kind"; kind_s ];
         List [ Atom "holes"; holes_s ];
       ] -> {
-        skeleton = Table.hashcons table ([%of_sexp:Sp.t Sk.t] skel_s);
+        skeleton = [%of_sexp:Sk.t] skel_s;
         cost = Int.t_of_sexp cost_s;
         kind = kind_of_sexp kind_s;
         holes = [%of_sexp:(Hole.t * Sp.t) list] holes_s;
       }
     | _ -> raise (Sexp.Of_sexp_error (Failure "Sexp has the wrong format.", s))
 
-  let compare_skeleton h1 h2 = Sk.compare Sp.compare h1.skeleton.Hashcons.node h2.skeleton.Hashcons.node
+  let compare_skeleton h1 h2 = Sk.compare h1.skeleton h2.skeleton
   let compare_cost h1 h2 = Int.compare h1.cost h2.cost
 
   let to_expr (h: t) : Expr.t =
@@ -978,9 +996,7 @@ module Hypothesis = struct
     {
       h with
       holes = List.map h.holes ~f:(fun (h, s) -> (Hole.apply_unifier u h, s));
-      skeleton = Table.hashcons table
-          (Sk.map_hole (skeleton h) ~f:(fun (hole, spec) -> 
-               Sk.Hole_h (Hole.apply_unifier u hole, spec)))
+      skeleton = skeleton h |> Sk.map_hole ~f:(Hole.apply_unifier u)
     }
 
   let fill_hole cm hole ~parent:p ~child:c = begin
@@ -990,8 +1006,7 @@ module Hypothesis = struct
       (List.filter p.holes ~f:(fun (h, _) -> not (Hole.equal_id h hole))) @ c.holes
     in
     {
-      skeleton = Table.hashcons table
-          (Sk.fill_hole hole ~parent:(skeleton p) ~child:(skeleton c));
+      skeleton = Sk.fill_hole hole ~parent:(skeleton p) ~child:(skeleton c);
       cost = p.cost + c.cost - cm.CostModel.hole hole;
       kind = if List.length holes = 0 then Concrete else Abstract;
       holes;
@@ -1004,7 +1019,7 @@ module Hypothesis = struct
   let of_skeleton cm s =
     let holes = Sk.holes s in
     {
-      skeleton = Table.hashcons table s;
+      skeleton = s;
       kind = if List.length holes = 0 then Concrete else Abstract;
       cost = CostModel.cost_of_skeleton cm s;
       holes;
@@ -1013,13 +1028,13 @@ module Hypothesis = struct
   module C = CostModel
   
   let num cm x s : t = {
-    skeleton = Table.hashcons table (Sk.Num_h (x, s));
+    skeleton = Sk.num x s;
     cost = cm.C.num x;
     kind = Concrete;
     holes = [];
   }
   let bool cm x s : t = {
-    skeleton = Table.hashcons table (Sk.Bool_h (x, s));
+    skeleton = Sk.bool x s;
     cost = cm.C.bool x;
     kind = Concrete;
     holes = [];
@@ -1027,13 +1042,13 @@ module Hypothesis = struct
   let id_sd cm x s : t =
     let id = Sk.Id.StaticDistance x in
     {
-      skeleton = Table.hashcons table (Sk.Id_h (id, s));
+      skeleton = Sk.id id s;
       cost = cm.C.id id;
       kind = Concrete;
       holes = [];
     }
   let hole cm x s : t = {
-    skeleton = Table.hashcons table (Sk.Hole_h (x, s));
+    skeleton = Sk.hole x s;
     cost = cm.C.hole x;
     kind = Abstract;
     holes = [ (x, s) ];
@@ -1041,7 +1056,7 @@ module Hypothesis = struct
   let list cm (x: t list) s : t =
     let skel_x = List.map x ~f:skeleton in
     {
-      skeleton = Table.hashcons table (Sk.List_h (skel_x, s));
+      skeleton = Sk.list skel_x s;
       cost = cm.C.list skel_x + List.int_sum (List.map x ~f:cost);
       kind = if List.exists x ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
       holes = List.concat_map x ~f:holes;
@@ -1050,7 +1065,7 @@ module Hypothesis = struct
     let flat = Tree.flatten x in
     let skel_tree = Tree.map x ~f:skeleton in
     {
-      skeleton = Table.hashcons table (Sk.Tree_h (skel_tree, s));
+      skeleton = Sk.tree skel_tree s;
       cost = cm.C.tree skel_tree + List.int_sum (List.map flat ~f:cost);
       kind = if List.exists flat ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
       holes = List.concat_map flat ~f:holes;
@@ -1058,7 +1073,7 @@ module Hypothesis = struct
   let _let cm bound body s : t =
     let sk_bound, sk_body = skeleton bound, skeleton body in
     {
-      skeleton = Table.hashcons table (Sk.Let_h ((sk_bound, sk_body), s));
+      skeleton = Sk.let_ sk_bound sk_body s;
       cost = cm.C._let sk_bound sk_body + bound.cost + body.cost;
       kind = if bound.kind = Abstract || body.kind = Abstract then Abstract else Concrete;
       holes = bound.holes @ body.holes;
@@ -1066,7 +1081,7 @@ module Hypothesis = struct
   let lambda cm num_args body s : t =
     let sk_body = skeleton body in
     {
-      skeleton = Table.hashcons table (Sk.Lambda_h ((num_args, sk_body), s));
+      skeleton = Sk.lambda num_args sk_body s;
       cost = cm.C.lambda num_args sk_body + body.cost;
       kind = if body.kind = Abstract then Abstract else Concrete;
       holes = body.holes;
@@ -1074,8 +1089,7 @@ module Hypothesis = struct
   let apply cm func args s : t =
     let sk_func, sk_args = skeleton func, List.map args ~f:skeleton in
     {
-      skeleton = Table.hashcons table
-          (Sk.Apply_h ((sk_func, sk_args), s));
+      skeleton = Sk.apply sk_func sk_args s;
       cost = cm.C.apply sk_func sk_args + cost func + List.int_sum (List.map args ~f:cost);
       kind =
         if func.kind = Abstract || List.exists args ~f:(fun h -> h.kind = Abstract) then
@@ -1083,7 +1097,7 @@ module Hypothesis = struct
       holes = func.holes @ (List.concat_map args ~f:holes);
     }
   let id_name cm x s : t = {
-    skeleton = Table.hashcons table (Sk.Id_h (Sk.Id.Name x, s));
+    skeleton = Sk.id (Sk.Id.Name x) s;
     cost = cm.C.id (Sk.Id.Name x);
     kind = Concrete;
     holes = [];
@@ -1091,7 +1105,7 @@ module Hypothesis = struct
   let op cm op args s : t =
     let sk_args = List.map args ~f:skeleton in
     {
-      skeleton = Table.hashcons table (Sk.Op_h ((op, List.map args ~f:skeleton), s));
+      skeleton = Sk.op op sk_args s;
       cost = cm.C.op op sk_args + List.int_sum (List.map args ~f:cost);
       kind = if List.exists args ~f:(fun h -> h.kind = Abstract) then Abstract else Concrete;
       holes = List.concat_map args ~f:holes;

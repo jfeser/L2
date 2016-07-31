@@ -1,6 +1,7 @@
 open Core.Std
 open OUnit2
-
+open L2
+    
 open Tests_common
 open Hypothesis
 

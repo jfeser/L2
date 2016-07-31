@@ -156,7 +156,7 @@ let infer_example :
 let infer_examples :
   specs:(example list) String.Map.t
   -> op:string
-  -> args:Sp.t Sk.t list
+  -> args:Sk.t list
   -> Examples.example list
   -> Sp.t list =
   fun ~specs ~op ~args exs ->
@@ -200,7 +200,7 @@ let infer_examples :
           List.map arg_specs ~f:(fun arg_spec ->
               if List.exists arg_spec ~f:(Sp.equal Sp.bottom) then Sp.bottom else
                 let arg_exs =
-                  List.filter_map arg_spec ~f:(fun sp -> match Sp.spec sp with
+                  List.filter_map arg_spec ~f:(fun sp -> match Sp.data sp with
                       | Sp.Top -> None
                       | Examples.Examples exs -> Some (Examples.to_list exs)
                       | _ -> failwith "BUG: Unexpected specification.")
@@ -216,13 +216,13 @@ let infer_examples :
       | None -> List.repeat arity Sp.top
     with exn ->
       Error.tag_arg (Error.of_exn exn) "Failure in infer_examples."
-        (op, args, exs) [%sexp_of:string * Sp.t Sk.t list * Examples.example list]
+        (op, args, exs) [%sexp_of:string * Sk.t list * Examples.example list]
       |> Error.raise
     
 let memoized_infer_examples :
   specs:((ExprValue.t list * ExprValue.t) list) String.Map.t
   -> op:string
-  -> args:Sp.t Sk.t list
+  -> args:Sk.t list
   -> Examples.example list
   -> Sp.t list =
   let memoized =
@@ -233,36 +233,37 @@ let memoized_infer_examples :
 
 let push_specs_exn' :
   specs:((ExprValue.t list * ExprValue.t) list) String.Map.t
-  -> Sp.t Sk.t
-  -> Sp.t Sk.t
+  -> Sk.t
+  -> Sk.t
   = fun ~specs sk ->
-    let rec push_specs_exn sk = 
-      if Sp.equal (Skeleton.annotation sk) Sp.bottom then raise Bottom;
-      match sk with
-      | Sk.Num_h (_, s)
-      | Sk.Bool_h (_, s)
-      | Sk.Id_h (_, s)
-      | Sk.Hole_h (_, s) as sk -> sk
-      | Sk.List_h (l, s) -> Sk.List_h (List.map l ~f:push_specs_exn, s)
-      | Sk.Tree_h (t, s) -> Sk.Tree_h (Tree.map t ~f:push_specs_exn, s)
-      | Sk.Let_h ((bound, body), s) -> Sk.Let_h ((push_specs_exn bound, push_specs_exn body), s)
-      | Sk.Lambda_h ((num_args, body), s) -> Sk.Lambda_h ((num_args, push_specs_exn body), s)
-      | Sk.Op_h ((op, args), s) ->
-        begin match Sp.spec s with
+    let rec push_specs_exn sk =
+      let spec = Sk.spec sk in
+      if Sp.equal spec Sp.bottom then raise Bottom;
+      match Sk.ast sk with
+      | Sk.Num _
+      | Sk.Bool _
+      | Sk.Id _
+      | Sk.Hole _ -> sk
+      | Sk.List l -> Sk.list (List.map l ~f:push_specs_exn) spec
+      | Sk.Tree t -> Sk.tree (Tree.map t ~f:push_specs_exn) spec
+      | Sk.Let {bound; body} ->
+        Sk.let_ (push_specs_exn bound) (push_specs_exn body) spec
+      | Sk.Lambda {num_args; body} ->
+        Sk.lambda num_args (push_specs_exn body) spec
+      | Sk.Op {op; args} ->
+        begin match Sp.data spec with
           | Examples.Examples exs ->
             let name = Expr.Op.to_string op in
             let (arg_specs, runtime) = Util.with_runtime (fun () ->
                 memoized_infer_examples ~specs ~op:name ~args (Examples.to_list exs))
             in
-            let args = List.map2_exn args arg_specs ~f:(fun arg sp ->
-                Sk.map_annotation arg ~f:(fun _ -> sp))
-            in
-            Sk.Op_h ((op, List.map args ~f:push_specs_exn), s)
-          | _ -> Sk.Op_h ((op, List.map args ~f:push_specs_exn), s)
+            let args = List.map2_exn args arg_specs ~f:Sk.replace_spec in
+            Sk.op op (List.map args ~f:push_specs_exn) spec
+          | _ -> Sk.op op (List.map args ~f:push_specs_exn) spec
         end
-      | Sk.Apply_h ((func, args), s) ->
-        begin match Sp.spec s, func with
-          | Examples.Examples exs, Sk.Id_h (Sk.Id.Name name, _) ->
+      | Sk.Apply {func; args} ->
+        begin match Sp.data spec, Sk.ast func with
+          | Examples.Examples exs, Sk.Id (Sk.Id.Name name) ->
             let (arg_specs, runtime) = Util.with_runtime (fun () ->
                 memoized_infer_examples ~specs ~op:name ~args (Examples.to_list exs))
             in
@@ -275,11 +276,9 @@ let push_specs_exn' :
             (* print_endline "Arg specs:"; *)
             (* Util.print_sexp arg_specs [%sexp_of:Sp.t list]; *)
             (* print_newline (); *)
-            let args = List.map2_exn args arg_specs ~f:(fun arg sp ->
-                Sk.map_annotation arg ~f:(fun _ -> sp))
-            in
-            Sk.Apply_h ((func, List.map ~f:push_specs_exn args), s)
-          | _ -> Sk.Apply_h ((push_specs_exn func, List.map ~f:push_specs_exn args), s)
+            let args = List.map2_exn args arg_specs ~f:Sk.replace_spec in
+            Sk.apply func (List.map ~f:push_specs_exn args) spec
+          | _ -> Sk.apply (push_specs_exn func) (List.map ~f:push_specs_exn args) spec
         end
     in
     push_specs_exn sk
@@ -302,7 +301,7 @@ let specs : (ExprValue.t list * ExprValue.t) list String.Map.t Lazy.t =
   else
     lazy String.Map.empty
 
-let push_specs : Sp.t Sk.t -> Sp.t Sk.t Option.t = fun sk ->
+let push_specs : Sk.t -> Sk.t Option.t = fun sk ->
   try
     let specs = Lazy.force specs in
     let sk' = push_specs_exn' ~specs sk in

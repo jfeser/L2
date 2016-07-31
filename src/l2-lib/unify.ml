@@ -76,24 +76,24 @@ let sterm_of_value v =
     | `Tree _ -> raise Unknown
   in try Some (f v) with Unknown -> None
 
-let sterm_of_result r =
-  let fresh_name = Util.Fresh.mk_fresh_name_fun () in
-  let open Symbolic_execution in
-  let rec f r = match r with
-    | Num_r x -> K (Int.to_string x)
-    | Bool_r x -> K (if x then "true" else "false")
-    | List_r [] -> K "[]"
-    | List_r (x::xs) -> Cons (f x, f (List_r xs))
-    | Id_r (Skeleton.Id.StaticDistance sd) -> V (StaticDistance.to_string sd)
-    | Id_r (Skeleton.Id.Name id) -> V id
-    | Op_r (RCons, [xs; x])
-    | Op_r (Cons, [x; xs]) -> Cons (f x, f xs)
-    | Symbol_r id -> V (Int.to_string id)
-    | Apply_r _ -> V (fresh_name ())
-    | Closure_r _
-    | Tree_r _
-    | Op_r _ -> raise Unknown
-  in try Some (f r) with Unknown -> None
+(* let sterm_of_result r = *)
+(*   let fresh_name = Util.Fresh.mk_fresh_name_fun () in *)
+(*   let open Symbolic_execution in *)
+(*   let rec f r = match r with *)
+(*     | Num_r x -> K (Int.to_string x) *)
+(*     | Bool_r x -> K (if x then "true" else "false") *)
+(*     | List_r [] -> K "[]" *)
+(*     | List_r (x::xs) -> Cons (f x, f (List_r xs)) *)
+(*     | Id_r (Skeleton.Id.StaticDistance sd) -> V (StaticDistance.to_string sd) *)
+(*     | Id_r (Skeleton.Id.Name id) -> V id *)
+(*     | Op_r (RCons, [xs; x]) *)
+(*     | Op_r (Cons, [x; xs]) -> Cons (f x, f xs) *)
+(*     | Symbol_r id -> V (Int.to_string id) *)
+(*     | Apply_r _ -> V (fresh_name ()) *)
+(*     | Closure_r _ *)
+(*     | Tree_r _ *)
+(*     | Op_r _ -> raise Unknown *)
+(*   in try Some (f r) with Unknown -> None *)
 
 (* the occurs check *)
 let rec occurs (x : id) (t : term) : bool =

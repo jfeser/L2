@@ -318,7 +318,10 @@ module L2_Synthesizer = struct
     in
 
     let rec loop cost =
-      (* Search each hypothesis that can be searched at this cost. If
+      (* List.iter (!fresh_hypos @ !stale_hypos) ~f:(fun (h, _) -> *)
+      (*     print_endline (H.to_string_hum h)); *)
+        
+      (* search each hypothesis that can be searched at this cost. If
          the search succeeds it will throw an exception. *)
       List.iter (!fresh_hypos @ !stale_hypos) ~f:(fun (hypo, max_search_cost) ->
           if total_cost (H.cost hypo) (!max_search_cost + 1) <= cost then

@@ -1,5 +1,6 @@
 open Core.Std
 open OUnit2
+open L2
 
 open Tests_common
 open Synthesis_common
@@ -32,7 +33,7 @@ let cost_model_tests = "cost-model" >::: [
    Top)"
         in
         let h =
-          Skeleton.t_of_sexp Specification.t_of_sexp (Sexp.of_string skel_str)
+          Skeleton.t_of_sexp (Sexp.of_string skel_str)
           |> Hypothesis.of_skeleton cost_model
         in
         assert_equal ~ctxt ~printer:Int.to_string 1 (Hypothesis.cost h));

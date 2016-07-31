@@ -179,7 +179,7 @@ type result =
   | Apply_r of result * result list
   | Op_r of Expr.Op.t * result list
   | Symbol_r of int
-  | Closure_r of Specification.t Skeleton.t * result StaticDistance.Map.t ref
+  | Closure_r of Skeleton.t * result StaticDistance.Map.t ref
 [@@deriving compare, sexp]
 
 let rec result_of_value = function
@@ -197,7 +197,7 @@ let skeleton_of_result r =
   let hole = Hole.create Infer.Type.num (Symbol.create "TEST") in
   let rec skeleton_of_result r =
     match r with
-    | Num_r x -> S.Num_h (x, ())
+    | Num_r x -> num (x, ())
     | Bool_r x -> S.Bool_h (x, ())
     | List_r x -> S.List_h (List.map x ~f:skeleton_of_result, ())
     | Tree_r x -> S.Tree_h (Tree.map x ~f:skeleton_of_result, ())

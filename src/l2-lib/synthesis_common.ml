@@ -63,24 +63,24 @@ module Deduction = struct
   module Sp = Specification
   module Sk = Skeleton
 
-  type t = Sp.t Sk.t -> Sp.t Sk.t Option.t
+  type t = Sk.t -> Sk.t Option.t
 
   exception Bottom
 
   let bottom : t = fun sk -> 
     let rec bot sk =
-      if Sp.equal (Sk.annotation sk) Sp.bottom then raise Bottom;
-      match sk with
-      | Sk.Num_h _
-      | Sk.Bool_h _
-      | Sk.Id_h _
-      | Sk.Hole_h _ -> ()
-      | Sk.List_h (l, _) -> List.iter l ~f:bot
-      | Sk.Tree_h (t, _) -> Tree.iter t ~f:bot
-      | Sk.Let_h ((bound, body), _) -> (bot bound; bot body)
-      | Sk.Lambda_h ((num_args, body), _) -> bot body
-      | Sk.Op_h ((op, args), _) -> List.iter args ~f:bot
-      | Sk.Apply_h ((func, args), _) -> (bot func; List.iter args ~f:bot)
+      if Sp.equal (Sk.spec sk) Sp.bottom then raise Bottom;
+      match Sk.ast sk with
+      | Sk.Num _
+      | Sk.Bool _
+      | Sk.Id _
+      | Sk.Hole _ -> ()
+      | Sk.List l -> List.iter l ~f:bot
+      | Sk.Tree t -> Tree.iter t ~f:bot
+      | Sk.Let {bound; body} -> (bot bound; bot body)
+      | Sk.Lambda {num_args; body} -> bot body
+      | Sk.Op {op; args} -> List.iter args ~f:bot
+      | Sk.Apply {func; args} -> (bot func; List.iter args ~f:bot)
     in
     try bot sk; Some sk with Bottom -> None
 
@@ -235,7 +235,7 @@ module Memoizer = struct
     let module H = Hypothesis in
     fun m -> Sequence.filter ~f:(fun (h, _) ->
         incr "num_hypos";
-        Status.(print_status { synthesis = counter; hashcons = Hypothesis.Table.counter; });
+        Status.(print_status { synthesis = counter; hashcons = Skeleton.Table.counter; });
         match H.kind h with
         | H.Concrete ->
           (* printf "%s\n\n" ([%sexp_of:H.t] h |> Sexp.to_string_hum); *)

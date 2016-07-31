@@ -19,7 +19,7 @@ module Generalizer : sig
 end
 
 module Deduction : sig
-  type t = Specification.t Skeleton.t -> Specification.t Skeleton.t Option.t
+  type t = Skeleton.t -> Skeleton.t Option.t
   val no_op : t
   val bottom : t
   val compose : t -> t -> t

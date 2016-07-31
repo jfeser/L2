@@ -223,7 +223,7 @@ module Abstract_example = struct
   
   let join_many : t list -> t = List.fold_left1 ~f:join
 
-  let of_spec_and_args : library:Library.t -> args:Sp.t Sk.t list -> Examples.example -> t =
+  let of_spec_and_args : library:Library.t -> args:Sk.t list -> Examples.example -> t =
     let module AV = Abstract_value in
     fun ~library ~args spec ->
       let (ctx, ret) = spec in
@@ -308,7 +308,7 @@ let infer_examples :
   library:Library.t
   -> specs:Function_spec.t String.Map.t
   -> op:[`Builtin of Expr.Op.t | `Func of string]
-  -> args:Sp.t Sk.t list
+  -> args:Sk.t list
   -> Examples.t
   -> Sp.t list =
   fun ~library ~specs ~op ~args exs ->
@@ -340,7 +340,7 @@ let infer_examples :
         let arg_examples = List.map per_arg_specs ~f:(fun arg_spec ->
               if List.exists arg_spec ~f:(Sp.equal Sp.bottom) then Sp.bottom else
                 let arg_exs =
-                  List.filter_map arg_spec ~f:(fun sp -> match Sp.spec sp with
+                  List.filter_map arg_spec ~f:(fun sp -> match Sp.data sp with
                       | Sp.Top -> None
                       | Examples.Examples exs -> Some (Examples.to_list exs)
                       | _ -> failwith "BUG: Unexpected specification.")
@@ -360,40 +360,37 @@ let infer_examples :
 let push_specs_exn' :
   specs:Function_spec.t String.Map.t
   -> library:Library.t
-  -> Sp.t Sk.t
-  -> Sp.t Sk.t
+  -> Sk.t
+  -> Sk.t
   = fun ~specs ~library sk ->
-    let rec push_specs_exn sk = 
-      match sk with
-      | Sk.Num_h (_, s)
-      | Sk.Bool_h (_, s)
-      | Sk.Id_h (_, s)
-      | Sk.Hole_h (_, s) as sk -> sk
-      | Sk.List_h (l, s) -> Sk.List_h (List.map l ~f:push_specs_exn, s)
-      | Sk.Tree_h (t, s) -> Sk.Tree_h (Tree.map t ~f:push_specs_exn, s)
-      | Sk.Let_h ((bound, body), s) -> Sk.Let_h ((push_specs_exn bound, push_specs_exn body), s)
-      | Sk.Lambda_h ((num_args, body), s) -> Sk.Lambda_h ((num_args, push_specs_exn body), s)
-      | Sk.Op_h ((op, args), s) ->
-        begin match Sp.spec s with
+    let rec push sk =
+      let spec = Sk.spec sk in
+      match Sk.ast sk with
+      | Sk.Num _
+      | Sk.Bool _
+      | Sk.Id _
+      | Sk.Hole _ -> sk
+      | Sk.List l -> Sk.list (List.map l ~f:push) spec
+      | Sk.Tree t -> Sk.tree (Tree.map t ~f:push) spec
+      | Sk.Let {bound; body} -> Sk.let_ (push bound) (push body) spec
+      | Sk.Lambda {num_args; body} -> Sk.lambda num_args (push body) spec
+      | Sk.Op {op; args} ->
+        begin match Sp.data spec with
           | Examples.Examples exs ->
             let (arg_specs, runtime) = Util.with_runtime (fun () ->
                 infer_examples ~library ~specs ~op:(`Builtin op) ~args exs)
             in
-            let args = List.map2_exn args arg_specs ~f:(fun arg sp ->
-                Sk.map_annotation arg ~f:(fun _ -> sp))
-            in
-            Sk.Op_h ((op, List.map args ~f:push_specs_exn), s)
-          | _ -> Sk.Op_h ((op, List.map args ~f:push_specs_exn), s)
+            let args = List.map2_exn args arg_specs ~f:Sk.replace_spec in
+            Sk.op op (List.map args ~f:push) spec
+          | _ -> Sk.op op (List.map args ~f:push) spec
         end
-      | Sk.Apply_h ((func, args), s) ->
-        begin match Sp.spec s, func with
-          | Examples.Examples exs, Sk.Id_h (Sk.Id.Name name, _) ->
+      | Sk.Apply {func; args} ->
+        begin match Sp.data spec, Sk.ast func with
+          | Examples.Examples exs, Sk.Id (Sk.Id.Name name) ->
             let (arg_specs, runtime) = Util.with_runtime (fun () ->
                 infer_examples ~library ~specs ~op:(`Func name) ~args exs)
             in
-            let args = List.map2_exn args arg_specs ~f:(fun arg sp ->
-                Sk.map_annotation arg ~f:(fun _ -> sp))
-            in
+            let args = List.map2_exn args arg_specs ~f:Sk.replace_spec in
 
             (* printf "Runtime %s.\n" (Time.Span.to_string_hum runtime); *)
             (* printf "Pushing specifications for %s.\n" name; *)
@@ -405,11 +402,11 @@ let push_specs_exn' :
             (* Util.print_sexp arg_specs [%sexp_of:Sp.t list]; *)
             (* print_newline (); *)
 
-            Sk.Apply_h ((func, List.map ~f:push_specs_exn args), s)
-          | _ -> Sk.Apply_h ((push_specs_exn func, List.map ~f:push_specs_exn args), s)
+            Sk.apply func (List.map ~f:push args) spec
+          | _ -> Sk.apply func (List.map ~f:push args) spec
         end
     in
-    run_with_time "total" (fun () -> push_specs_exn sk)    
+    run_with_time "total" (fun () -> push sk)    
 
 let create spec_dir library =
   let specs =

@@ -36,7 +36,7 @@ end
 module Make_deduce_2 (M : Deduce_2_intf) = struct
   let lambda_spec collection_id parent_spec =
     let open Result.Monad_infix in
-    match Sp.spec parent_spec with
+    match Sp.data parent_spec with
     | Examples.Examples exs ->
       let m_hole_exs =
         List.map (Examples.to_list exs) ~f:(fun (ctx, out_v) ->
@@ -63,9 +63,14 @@ module Make_deduce_2 (M : Deduce_2_intf) = struct
   let deduce spec args =
     let open Result.Monad_infix in
     match args with
-    | [ Sk.Id_h (Sk.Id.StaticDistance sd, _) as list; lambda ] when Sp.equal (Sk.annotation lambda) Sp.top ->
-      let child_spec = lambda_spec sd spec in
-      [ list; Sk.map_annotation lambda ~f:(fun _ -> child_spec) ]
+    | [ list; lambda ] when Sp.equal (Sk.spec lambda) Sp.top ->
+      begin
+        match Sk.ast list with
+        | Sk.Id (Sk.Id.StaticDistance sd) -> 
+          let child_spec = lambda_spec sd spec in
+          [ list; Sk.replace_spec lambda child_spec ]
+        | _ -> args
+      end
     | _ -> args
 end
 
@@ -77,7 +82,7 @@ end
 
 module Make_deduce_fold (M : Deduce_fold_intf) = struct
   let base_spec collection_id parent_spec =
-    match Sp.spec parent_spec with
+    match Sp.data parent_spec with
     | Examples.Examples exs ->
       let exs = Examples.to_list exs in
       let m_base_exs =
@@ -99,10 +104,15 @@ module Make_deduce_fold (M : Deduce_fold_intf) = struct
   let deduce spec args =
     let open Result.Monad_infix in
     match args with
-    | [ Sk.Id_h (Sk.Id.StaticDistance sd, _) as input; lambda; base ] ->
-      let b_spec = Sk.annotation base in
-      let b_spec = if Sp.equal b_spec Sp.top then base_spec sd spec else b_spec in
-      [ input; lambda; Sk.map_annotation base ~f:(fun _ -> b_spec ) ]
+    | [ input; lambda; base ] ->
+      begin
+        match Sk.ast input with
+        | Sk.Id (Sk.Id.StaticDistance sd) ->
+          let b_spec = Sk.spec base in
+          let b_spec = if Sp.equal b_spec Sp.top then base_spec sd spec else b_spec in
+          [ input; lambda; Sk.replace_spec base b_spec ]
+        | _ -> args
+      end
     | _ -> args
 end
 
@@ -189,9 +199,9 @@ module Deduce_foldt = Make_deduce_fold (struct
 
 let deduce_lambda lambda spec =
   let (num_args, body) = lambda in
-  if Sp.equal (Sk.annotation body) Sp.top then
+  if Sp.equal (Sk.spec body) Sp.top then
     let child_spec = Sp.increment_scope spec in
-    let child_spec = match Sp.spec child_spec with
+    let child_spec = match Sp.data child_spec with
       | FunctionExamples.FunctionExamples exs ->
         let arg_names = StaticDistance.args num_args in
         let child_exs =
@@ -212,46 +222,47 @@ let deduce_lambda lambda spec =
       | Sp.Top -> Sp.top
       | _ -> spec_err "<lambda>" spec
     in
-    (num_args, Sk.map_annotation body ~f:(fun _ -> child_spec))
+    (num_args, Sk.replace_spec body child_spec)
   else lambda
 
-let rec push_specs (skel: Specification.t Skeleton.t) : Specification.t Skeleton.t Option.t =
+let rec push_specs (skel: Skeleton.t) : Skeleton.t Option.t =
   let open Option.Monad_infix in
-  match skel with
-  | Sk.Num_h (_, s)
-  | Sk.Bool_h (_, s)
-  | Sk.Id_h (_, s)
-  | Sk.Hole_h (_, s) -> if Sp.equal s Sp.bottom then None else Some skel
-  | Sk.List_h (l, s) ->
+  let spec = Sk.spec skel in
+  match Sk.ast skel with
+  | Sk.Num _
+  | Sk.Bool _
+  | Sk.Id _
+  | Sk.Hole _ -> if Sp.equal spec Sp.bottom then None else Some skel
+  | Sk.List l ->
     let m_l = List.map l ~f:push_specs |> Option.all in
-    m_l >>| fun l -> Sk.List_h (l, s)
-  | Sk.Tree_h (t, s) ->
+    m_l >>| fun l -> Sk.list l spec
+  | Sk.Tree t ->
     let m_t = Tree.map t ~f:push_specs |> Tree.all in
-    m_t >>| fun t -> Sk.Tree_h (t, s)
-  | Sk.Let_h ((bound, body), s) ->
+    m_t >>| fun t -> Sk.tree t spec
+  | Sk.Let {bound; body} ->
     let m_bound = push_specs bound in
     let m_body = push_specs body in
-    m_bound >>= fun bound -> m_body >>| fun body -> Sk.Let_h ((bound, body), s)
-  | Sk.Lambda_h (lambda, s) ->
-    let (num_args, body) = deduce_lambda lambda s in
+    m_bound >>= fun bound -> m_body >>| fun body -> Sk.let_ bound body spec
+  | Sk.Lambda {num_args; body} ->
+    let (num_args, body) = deduce_lambda (num_args, body) spec in
     let m_body = push_specs body in
-    m_body >>| fun body -> Sk.Lambda_h ((num_args, body), s)
-  | Sk.Op_h ((op, args), s) ->
+    m_body >>| fun body -> Sk.lambda num_args body spec
+  | Sk.Op {op; args} ->
     let m_args = List.map args ~f:push_specs |> Option.all in
-    m_args >>| fun args -> Sk.Op_h ((op, args), s)
-  | Sk.Apply_h ((func, args), s) ->
-    let args = match func with
-      | Sk.Id_h (Sk.Id.Name "map", _) -> Deduce_map.deduce s args
-      | Sk.Id_h (Sk.Id.Name "mapt", _) -> Deduce_mapt.deduce s args
-      | Sk.Id_h (Sk.Id.Name "filter", _) -> Deduce_filter.deduce s args
-      | Sk.Id_h (Sk.Id.Name "foldl", _) -> Deduce_foldl.deduce s args
-      | Sk.Id_h (Sk.Id.Name "foldr", _) -> Deduce_foldr.deduce s args
-      | Sk.Id_h (Sk.Id.Name "foldt", _) -> Deduce_foldt.deduce s args
+    m_args >>| fun args -> Sk.op op args spec
+  | Sk.Apply {func; args} ->
+    let args = match Sk.ast func with
+      | Sk.Id (Sk.Id.Name "map") -> Deduce_map.deduce spec args
+      | Sk.Id (Sk.Id.Name "mapt") -> Deduce_mapt.deduce spec args
+      | Sk.Id (Sk.Id.Name "filter") -> Deduce_filter.deduce spec args
+      | Sk.Id (Sk.Id.Name "foldl") -> Deduce_foldl.deduce spec args
+      | Sk.Id (Sk.Id.Name "foldr") -> Deduce_foldr.deduce spec args
+      | Sk.Id (Sk.Id.Name "foldt") -> Deduce_foldt.deduce spec args
       | _ -> args        
     in
     let m_args =
-      if List.exists args ~f:(fun a -> Sp.equal (Sk.annotation a) Sp.bottom) then None else
+      if List.exists args ~f:(fun a -> Sp.equal (Sk.spec a) Sp.bottom) then None else
         Option.all (List.map args ~f:push_specs)
     in
     let m_func = push_specs func in
-    m_args >>= fun args -> m_func >>| fun func -> Sk.Apply_h ((func, args), s)
+    m_args >>= fun args -> m_func >>| fun func -> Sk.apply func args spec

@@ -8,6 +8,28 @@ module Json = struct
   let sexp_of_json j = to_string j |> [%sexp_of:string]
 end
 
+module Hash = struct
+  let combine : int -> int -> int =
+    fun h1 h2 -> (h1 lsl 1) lxor h2
+
+  let combine3 : int -> int -> int -> int =
+    fun h1 h2 h3 -> combine (combine h1 h2) h3
+
+  let combine_many : int list -> int =
+    let rec combine_many' h = 
+      function
+      | [] -> h
+      | x::xs ->
+        let h' = combine h x in
+        combine_many' h' xs
+    in
+    function
+    | [] -> failwith "List must be non-empty."
+    | h::hs -> combine_many' h hs
+  
+  let hash_empty = Hashtbl.hash []
+end
+
 module ListExt = struct
   include List
 
@@ -46,6 +68,10 @@ module ListExt = struct
       let len = List.length l in
       if len = 0 then None else
         Some (List.nth_exn l (Random.State.int state len))
+
+  let hash : ?hash_elem:('a -> int) -> 'a list -> int =
+    fun ?(hash_elem = Hashtbl.hash) ->
+      fold_left ~init:Hash.hash_empty ~f:(fun h e -> Hash.combine h (hash_elem e))
 end
 module List = ListExt
 
@@ -546,6 +572,13 @@ module Tree = struct
     | Node of 'a * 'a t list
   [@@deriving compare, sexp, bin_io]
 
+  let rec hash : ?hash_elem:('a -> int) -> 'a t -> int =
+    fun ?(hash_elem = Hashtbl.hash) -> function
+      | Empty -> Hashtbl.hash Empty
+      | Node (x, xs) ->
+        let xs_hash = List.map xs ~f:hash |> Hash.combine_many in
+        Hash.combine (hash_elem x) xs_hash
+  
   let rec to_string t ~str =
     match t with
     | Empty -> "{}"

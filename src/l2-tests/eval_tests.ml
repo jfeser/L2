@@ -1,5 +1,6 @@
 open OUnit2
-
+open L2
+    
 open Collections
 
 (** Test a function in the standard evaluation context. *)
