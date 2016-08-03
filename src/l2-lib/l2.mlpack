@@ -1,0 +1,34 @@
+# OASIS_START
+# DO NOT EDIT (digest: 4eaac44fc636d70ddf0f4775f7f65b44)
+Ast
+Collections
+Combinat
+Config
+Eval
+Example_deduction
+Example
+Expr
+ExprValue
+Fast_example_deduction
+Higher_order_deduction
+Hypothesis
+Infer
+Lexer
+Library
+Parser
+Random_deduction
+Recursive_spec_deduction
+Rewrite
+Sstream
+Status
+Structure
+Synthesis_common
+Testcase
+Unify
+Util
+V1_engine
+V1_solver_engine
+V2_engine
+Value
+Verify
+# OASIS_STOP
