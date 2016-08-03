@@ -1,0 +1,12 @@
+# OASIS_START
+# DO NOT EDIT (digest: 13dd3cc92f84b727d3c045fe484c08e9)
+version = "0.2.0"
+description = "Program synthesis from examples."
+requires = "core core_extended yojson hashcons"
+archive(byte) = "l2.cma"
+archive(byte, plugin) = "l2.cma"
+archive(native) = "l2.cmxa"
+archive(native, plugin) = "l2.cmxs"
+exists_if = "l2.cmxa"
+# OASIS_STOP
+
