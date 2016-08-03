@@ -14,13 +14,13 @@ build: [
 install: [make "install"]
 remove: [make "uninstall"]
 depends: [
-  "ocamlfind"      {build}
-  "core"           {build}
-  "core_extended"  {build}
-  "ctypes"         {build}
-  "ctypes-foreign" {build}
-  "yojson"         {build}
-  "ounit"          {build}
-  "hashcons"       {build}
-  "menhir"         {build}
+  "ocamlfind"      {build & <= "1.6.2"}
+  "menhir"         {build & <= "20160526"}
+  "ounit"          {> "1.1.2" & <= "2.0.0"}
+  "core"           {>= "113.24.00" & <= "113.43.00"}
+  "core_extended"  {>= "113.24.00" & <= "113.43.00"}
+  "ctypes"         {<= "0.6.2"}
+  "ctypes-foreign" {<= "0.4.0"}
+  "yojson"         {<= "1.3.2"}
+  "hashcons"       {<= "1.2"}
 ]
