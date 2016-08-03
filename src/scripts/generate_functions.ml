@@ -1,9 +1,9 @@
-(* #!/usr/bin/env ocaml *)
-(* #use "topfind";; *)
-(* #thread;; *)
-(* #require "core.top";; *)
-(* #ppx "ppx-jane -as-ppx";; *)
-(* #require "l2";; *)
+#!/usr/bin/env ocaml
+#use "topfind";;
+#thread;;
+#require "core.top";;
+#ppx "ppx-jane -as-ppx";;
+#require "l2";;
 
 open Core.Std
 open L2
@@ -101,8 +101,7 @@ let generate_exprs : cost:int -> Library.t -> Type.t -> Expr.t Sequence.t =
         |> List.permute
       in
       let concrete =
-        List.filter hypos ~f:(fun h ->
-            H.cost h = cost && H.kind h = H.Concrete)
+        List.filter hypos ~f:(fun h -> H.cost h = cost && H.kind h = H.Concrete)
       in
       if List.length concrete > 0 then
         Seq.of_list concrete
@@ -143,7 +142,7 @@ let generate_spec
 
 let is_interesting : Sp.t -> bool =
   fun spec -> 
-    match Sp.spec spec with
+    match Sp.data spec with
     | Sp.Bottom -> false
     | FunctionExamples.FunctionExamples exs ->
       let outs =
@@ -236,7 +235,7 @@ let cmd =
             |> Out_channel.output_string ch);
 
         let name = sprintf "f%d" i in
-        let exs = match Sp.spec out.spec with
+        let exs = match Sp.data out.spec with
           | FunctionExamples.FunctionExamples exs ->
             FunctionExamples.to_list exs
             |> List.map ~f:(fun ((_, ins), out) ->
