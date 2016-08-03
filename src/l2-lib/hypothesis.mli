@@ -79,7 +79,8 @@ module Hole : sig
   val apply_unifier : Unifier.t -> t -> t
 end
 
-(** Skeletons are expressions, with holes, that can be annotated. *)
+(** Skeletons are expressions with {!Hole}s that are annotated with
+    {!Specification}s. *)
 module Skeleton : sig
   module Id : sig
     type t =
@@ -262,7 +263,9 @@ module FunctionExamples : sig
   val to_spec : t -> Specification.t
 end
 
-(** Hypotheses are {! Skeleton}s which are annotated with {!Specification}s. *)
+(** Hypotheses are a further refinement of {!Skeleton}s which add
+    additional information: cost, abstract/concrete state, and a list of
+    holes. *)
 module Hypothesis : sig
   type kind =
     | Abstract
