@@ -186,7 +186,7 @@ let partial_eval : ?recursion_limit:int -> ?ctx:ExprValue.t Ctx.t -> ExprValue.t
             | Plus -> (match Lazy.force args with
                 | [`Num x; `Num y] -> `Num (x + y)
                 | [`Num 0; x] | [x; `Num 0] -> x
-                | [`Op (Minus, [x; y]); z]
+                | [`Op (Minus, [x; y]); z] when y = z -> x
                 | [z; `Op (Minus, [x; y])] when y = z -> x
                 | _ -> `Op (op, Lazy.force args))
             | Minus -> (match Lazy.force args with
@@ -202,7 +202,7 @@ let partial_eval : ?recursion_limit:int -> ?ctx:ExprValue.t Ctx.t -> ExprValue.t
                 | [`Num x; `Num y] -> `Num (x * y)
                 | [`Num 0; _] | [_; `Num 0] -> `Num 0
                 | [`Num 1; x] | [x; `Num 1] -> x
-                | [x; `Op (Div, [y; z])]
+                | [x; `Op (Div, [y; z])] when x = z -> y
                 | [`Op (Div, [y; z]); x] when x = z -> y
                 | _ -> `Op (op, Lazy.force args))
             | Div -> (match Lazy.force args with
@@ -221,13 +221,15 @@ let partial_eval : ?recursion_limit:int -> ?ctx:ExprValue.t Ctx.t -> ExprValue.t
             | Eq -> (match Lazy.force args with
                 | [`Bool true; x] | [x; `Bool true] -> x
                 | [`Bool false; x] | [x; `Bool false] -> ev ctx (lim - 1) (`Op (Not, [x]))
-                | [x; `Op (Cdr, [y])] | [`Op (Cdr, [y]); x] when x = y -> `Bool false
+                | [x; `Op (Cdr, [y])] when x = y -> `Bool false
+                | [`Op (Cdr, [y]); x] when x = y -> `Bool false
                 | [x; y] -> `Bool (x = y)
                 | _ -> `Op (op, Lazy.force args))
             | Neq -> (match Lazy.force args with
                 | [`Bool true; x] | [x; `Bool true] -> ev ctx (lim - 1) (`Op (Not, [x]))
                 | [`Bool false; x] | [x; `Bool false] -> x
-                | [x; `Op (Cdr, [y])] | [`Op (Cdr, [y]); x] when x = y -> `Bool true
+                | [x; `Op (Cdr, [y])] when x = y -> `Bool true
+                | [`Op (Cdr, [y]); x] when x = y -> `Bool true
                 | [x; y] -> `Bool (x <> y)
                 | _ -> `Op (op, Lazy.force args))
             | Lt -> (match Lazy.force args with
@@ -256,7 +258,7 @@ let partial_eval : ?recursion_limit:int -> ?ctx:ExprValue.t Ctx.t -> ExprValue.t
                 | [`Bool false; _] | [_; `Bool false] -> `Bool false
                 | [x; `Op (And, [y; z])] when x = y -> `Op (And, [x; z])
                 | [x; `Op (And, [y; z])] when x = z -> `Op (And, [x; y])
-                | [x; `Op (Not, [y])]
+                | [x; `Op (Not, [y])] when x = y -> `Bool false
                 | [`Op (Not, [y]); x] when x = y -> `Bool false
                 (* DeMorgan's law. *)
                 | [`Op (Not, [x]); `Op (Not, [y])] -> `Op (Not, [`Op (Or, [x; y])])
@@ -271,7 +273,7 @@ let partial_eval : ?recursion_limit:int -> ?ctx:ExprValue.t Ctx.t -> ExprValue.t
                 | [`Bool true; _] | [_; `Bool true] -> `Bool true
                 | [x; `Op (Or, [y; z])] when x = y -> `Op (Or, [x; z])
                 | [x; `Op (Or, [y; z])] when x = z -> `Op (Or, [x; y])
-                | [x; `Op (Not, [y])]
+                | [x; `Op (Not, [y])] when x = y -> `Bool true
                 | [`Op (Not, [y]); x] when x = y -> `Bool true
                 (* DeMorgan's law. *)
                 | [`Op (Not, [x]); `Op (Not, [y])] ->
