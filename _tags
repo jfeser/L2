@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 0e43909e1d5a89697d31e42dfad1e96f)
+# DO NOT EDIT (digest: 49c10d21cfa4fa3c53faa68ab9abb38c)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -97,43 +97,6 @@ true: annot, bin_annot
 <src/l2-tests/*.ml{,i,y}>: package(oUnit)
 <src/l2-tests/*.ml{,i,y}>: package(yojson)
 <src/l2-tests/*.ml{,i,y}>: use_l2
-# Library timeout_lib
-"src/timeout/timeout_lib.cmxs": use_timeout_lib
-# Library timeout_lib_osx
-"src/timeout/timeout_lib_osx.cmxs": use_timeout_lib_osx
-# Library timeout_lib_linux
-"src/timeout/timeout_lib_linux.cmxs": use_timeout_lib_linux
-# Executable timeout_osx
-<src/timeout/timeout_osx.{native,byte}>: oasis_executable_timeout_osx_cclib
-<src/timeout/timeout_osx.{native,byte}>: oasis_executable_timeout_osx_byte
-<src/timeout/*.ml{,i,y}>: oasis_executable_timeout_osx_byte
-<src/timeout/timeout_osx.{native,byte}>: oasis_executable_timeout_osx_native
-<src/timeout/*.ml{,i,y}>: oasis_executable_timeout_osx_native
-<src/timeout/timeout_osx.{native,byte}>: package(core)
-<src/timeout/timeout_osx.{native,byte}>: package(core_extended)
-<src/timeout/timeout_osx.{native,byte}>: package(ctypes)
-<src/timeout/timeout_osx.{native,byte}>: package(ctypes.foreign)
-<src/timeout/timeout_osx.{native,byte}>: package(yojson)
-<src/timeout/timeout_osx.{native,byte}>: use_timeout_lib
-<src/timeout/timeout_osx.{native,byte}>: use_timeout_lib_osx
-<src/timeout/*.ml{,i,y}>: package(ctypes)
-<src/timeout/*.ml{,i,y}>: package(ctypes.foreign)
-<src/timeout/*.ml{,i,y}>: use_timeout_lib_osx
-# Executable timeout_linux
-<src/timeout/timeout_linux.{native,byte}>: oasis_executable_timeout_linux_byte
-<src/timeout/*.ml{,i,y}>: oasis_executable_timeout_linux_byte
-<src/timeout/timeout_linux.{native,byte}>: oasis_executable_timeout_linux_native
-<src/timeout/*.ml{,i,y}>: oasis_executable_timeout_linux_native
-<src/timeout/timeout_linux.{native,byte}>: package(core)
-<src/timeout/timeout_linux.{native,byte}>: package(core_extended)
-<src/timeout/timeout_linux.{native,byte}>: package(yojson)
-<src/timeout/timeout_linux.{native,byte}>: use_timeout_lib
-<src/timeout/timeout_linux.{native,byte}>: use_timeout_lib_linux
-<src/timeout/*.ml{,i,y}>: package(core)
-<src/timeout/*.ml{,i,y}>: package(core_extended)
-<src/timeout/*.ml{,i,y}>: package(yojson)
-<src/timeout/*.ml{,i,y}>: use_timeout_lib
-<src/timeout/*.ml{,i,y}>: use_timeout_lib_linux
 # OASIS_STOP
 true: use_menhir
 true: debug

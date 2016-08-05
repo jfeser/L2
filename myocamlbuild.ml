@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 6aa57336fedc4be29255cd0a3d646c16) *)
+(* DO NOT EDIT (digest: f4d7ea774db6ba1451e3db18ddef98f9) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -767,13 +767,7 @@ end
 open Ocamlbuild_plugin;;
 let package_default =
   {
-     MyOCamlbuildBase.lib_ocaml =
-       [
-          ("l2", ["src/l2-lib"], []);
-          ("timeout_lib", ["src/timeout"], []);
-          ("timeout_lib_osx", ["src/timeout"], []);
-          ("timeout_lib_linux", ["src/timeout"], [])
-       ];
+     MyOCamlbuildBase.lib_ocaml = [("l2", ["src/l2-lib"], [])];
      lib_c = [];
      flags =
        [
@@ -856,66 +850,7 @@ let package_default =
           (["oasis_executable_l2_tests_byte"; "ocaml"; "compile"; "byte"],
             [(OASISExpr.EBool true, S [A "-thread"; A "-g"])]);
           (["oasis_executable_l2_tests_native"; "ocaml"; "compile"; "native"],
-            [(OASISExpr.EBool true, S [A "-thread"; A "-g"])]);
-          (["oasis_executable_timeout_osx_cclib"; "link"],
-            [(OASISExpr.EBool true, S [A "-cclib"; A "-lproc"])]);
-          (["oasis_executable_timeout_osx_cclib"; "ocamlmklib"; "c"],
-            [(OASISExpr.EBool true, S [A "-lproc"])]);
-          (["oasis_executable_timeout_osx_byte"; "ocaml"; "link"; "byte"],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          (["oasis_executable_timeout_osx_native"; "ocaml"; "link"; "native"],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          (["oasis_executable_timeout_osx_byte"; "ocaml"; "ocamldep"; "byte"],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          ([
-              "oasis_executable_timeout_osx_native";
-              "ocaml";
-              "ocamldep";
-              "native"
-           ],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          (["oasis_executable_timeout_osx_byte"; "ocaml"; "compile"; "byte"],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          ([
-              "oasis_executable_timeout_osx_native";
-              "ocaml";
-              "compile";
-              "native"
-           ],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          (["oasis_executable_timeout_linux_byte"; "ocaml"; "link"; "byte"],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          ([
-              "oasis_executable_timeout_linux_native";
-              "ocaml";
-              "link";
-              "native"
-           ],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          ([
-              "oasis_executable_timeout_linux_byte";
-              "ocaml";
-              "ocamldep";
-              "byte"
-           ],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          ([
-              "oasis_executable_timeout_linux_native";
-              "ocaml";
-              "ocamldep";
-              "native"
-           ],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          (["oasis_executable_timeout_linux_byte"; "ocaml"; "compile"; "byte"
-           ],
-            [(OASISExpr.EBool true, S [A "-thread"])]);
-          ([
-              "oasis_executable_timeout_linux_native";
-              "ocaml";
-              "compile";
-              "native"
-           ],
-            [(OASISExpr.EBool true, S [A "-thread"])])
+            [(OASISExpr.EBool true, S [A "-thread"; A "-g"])])
        ];
      includes =
        [("src/l2-tests", ["src/l2-lib"]); ("src/l2-cli", ["src/l2-lib"])]
@@ -926,6 +861,6 @@ let conf = {MyOCamlbuildFindlib.no_automatic_syntax = false}
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default conf package_default;;
 
-# 930 "myocamlbuild.ml"
+# 865 "myocamlbuild.ml"
 (* OASIS_STOP *)
 Ocamlbuild_plugin.dispatch dispatch_default;;
