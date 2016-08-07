@@ -1,0 +1,13 @@
+REC
+
+B ../../_build/src/l2-lib
+B ../../_build/src/l2-cli
+S .
+
+PKG core
+PKG core_extended
+PKG yojson
+PKG ppx_sexp_conv
+PKG ppx_let
+
+EXT here
