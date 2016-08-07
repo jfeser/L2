@@ -77,13 +77,13 @@ let to_json t =
 
 let to_file ?format:(fmt = `Pretty) ~filename:fn t =
   let json = to_json t in
-  let ch = Out_channel.create fn in
-  try
-    match fmt with
-    | `Pretty -> Ok (Json.pretty_to_channel ~std:true ch json)
-    | `Compact -> Ok (Json.to_channel ~std:true ch json)
-  with
-  | Yojson.Json_error err -> Or_error.error_string err
+  Out_channel.with_file fn ~f:(fun ch ->
+      try
+        match fmt with
+        | `Pretty -> Ok (Json.pretty_to_channel ~std:true ch json)
+        | `Compact -> Ok (Json.to_channel ~std:true ch json)
+      with
+      | Yojson.Json_error err -> Or_error.error_string err)
 
 let to_file_exn ?format:(fmt = `Pretty) ~filename:fn t =
   to_file ~format:fmt ~filename:fn t |> Or_error.ok_exn

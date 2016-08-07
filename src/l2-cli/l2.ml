@@ -254,14 +254,14 @@ let synth_command =
       begin
         match json_file with
         | Some file ->
-          let ch = Out_channel.create file in
-          get_json
-            testcase
-            (Time.Span.to_sec solve_time)
-            m_solution
-            !Config.config
-            Sys.argv
-          |> Json.pretty_to_channel ~std:true ch
+          Out_channel.with_file file ~f:(fun ch ->
+              get_json
+                testcase
+                (Time.Span.to_sec solve_time)
+                m_solution
+                !Config.config
+                Sys.argv
+              |> Json.pretty_to_channel ~std:true ch)
         | None -> ()
       end;
       
