@@ -13,6 +13,7 @@ OASISFormat: 0.4
 BuildTools: ocamlbuild
 AlphaFeatures: ocamlbuild_more_args
 XOCamlbuildPluginTags: package(ppx_driver.ocamlbuild)
+XOCamlbuildExtraArgs: -j 8
 Plugins: META (0.4), DevFiles (0.4)
 
 Library l2
