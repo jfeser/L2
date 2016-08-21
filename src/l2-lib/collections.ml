@@ -648,3 +648,4 @@ module SequenceExt = struct
     fun s ~f -> map s ~f:(fun x -> f x; x)
 end
 module Sequence = SequenceExt
+module Seq = Sequence

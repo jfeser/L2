@@ -1,5 +1,13 @@
-open Core.Std
+#!/usr/bin/env ocaml
+#use "topfind";;
+#thread;;
+#require "core.top";;
+#ppx "ppx-jane -as-ppx";;
+#require "l2";;
 
+open Core.Std
+open L2
+    
 open Collections
 open Hypothesis
 open Infer

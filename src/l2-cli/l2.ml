@@ -26,12 +26,12 @@ let get_json testcase runtime solution config argv : Json.json =
     "search", V1_solver_engine.timer;
     "memoizer", Synthesis_common.timer;
     "deduction", deduction_timer;
-    (* "deduction", Deduction.timer; *)
+    "fe_deduction", Fast_example_deduction.timer;
   ] in
   let counters = [
     "search", V1_solver_engine.counter;
     "memoizer", Synthesis_common.counter;
-    (* "deduction", Deduction.counter; *)
+    "fe_deduction", Fast_example_deduction.counter;
   ] in
   let sexp_logs = [
     "memoizer", Synthesis_common.sexp_log;

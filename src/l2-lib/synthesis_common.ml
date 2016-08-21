@@ -237,9 +237,7 @@ module Memoizer = struct
         incr "num_hypos";
         Status.(print_status { synthesis = counter; hashcons = Skeleton.Table.counter; });
         match H.kind h with
-        | H.Concrete ->
-          (* printf "%s\n\n" ([%sexp_of:H.t] h |> Sexp.to_string_hum); *)
-          H.verify ~library:m.config.library h
+        | H.Concrete -> H.verify ~library:m.config.library h
         | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t)
 
   let dump_to_channel :

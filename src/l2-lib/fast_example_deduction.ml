@@ -12,7 +12,10 @@ let timer =
   let t = Timer.empty () in
   let n = Timer.add_zero t in
   n "lookup" "Total time spent scanning abstract example lists.";
+  n "lifting" "Total time spent lifting concrete expressions.";
+  n "lowering" "Total time spent lowering abstract expressions.";
   n "eval" "Total time spent evaluating exprs.";
+  n "infer" "Time spent inferring new examples.";
   n "total" "Total time spent in this deduction routine.";
   t
 let run_with_time = fun name f -> Timer.run_with_time timer name f
@@ -20,25 +23,265 @@ let run_with_time = fun name f -> Timer.run_with_time timer name f
 let counter =
   let t = Counter.empty () in
   let n = Counter.add_zero t in
+  n "eval_calls" "";
+  n "eval_failure" "";
+  n "eval_success" "";
+  n "recursionlimit_failure" "";
+  n "conversion_failure" "";
+  n "no_match" "No matching example in table.";
+  n "have_examples" "Number of hypotheses where we have examples and can deduce.";
+  n "no_examples" "Number of hypotheses where we have no examples.";
   n "abstract_specs" "Number of specs pushed to Top for being abstract.";
   t
 let cincr = Counter.incr counter 
 
-module Abstract_value = struct
-  module T = struct
-    type t = 
-      | Top
-      | Value of ExprValue.t
-      | Bottom
-      [@@deriving compare, sexp, variants]
-  end
-  include T
+module Seq = Sequence
 
-  let to_string = function
-    | Top -> "⊤"
-    | Bottom -> "⊥"
-    | Value v -> ExprValue.to_string v
+module Abstract_int = struct
+  type value =
+    | Int of int
+    | Omega
+  [@@deriving compare, sexp]
+  
+  type domain = { lower: int; upper : int }
+
+  let enumerate : domain -> value Seq.t =
+    fun { lower; upper } ->
+      Seq.range ~start:`inclusive ~stop:`inclusive lower upper
+      |> Seq.map ~f:(fun x -> Int x)
+      |> Seq.append (Seq.singleton Omega)
+
+  let lift0 : domain -> int -> value =
+    fun { lower; upper } x ->
+      if x >= lower && x <= upper then Int x else Omega
+
+  let lift1 : domain -> (int -> int) -> (value -> value) =
+    fun d f ->
+      function
+      | Int x -> lift0 d (f x)
+      | Omega -> Omega
+
+  let lift2 : domain -> (int -> int -> int) -> (value -> value -> value) =
+    fun d f ->
+      function
+      | Int x -> lift1 d (f x)
+      | Omega -> fun _ -> Omega
 end
+
+module Abstract_eq = struct
+  type value =
+    | List of int list
+    | Elem of int
+    | Omega
+  [@@deriving compare, sexp]
+  
+  type 'a domain = {
+    max_length : int;
+    max_distinct : int;
+  }
+
+  let enumerate_lists : 'a domain -> value Seq.t =
+    fun { max_length } ->
+      (* Enumerate all list lengths. *)
+      Seq.range ~start:`inclusive ~stop:`inclusive 0 max_length
+      (* Enumerate all numbers of distinct elements. *)
+      |> Seq.concat_map ~f:(fun len ->
+          Seq.zip (Seq.repeat len) (Seq.range ~start:`inclusive ~stop:`inclusive 1 len))
+      (* For each length and number of distinct elements, enumerate all sets. *)
+      |> Seq.concat_map ~f:(fun (len, num_distinct) ->
+          Combinat.m_partition len num_distinct
+          |> Seq.map ~f:(fun counts ->
+              let elems = Array.create ~len:num_distinct (-1) in
+              let fill_pos = ref 0 in
+              for i = 0 to num_distinct - 1 do
+                Array.fill elems ~pos:!fill_pos ~len:counts.(i) i;
+                fill_pos := !fill_pos + counts.(i);
+              done;
+              elems))
+      (* For each set, enumerate all permutations. *)
+      |> Seq.concat_map ~f:Combinat.permutations
+      |> Seq.map ~f:(fun a -> List (Array.to_list a))
+
+  let enumerate_elems : 'a domain -> value Seq.t =
+    fun { max_length } ->
+      Seq.range ~start:`inclusive ~stop:`exclusive 0 max_length
+      |> Seq.map ~f:(fun x -> Elem x)
+end
+
+module Abstract_value = struct
+  type t = [
+    | `AbsInt of Abstract_int.value
+    | `AbsEq of Abstract_eq.value
+    | `Bool of bool
+    | `List of t list
+    | `Tree of t Tree.t
+    | `Closure of Expr.t * (t Ctx.t)
+    | `Bottom
+    | `Top
+  ] [@@deriving compare, sexp]
+
+  exception HitRecursionLimit
+
+  let to_string _ = failwith "Implement me!"
+  
+  let rec of_value : int_domain:Abstract_int.domain -> Value.t -> t =
+    fun ~int_domain -> function
+      | `Num x -> `AbsInt (Abstract_int.lift0 int_domain x)
+      | `Bool x -> `Bool x
+      | `List x -> `List (List.map x ~f:(of_value ~int_domain))
+      | `Tree x -> `Tree (Tree.map x ~f:(of_value ~int_domain))
+      | `Closure (expr, ctx) ->
+        `Closure (expr, Ctx.map ctx ~f:(of_value ~int_domain))
+      | `Unit -> `Bottom
+  
+  let eval :
+    ?recursion_limit:int
+    -> ?ctx:t Ctx.t
+    -> int_domain:Abstract_int.domain
+    -> Expr.t
+    -> t =
+    fun ?recursion_limit:(limit = (-1)) ?(ctx = Ctx.empty ()) ~int_domain expr ->
+      let rec ev ctx lim expr =
+        if lim = 0 then raise HitRecursionLimit
+        else match expr with
+          | `Num x -> `AbsInt (Abstract_int.lift0 int_domain x)
+          | `Bool x -> `Bool x
+          | `List x -> `List (List.map x ~f:(ev ctx lim))
+          | `Tree x -> `Tree (Tree.map x ~f:(ev ctx lim))
+          | `Lambda _ as lambda -> `Closure (lambda, ctx)
+          | `Id id -> (match Ctx.lookup ctx id with
+              | Some v -> v
+              | None -> `Bottom)
+          | `Let (name, bound, body) ->
+            let ctx' = ref (Ctx.to_string_map ctx) in
+            Ctx.update ctx' name (ev ctx' lim bound);
+            ev ctx' lim body
+
+          | `Apply (func, raw_args) ->
+            let args = List.map ~f:(ev ctx lim) raw_args in
+            begin match ev ctx lim func with
+              | `Closure (`Lambda (arg_names, body), enclosed_ctx) ->
+                begin match List.zip arg_names args with
+                  | Some bindings ->
+                    let ctx' = List.fold bindings ~init:(enclosed_ctx)
+                        ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value)
+                    in
+                    ev ctx' (lim - 1) body
+                  | None -> `Bottom
+                end
+              | _ -> `Top
+            end
+
+          | `Op (op, raw_args) ->
+            let args = lazy (List.map ~f:(ev ctx lim) raw_args) in
+            begin
+              let open Expr.Op in
+              match op with
+              | Plus -> (match Lazy.force args with
+                  | [`AbsInt x; `AbsInt y] -> `AbsInt (Abstract_int.lift2 int_domain (+) x y)
+                  | _ -> `Top)
+              | Minus -> (match Lazy.force args with
+                  | [`AbsInt x; `AbsInt y] -> `AbsInt (Abstract_int.lift2 int_domain (-) x y)
+                  | _ -> `Top)
+              | Mul -> (match Lazy.force args with
+                  | [`AbsInt x; `AbsInt y] -> `AbsInt (Abstract_int.lift2 int_domain (fun x y -> x * y) x y)
+                  | _ -> `Top)
+              | Div -> (match Lazy.force args with
+                  | [`AbsInt x; `AbsInt y] -> `AbsInt (Abstract_int.lift2 int_domain (/) x y)
+                  | _ -> `Top)
+              | Mod -> (match Lazy.force args with
+                  | [`AbsInt x; `AbsInt y] -> `AbsInt (Abstract_int.lift2 int_domain (%) x y)
+                  | _ -> `Top)
+              | Eq -> (match Lazy.force args with
+                  | [`AbsInt (Int x); `AbsInt (Int y)] -> `Bool (x = y)
+                  | [`Bool x; `Bool y] -> `Bool (x = y)
+                  | _ -> `Top)
+              | Neq -> (match Lazy.force args with
+                  | [`AbsInt (Int x); `AbsInt (Int y)] -> `Bool (x <> y)
+                  | [`Bool x; `Bool y] -> `Bool (x <> y)
+                  | _ -> `Top)
+              | Lt -> (match Lazy.force args with
+                  | [`AbsInt (Int x); `AbsInt (Int y)] -> `Bool (x < y)
+                  | _ -> `Top)
+              | Gt -> (match Lazy.force args with
+                  | [`AbsInt (Int x); `AbsInt (Int y)] -> `Bool (x > y)
+                  | _ -> `Top)
+              | Leq -> (match Lazy.force args with
+                  | [`AbsInt (Int x); `AbsInt (Int y)] -> `Bool (x <= y)
+                  | _ -> `Top)
+              | Geq -> (match Lazy.force args with
+                  | [`AbsInt (Int x); `AbsInt (Int y)] -> `Bool (x >= y)
+                  | _ -> `Top)
+              | And -> (match Lazy.force args with
+                  | [`Bool x; `Bool y] -> `Bool (x && y)
+                  | [`Bool true; x] | [x; `Bool true] -> x
+                  | [`Bool false; _] | [_; `Bool false] -> `Bool false
+                  | _ -> `Top)
+              | Or -> (match Lazy.force args with
+                  | [`Bool x; `Bool y] -> `Bool (x || y)
+                  | [`Bool false; x] | [x; `Bool false] -> x
+                  | [`Bool true; _] | [_; `Bool true] -> `Bool true
+                  | _ -> `Top)
+              | Not -> (match Lazy.force args with
+                  | [`Bool x] -> `Bool (not x)
+                  | _ -> `Top)
+              | Cons -> (match Lazy.force args with
+                  | [`AbsEq (Abstract_eq.Elem x); `AbsEq (Abstract_eq.List xs)] -> `AbsEq (Abstract_eq.List (x::xs))
+                  | [x; `List y] -> `List (x :: y)
+                  | _ -> `Top)
+              | RCons -> (match Lazy.force args with
+                  | [`AbsEq (Abstract_eq.Elem x); `AbsEq (Abstract_eq.List xs)] -> `AbsEq (Abstract_eq.List (x::xs))
+                  | [x; `List y] -> `List (x :: y)
+                  | _ -> `Top)
+              | Car -> (match Lazy.force args with
+                  | [`AbsEq (Abstract_eq.List (x::_))] -> `AbsEq (Abstract_eq.Elem x)
+                  | [`List (x::_)] -> x
+                  | _ -> `Top)
+              | Cdr -> (match Lazy.force args with
+                  | [`AbsEq (Abstract_eq.List (_::xs))] -> `AbsEq (Abstract_eq.List xs)
+                  | [`List (_::xs)] -> `List xs
+                  | _ -> `Top)
+              | If -> (match raw_args with
+                  | [ux; uy; uz] -> (match ev ctx lim ux with
+                      | `Bool x -> if x then ev ctx lim uy else ev ctx lim uz
+                      | _ -> `Top)
+                  | _ -> `Bottom)
+              | Value -> (match Lazy.force args with
+                  | [`Tree Tree.Empty] -> `Bottom
+                  | [`Tree (Tree.Node (x, _))] -> x
+                  | _ -> `Top)
+              | Children -> (match Lazy.force args with
+                  | [`Tree Tree.Empty] -> `List []
+                  | [`Tree (Tree.Node (_, x))] -> `List (List.map x ~f:(fun e -> `Tree e))
+                  | _ -> `Top)
+              | Tree -> (match Lazy.force args with
+                  | [x; `List y] ->
+                    let y' =
+                      List.map y ~f:(fun e -> match e with
+                          | `Tree t -> t
+                          | _ -> Tree.Node (e, []))
+                    in
+                    `Tree (Tree.Node (x, y'))
+                  | _ -> `Top)
+            end
+      in ev ctx limit expr
+end
+
+(* module Abstract_value = struct *)
+(*   module T = struct *)
+(*     type t = *)
+(*       | Top *)
+(*       | Value of ExprValue.t *)
+(*       | Bottom *)
+(*       [@@deriving compare, sexp, variants] *)
+(*   end *)
+(*   include T *)
+
+(*   let to_string = function *)
+(*     | Top -> "⊤" *)
+(*     | Bottom -> "⊥" *)
+(*     | Value v -> ExprValue.to_string v *)
+(* end *)
 
 module Abstract_example = struct
   module T = struct
@@ -111,7 +354,8 @@ module Abstract_example = struct
       let out' = normalize ret_type out in
       let ins' = List.map ins ~f:sub in
       ((ins', out'), !ctx)
-
+  let lift x y = Timer.run_with_time timer "lifting" (fun () -> lift x y)
+  
   let lower : t -> string ExprValue.Map.t -> t =
     let open Abstract_value in
     fun (ins, out) map ->
@@ -138,6 +382,7 @@ module Abstract_example = struct
         |> String.Map.of_alist_exn
       in
       (List.map ins ~f:(sub inverse_map), sub inverse_map out)
+  let lower x y = Timer.run_with_time timer "lowering" (fun () -> lower x y)
 
   let normalize : t -> t =
     let open Abstract_value in
@@ -223,6 +468,27 @@ module Abstract_example = struct
   
   let join_many : t list -> t = List.fold_left1 ~f:join
 
+  module V = struct
+    module T = struct
+      type t = Expr.t * Value.t String.Map.t [@@deriving sexp,compare]
+      let hash = Hashtbl.hash
+    end
+    include T
+    include Hashable.Make(T)
+  end
+  let eval =
+    let table = V.Table.create () in
+    Counter.add_func counter "eval_distinct_args" "" (fun () -> Hashtbl.length table);
+    fun ctx expr ->
+      cincr "eval_calls";
+      match Hashtbl.find table (expr, ctx) with
+      | Some v -> v
+      | None ->
+        let vctx = ref ctx in
+        let v = Eval.eval ~recursion_limit:100 vctx expr in
+        ignore (Hashtbl.add table ~key:(expr, ctx) ~data:v);
+        v
+  
   let of_spec_and_args : library:Library.t -> args:Sk.t list -> Examples.example -> t =
     let module AV = Abstract_value in
     fun ~library ~args spec ->
@@ -233,18 +499,20 @@ module Abstract_example = struct
           List.map args ~f:(fun a ->
               let m_e = Or_error.try_with (fun () -> Sk.to_expr ~ctx:expr_ctx a) in
               match m_e with
-              | Ok e -> begin
-                  try
+              | Ok e -> begin try
                     let v =
-                      let vctx = ref library.Library.value_ctx in
-                      run_with_time "eval" (fun () -> Eval.eval ~recursion_limit:100 vctx e)
+                      run_with_time "eval" (fun () -> eval library.Library.value_ctx e)
                       |> ExprValue.of_value
                     in
+                    cincr "eval_success";
                     AV.Value v
-                  with Eval.HitRecursionLimit -> AV.Top
+                  with Eval.HitRecursionLimit ->
+                    cincr "recursionlimit_failure"; AV.Top
                 end
-              | Error _ -> AV.Top)
-        with Eval.RuntimeError _ -> List.repeat arity AV.Bottom
+              | Error _ -> cincr "conversion_failure"; AV.Top)
+        with Eval.RuntimeError _ ->
+          cincr "eval_failure";
+          List.repeat arity AV.Bottom
       in
       arg_values, AV.Value (ExprValue.of_value ret)
 
@@ -300,6 +568,7 @@ module Function_spec = struct
       match run_with_time "lookup" (fun () -> Hashtbl.find t ex) with
       | Some ex' -> ex'
       | None ->
+        cincr "no_match";
         let (ins, out) = ex in
         List.repeat (List.length ins) AV.Top, out
 end
@@ -377,17 +646,21 @@ let push_specs_exn' :
       | Sk.Op {op; args} ->
         begin match Sp.data spec with
           | Examples.Examples exs ->
-            let (arg_specs, runtime) = Util.with_runtime (fun () ->
+            cincr "have_examples";
+            let arg_specs = run_with_time "infer" (fun () ->
                 infer_examples ~library ~specs ~op:(`Builtin op) ~args exs)
             in
             let args = List.map2_exn args arg_specs ~f:Sk.replace_spec in
             Sk.op op (List.map args ~f:push) spec
-          | _ -> Sk.op op (List.map args ~f:push) spec
+          | _ ->
+            cincr "no_examples";
+            Sk.op op (List.map args ~f:push) spec
         end
       | Sk.Apply {func; args} ->
         begin match Sp.data spec, Sk.ast func with
           | Examples.Examples exs, Sk.Id (Sk.Id.Name name) ->
-            let (arg_specs, runtime) = Util.with_runtime (fun () ->
+            cincr "have_examples";
+            let arg_specs = run_with_time "infer" (fun () ->
                 infer_examples ~library ~specs ~op:(`Func name) ~args exs)
             in
             let args = List.map2_exn args arg_specs ~f:Sk.replace_spec in
@@ -403,7 +676,9 @@ let push_specs_exn' :
             (* print_newline (); *)
 
             Sk.apply func (List.map ~f:push args) spec
-          | _ -> Sk.apply func (List.map ~f:push args) spec
+          | _ ->
+            cincr "no_examples";
+            Sk.apply func (List.map ~f:push args) spec
         end
     in
     run_with_time "total" (fun () -> push sk)    

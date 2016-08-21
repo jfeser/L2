@@ -1,37 +1,52 @@
 #!/usr/bin/env python3
 
 '''
-Usage: benchmark.py [options] (--l2 <file>) (--timeout <file>) <benchmark>...
-
-Options:
-  -h --help               Show this screen.
-  --l2 <file>
-  --timeout <file>
-  --l2-args <args>
-  --max-memory <mem>      Maximum memory (Mb) [default: 500].
-  --max-runtime <time>    Maximum runtime (seconds) [default: 600].
+Usage: benchmark.py RUNFILE
 '''
 
 from docopt import docopt
-import os
+from glob import glob
 import json
-import subprocess
+import os
+import shlex
 from subprocess import Popen, PIPE
+from tqdm import tqdm
 
-args = docopt(__doc__)
+def load_runfile(fn):
+    with open(fn, 'r') as f:
+        return json.load(f)
 
-def run_benchmark(name):
-    out_file = os.path.splitext(os.path.basename(name))[0] + '-bench.json'
-    cmd = '{--timeout} -m {--max-memory} -t {--max-runtime} -q -- {--l2} synth -d {out_file} {--l2-args} {name}'.format(out_file=out_file, name=name, **args)
-    os.system(cmd)
-    if not os.path.isfile(out_file):
-        with open(out_file, 'w') as f:
-            f.write(json.dumps({'testcase': name, 'solution': None}))
+def run_benchmark(runfile):
+    max_mem = runfile['max_memory']
+    max_time = runfile['max_runtime']
+    l2_args = runfile['l2_args']
+    num_restarts = runfile['restarts']
+    timeout_path = runfile['timeout_path']
+    l2_path = runfile['l2_path']
+    
+    runs = []
+    for bench in glob(runfile['bench']):
+        for run in range(num_restarts):
+            runs.append((bench, run))
 
-if __name__ == '__main__':
+    for (bench, run) in tqdm(runs):
+        bench_name = os.path.splitext(os.path.basename(bench))[0]
+        for r in range(num_restarts):
+            run_fn = '{}-run_{}.json'.format(bench_name, r)
+            synth_fn = '{}-synth_{}.json'.format(bench_name, r)
+            cmd = '{} -t {} -m {} -q --machine-readable -- {} synth {} -d {} {}'.\
+                  format(timeout_path, max_mem, max_time,
+                         l2_path, l2_args, shlex.quote(synth_fn), shlex.quote(bench))
+            p = Popen(cmd, stdout=PIPE, shell=True)
+            p.wait()
+            stdout, _ = p.communicate()
+            with open(run_fn, 'wb') as f:
+                f.write(stdout)
+
+def main(args):
     print("Running benchmarks...")
-    for name in args['<benchmark>']:
-        print("\nRunning {}".format(name))
-        run_benchmark(name)
-        print()
-            
+    run_benchmark(load_runfile(args['RUNFILE']))
+                
+if __name__ == '__main__':
+    args = docopt(__doc__)
+    main(args)

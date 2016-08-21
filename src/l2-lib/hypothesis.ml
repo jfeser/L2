@@ -175,6 +175,18 @@ module Skeleton = struct
   let compare s1 s2 = Int.compare s1.Hashcons.tag s2.Hashcons.tag
   let equal s1 s2 = compare s1 s2 = 0
 
+  let compare_spec : spec -> spec -> int = fun s1 s2 ->
+    (* Each specification variant has a comparison function that
+       puts a total order on specifications of that variant. To get a
+       total order on all specifications, we need an order on
+       variants. Here, we use the extension ids to get that
+       ordering. *)
+    let get_id spec = spec |> Obj.extension_constructor |> Obj.extension_id in
+    let cmp = Int.compare (get_id s1.data) (get_id s2.data) in
+    if cmp = 0 then s1.compare s2 else cmp
+      
+  let equal_spec s1 s2 = compare_spec s1 s2 = 0
+  
   let rec sexp_of_ast =
     let module S = Sexp in
     function
@@ -241,8 +253,6 @@ module Skeleton = struct
             | Op { op = x1; args = x2 }, Op { op = y1; args = y2 } ->
               equal_t x1 y1 && List.equal x2 y2 ~equal:equal_t
             | _ -> false
-
-          let equal_spec s1 s2 = s1.compare s2 = 0
 
           let equal_skel s1 s2 =
             equal_ast s1.ast s2.ast && equal_spec s1.spec s2.spec
@@ -693,16 +703,8 @@ module Specification0 = struct
 
     let sexp_of_t : t -> Sexp.t = fun t -> t.Skeleton.to_sexp ()
     let t_of_sexp : Sexp.t -> t = fun _ -> failwith "Unimplemented."
-
-    let compare : t -> t -> int = fun t1 t2 ->
-      (* Each specification variant has a comparison function that
-         puts a total order on specifications of that variant. To get a
-         total order on all specifications, we need an order on
-         variants. Here, we use the extension ids to get that
-         ordering. *)
-      let get_id spec = spec |> Obj.extension_constructor |> Obj.extension_id in
-      let cmp = Int.compare (get_id t1.Skeleton.data) (get_id t2.Skeleton.data) in
-      if cmp = 0 then t1.Skeleton.compare t2 else cmp
+    let compare : t -> t -> int = Skeleton.compare_spec
+    let equal : t -> t -> bool = Skeleton.equal_spec
   end
   include T
 
