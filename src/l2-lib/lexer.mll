@@ -13,6 +13,7 @@ rule token = parse
  | "(*"                  { comment lexbuf }
  | "let"                 { LET }
  | "let rec"             { LET }
+ | "builtin"             { BUILTIN }
  | "in"                  { IN }
  | "if"                  { IF }
  | "then"                { THEN }
@@ -35,6 +36,7 @@ rule token = parse
  | "/"                   { DIV }
  | "%"                   { MOD }
  | "="                   { EQ }
+ | "<>"                  { NEQ }
  | "!="                  { NEQ }
  | ">"                   { GT }
  | ">="                  { GE }

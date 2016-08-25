@@ -9,6 +9,7 @@ type t = {
   value_ctx : Value.t SMap.t;
   exprvalue_ctx : ExprValue.t SMap.t;
   type_ctx : Type.t SMap.t;
+  builtins : Expr.Op.t list;
 }
 
 let empty = {
@@ -16,18 +17,32 @@ let empty = {
   value_ctx = SMap.empty;
   exprvalue_ctx = SMap.empty;
   type_ctx = SMap.empty;
+  builtins = [];
 }
 
 let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
-  let exprs =
+  let exprs_and_builtins =
     let lexbuf = Lexing.from_channel ch in
     try Parser.toplevel_ml_eof Lexer.token lexbuf with
     | Parser.Error
     | Parsing.Parse_error ->
-      Error.failwiths "Parsing failed." file [%sexp_of:string]
+      let err =
+        let open Lexing in 
+        let pos = lexbuf.lex_curr_p in
+        sprintf "%s: Syntax error. (line: %d, col: %d)"
+          pos.pos_fname pos.pos_lnum (pos.pos_cnum - pos.pos_bol)
+      in
+      failwith err
     | Lexer.SyntaxError err ->
       Error.failwiths "Parsing failed." (file, err) [%sexp_of:string * string]
   in
+
+  let (exprs, builtins) =
+    List.partition_map exprs_and_builtins ~f:(function
+        | `Bind b -> `Fst b
+        | `Builtin bs -> `Snd bs)
+  in
+  let builtins = List.concat builtins in
 
   let expr_ctx = SMap.of_alist_exn exprs in
   
@@ -52,7 +67,7 @@ let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
       in
       SMap.add ctx ~key:name ~data:type_)
   in
-  { expr_ctx; value_ctx; exprvalue_ctx; type_ctx }
+  { expr_ctx; value_ctx; exprvalue_ctx; type_ctx; builtins }
 
 let from_channel : file:string -> In_channel.t -> t Or_error.t = fun ~file ch ->
   Or_error.try_with (fun () -> from_channel_exn ~file ch)
@@ -65,6 +80,7 @@ let from_file : string -> t Or_error.t = fun fn ->
 
 let filter_keys : t -> f:(string -> bool) -> t = fun t ~f ->
   {
+    t with
     expr_ctx = Map.filter_keys t.expr_ctx ~f;
     value_ctx = Map.filter_keys t.value_ctx ~f;
     exprvalue_ctx = Map.filter_keys t.exprvalue_ctx ~f;

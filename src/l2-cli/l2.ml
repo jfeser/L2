@@ -331,6 +331,11 @@ let library_command =
 
     match m_library with
     | Ok library ->
+      printf "Builtins: %s\n\n"
+        (List.map library.Library.builtins ~f:Expr.Op.to_string
+         |> String.concat ~sep:", ");
+
+      printf "Functions:\n";
       List.iter (String.Map.keys library.Library.expr_ctx) ~f:(fun name ->
           let type_ = String.Map.find_exn library.Library.type_ctx name in
           let expr = String.Map.find_exn library.Library.expr_ctx name in
