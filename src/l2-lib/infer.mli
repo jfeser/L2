@@ -33,6 +33,7 @@ module Type : sig
   val normalize : t -> t
   val are_unifiable : t -> t -> bool
   val arity : t -> int
+  val free_vars : t -> Int.Set.t
 
   val of_string_exn : string -> t
   val of_string : string -> t Or_error.t

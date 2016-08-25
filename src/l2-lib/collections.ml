@@ -646,5 +646,24 @@ module SequenceExt = struct
       
   let inspect : 'a t -> f:('a -> unit) -> 'a t =
     fun s ~f -> map s ~f:(fun x -> f x; x)
+
+  let product : 'a t list -> 'a list t =
+    fun seqs ->
+      if List.exists seqs ~f:Sequence.is_empty then
+        Sequence.empty
+      else
+        let seqs = Array.of_list seqs in
+        let init_seqs = Array.copy seqs in
+        Stream.unfold_step ~init:(seqs, 0) ~f:(fun (seqs, seq_to_step) ->
+            (* Take the first element of each sequence. *)
+            let out = Array.map seqs ~f:hd_exn |> Array.to_list in
+            
+            (* Perform step. *)
+            seqs.(seq_to_step) 
+            
+        let ss_init = Array.of_list ss in
+        let ss = Array.of_list ss in
+        Stream.unfold ~init:ss_init
+      
 end
 module Sequence = SequenceExt

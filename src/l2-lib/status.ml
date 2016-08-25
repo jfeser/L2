@@ -43,7 +43,7 @@ let status_lines = [
   "Hashcons table len: TABLE_LEN, num entries: NUM_ENTRIES";
   "Hashcons bucket sum: BUCKET_SUM, min: BUCKET_MIN, med: BUCKET_MED, max: BUCKET_MAX";
   "";
-  "";
+  "Dep: DEP_YES y, DEP_NO n";
   "";
   "";
   "";
@@ -100,6 +100,8 @@ let print_status : status -> unit =
           "BUCKET_MIN", Int.to_string (Counter.get status.hashcons "min_bucket_len");
           "BUCKET_MED", Int.to_string (Counter.get status.hashcons "med_bucket_len");
           "BUCKET_MAX", Int.to_string (Counter.get status.hashcons "max_bucket_len");
+          "DEP_YES", Int.to_string (Counter.get status.synthesis "dep_yes");
+          "DEP_NO", Int.to_string (Counter.get status.synthesis "dep_no");
           "DOTS", List.nth_exn dots (!tick % List.length dots)
         ] in
 
