@@ -3,6 +3,8 @@ open Collections
 
 open Hypothesis
 
+exception JsonDecodeError of { msg : string; json : Json.json }
+
 type case =
   | Examples of Example.t list * ((string * Expr.t) list)
 
@@ -13,43 +15,60 @@ type t = {
   blacklist : string list;
 }
 
-let json_error str json = Or_error.error str (Json.pretty_to_string json) [%sexp_of:string]
+let json_error str json = raise (JsonDecodeError { msg = str; json })
+
+let get_key_exn : ?default:Json.json -> Json.json -> string -> Json.json =
+  fun ?default json key ->
+    match json with
+    | `Assoc kv ->
+      begin match List.Assoc.find kv key, default with
+        | Some v, _ | None, Some v -> v
+        | None, None -> json_error (sprintf "Could not find key: %s" key) json
+      end
+    | _ -> json_error "Expected an object." json
+
+let as_list_exn : Json.json -> Json.json list =
+  function
+  | `List l -> l
+  | j -> json_error "Expected a list." j
+
+let as_string_exn : Json.json -> string =
+  function
+  | `String s -> s
+  | j -> json_error "Expected a string." j
 
 let examples_of_json j =
-  let open Or_error.Monad_infix in
-  match j with
-  | `Assoc [
-      "examples", `List exs_json;
-      "background", `List bg_json;
-    ] ->
-    let exs = List.map exs_json ~f:(function
-        | `String ex_str -> Example.of_string ex_str
-        | ex_json -> json_error "Malformed example." ex_json)
-              |> Or_error.combine_errors
-    in
-    let bg = List.map bg_json ~f:(function
-        | `List [`String name; `String bg_str] -> Expr.of_string bg_str >>| fun bg -> (name, bg)
-        | ex_json -> json_error "Malformed background." ex_json)
-             |> Or_error.combine_errors
-    in
-    exs >>= fun exs ->
-    bg >>| fun bg ->
-    Examples (exs, bg)
-  | _ -> json_error "Contents are malformed for kind 'examples'." j
+  let exs_json = get_key_exn j "examples" in
+  let bg_json = get_key_exn j "background" ~default:(`List []) in
+  let exs =
+    exs_json
+    |> as_list_exn
+    |> List.map ~f:as_string_exn
+    |> List.map ~f:Example.of_string_exn
+  in
+  let bg =
+    bg_json
+    |> as_list_exn
+    |> List.map ~f:(fun pair_json ->
+        match as_list_exn pair_json with
+        | [name_json; expr_json] ->
+          (as_string_exn name_json, as_string_exn expr_json |> Expr.of_string_exn)
+        | _ -> json_error "Expected name, expression pairs." pair_json)
+  in
+  Examples (exs, bg)
 
 let of_json j =
   let open Json.Util in
   Or_error.try_with (fun () -> {
         name = j |> member "name" |> to_string;
-        desc = j |> member "description" |> to_string;
-        blacklist = begin
-          match j |> member "blacklist" with
-          | `Null -> []
-          | bj -> bj |> to_list |> List.map ~f:to_string
-        end;
+        desc = get_key_exn j "description" ~default:(`String "") |> as_string_exn;
+        blacklist =
+          get_key_exn j "blacklist" ~default:(`List [])
+          |> as_list_exn
+          |> List.map ~f:as_string_exn;
         case = begin
           match j |> member "kind" |> to_string with
-          | "examples" -> j |> member "contents" |> examples_of_json |> ok_exn
+          | "examples" -> j |> member "contents" |> examples_of_json
           | kind -> failwiths "Unexpected kind." kind [%sexp_of:string]
         end;
       })
