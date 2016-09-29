@@ -1,19 +1,21 @@
 open Core.Std
 
+module Seq = Sequence
+
 let array_to_string a ts =
   let elems = Array.to_list a |> List.map ~f:ts in
   let elems_str = String.concat elems ~sep:", " in
   "[" ^ elems_str ^ "]"
 
-let m_partition : int -> int -> Array.Int.t Sequence.t = fun n m ->
+let m_partition : int -> int -> Array.Int.t Seq.t = fun n m ->
   (* if m <= 0 then failwiths "'m' must be greater than or equal to 1." m [%sexp_of:int]; *)
-  if n < m then Sequence.empty else
-  if m = 1 then Sequence.singleton (Array.create ~len:1 n) else
+  if n < m then Seq.empty else
+  if m = 1 then Seq.singleton (Array.create ~len:1 n) else
     let a_init = Array.create ~len:m 1 in
     a_init.(0) <- n - m + 1;
-    let init_seq = Sequence.singleton a_init in
+    let init_seq = Seq.singleton a_init in
     let rest_seq = 
-      Sequence.unfold ~init:a_init ~f:(fun a ->
+      Seq.unfold ~init:a_init ~f:(fun a ->
           let a = Array.copy a in
           if a.(1) >= a.(0) - 1 then
             let j = ref 2 in
@@ -39,13 +41,13 @@ let m_partition : int -> int -> Array.Int.t Sequence.t = fun n m ->
             (Some (Array.copy a, a))
           end)
     in
-    Sequence.append init_seq rest_seq
+    Seq.append init_seq rest_seq
 
-let permutations : Array.Int.t -> Array.Int.t Sequence.t = fun a_init ->
+let permutations : Array.Int.t -> Array.Int.t Seq.t = fun a_init ->
   let a_init = Array.copy a_init in
   Array.sort ~cmp:Int.compare a_init;
-  let init_seq = Sequence.singleton a_init in
-  let rest_seq = Sequence.unfold ~init:a_init ~f:(fun a ->
+  let init_seq = Seq.singleton a_init in
+  let rest_seq = Seq.unfold ~init:a_init ~f:(fun a ->
       let a = Array.copy a in
       let n = Array.length a in
       let j = ref (n - 2) in
@@ -67,4 +69,20 @@ let permutations : Array.Int.t -> Array.Int.t Sequence.t = fun a_init ->
         done;
         Some (a, a))
   in
-  Sequence.append init_seq rest_seq
+  Seq.append init_seq rest_seq
+
+let permutations_poly : 'a Array.t -> 'a Array.t Seq.t =
+  fun elems ->
+    permutations (Array.init (Array.length elems) ~f:(fun x -> x))
+    |> Seq.map ~f:(fun indices ->
+      Array.map indices ~f:(fun i -> elems.(i)))
+
+(* See https://rosettacode.org/wiki/Combinations_with_repetitions#OCaml *)
+let rec combinations_with_replacement : int -> 'a list -> 'a list list =
+  fun k l -> match k, l with
+    | 0, _ -> [[]]
+    | _, [] -> []
+    | k, x::xs ->
+      List.map ~f:(fun xs' -> x::xs')
+        (combinations_with_replacement (k - 1) l)
+      @ combinations_with_replacement k xs 
