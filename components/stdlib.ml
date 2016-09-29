@@ -72,7 +72,7 @@ let rec concat = fun l ->
     append (car l) (concat (cdr l))
 
 let rec drop = fun l x ->
-  if x = 0 then l else
+  if x = 0 || l = [] then l else
     drop (cdr l) (x - 1)
 
 let rec sort = fun l ->
