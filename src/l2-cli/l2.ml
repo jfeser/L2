@@ -94,6 +94,7 @@ let synthesize ?spec_dir engine deduction cost_model library testcase =
               | `Higher_order -> Deduction.compose d higher_order_deduction
               | `Random -> Deduction.compose d Random_deduction.push_specs
               | `Recursive_spec -> Deduction.compose d Recursive_spec_deduction.push_specs
+              | `Input_ctx -> Deduction.compose d Input_deduction.push_specs
               | `Fast_example ->
                 let open Fast_example_deduction in
                 let push_specs = match spec_dir with
@@ -178,6 +179,7 @@ let synth_command =
             ["fast_example", `Fast_example;
              "higher_order", `Higher_order;
              "recursive_spec", `Recursive_spec;
+             "input_ctx", `Input_ctx;
              "random", `Random;
              "none", `None]))
       ~doc:" deduction routines to use during synthesis (only applies when using v2 engine)"

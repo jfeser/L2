@@ -43,7 +43,7 @@ let status_lines = [
   "Hashcons table len: TABLE_LEN, num entries: NUM_ENTRIES";
   "Hashcons bucket sum: BUCKET_SUM, min: BUCKET_MIN, med: BUCKET_MED, max: BUCKET_MAX";
   "";
-  "";
+  "Signatures: SIGS_NONE none, SIGS_CHECKED checked, SIGS_DUP dups, SIGS_FAIL fails";
   "";
   "";
   "";
@@ -100,6 +100,11 @@ let print_status : status -> unit =
           "BUCKET_MIN", Int.to_string (Counter.get status.hashcons "min_bucket_len");
           "BUCKET_MED", Int.to_string (Counter.get status.hashcons "med_bucket_len");
           "BUCKET_MAX", Int.to_string (Counter.get status.hashcons "max_bucket_len");
+          "BUCKET_MAX", Int.to_string (Counter.get status.hashcons "max_bucket_len");
+          "SIGS_CHECKED", Int.to_string (Counter.get status.synthesis "sigs_checked");
+          "SIGS_DUP", Int.to_string (Counter.get status.synthesis "sigs_dup");
+          "SIGS_FAIL", Int.to_string (Counter.get status.synthesis "sigs_fail");
+          "SIGS_NONE", Int.to_string (Counter.get status.synthesis "sigs_none");
           "DOTS", List.nth_exn dots (!tick % List.length dots)
         ] in
 

@@ -58,6 +58,7 @@ module Make_deduce_2 (M : Deduce_2_intf) = struct
       end
     | Sp.Top -> Sp.top
     | Sp.Bottom -> Sp.bottom
+    | Inputs.Inputs _ -> Sp.top
     | _ -> spec_err M.name parent_spec
 
   let deduce spec args =
@@ -220,6 +221,7 @@ let deduce_lambda lambda spec =
         Examples.to_spec child_exs
       | Sp.Bottom -> Sp.bottom
       | Sp.Top -> Sp.top
+      | Inputs.Inputs _ -> Sp.top
       | _ -> spec_err "<lambda>" spec
     in
     (num_args, Sk.replace_spec body child_spec)

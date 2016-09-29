@@ -109,6 +109,10 @@ let counter =
   n "num_distinct_types" "Number of distinct types in memoization table.";
   n "num_distinct_specs" "Number of distinct specs in memoization table.";
   n "top_match_count" "Number of times we could have used hypos from the top spec row.";
+  n "sigs_none" "# of hypos w/ no signature";
+  n "sigs_checked" "# of signatures calculated";
+  n "sigs_fail" "# of failing hypotheses";
+  n "sigs_dup" "# of duplicate hypotheses";
   c
 let incr = Counter.incr counter
 
@@ -187,11 +191,16 @@ module Memoizer = struct
       ({ hole; spec; }, map)
   end
 
+  module SignatureSet = Hash_set.Make(struct
+      type t = Value.t list [@@deriving sexp, compare]
+      let hash = Hashtbl.hash
+    end)
   module HoleTable = Hashtbl.Make(Key)
   module CostTable = Int.Table
 
   module HoleState = struct
     type t = {
+      signatures      : SignatureSet.t;
       hypotheses      : (Hypothesis.t * Unifier.t) list CostTable.t;
       generalizations : (Hypothesis.t * Unifier.t) list Lazy.t;
     } [@@deriving sexp]
@@ -366,6 +375,7 @@ module Memoizer = struct
             let state' =
               Counter.set counter "num_holes" (HoleTable.length m.hole_table);
               {
+                S.signatures = SignatureSet.create ();
                 S.hypotheses = CostTable.create ();
                 S.generalizations = Lazy.from_fun (fun () ->
                     m.config.generalize
@@ -411,7 +421,25 @@ module Memoizer = struct
                         (filled_p, Unifier.compose ~inner:filled_u ~outer:p_u))
                   |> Sequence.to_list)
 
-              |> List.dedup
+              |> List.filter ~f:(fun (h, _) ->
+                  let module Sp = Specification in
+                  match (H.spec h).Sp.data with
+                  | Inputs.Inputs inp ->
+                    let m_sign =
+                      Inputs.signature m.config.Config.library (H.skeleton h) inp
+                    in
+                    incr "sigs_checked";
+                    begin match m_sign with
+                      | Some sign ->
+                        if Hash_set.mem state.HoleState.signatures sign then
+                          (incr "sigs_dup"; false)
+                        else begin
+                          Hash_set.add state.HoleState.signatures sign;
+                          true
+                        end
+                      | None -> (incr "sigs_fail"; false)
+                    end
+                  | _ -> (incr "sigs_none"; true))
             in
 
             (* Save the computed result, so we can use it later. *)

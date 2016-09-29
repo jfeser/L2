@@ -263,6 +263,17 @@ module FunctionExamples : sig
   val to_spec : t -> Specification.t
 end
 
+module Inputs : sig
+  type t
+
+  type Specification.data += private Inputs of t
+  include Sexpable.S with type t := t
+
+  val of_examples : Examples.t -> t
+  val signature : Library.t -> Skeleton.t -> t -> Value.t list option
+  val to_spec : t -> Specification.t
+end
+
 (** Hypotheses are a further refinement of {!Skeleton}s which add
     additional information: cost, abstract/concrete state, and a list of
     holes. *)

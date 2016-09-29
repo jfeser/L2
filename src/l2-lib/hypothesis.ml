@@ -407,8 +407,8 @@ module Skeleton = struct
         | Op { op = O.Lt as op; args = [x1; x2] }
         | Op { op = O.Leq as op; args = [x1; x2] } ->
           infix_op (Expr.Op.to_string op) x1 x2
-        | Op { op = O.Cons; args = [x1; x2] }
-        | Op { op = O.RCons; args = [x1; x2] } -> infix_op "::" x1 x2
+        | Op { op = O.Cons; args = [x1; x2] } -> infix_op "::" x1 x2
+        | Op { op = O.RCons; args = [x1; x2] } -> infix_op "::" x2 x1
         | Op { op = O.And; args = [x1; x2] } -> infix_op "&&" x1 x2
         | Op { op = O.Or; args = [x1; x2] } -> infix_op "||" x1 x2
         | Op { op = O.Not; args = [x] } ->
@@ -901,6 +901,56 @@ module FunctionExamples = struct
     in
 
     let data = FunctionExamples exs in
+
+    { S.verify; S.compare; S.to_sexp; S.to_string; S.data }
+end
+
+module Inputs = struct
+  module S = Specification0
+  module SD = StaticDistance
+
+  type t = Value.t SD.Map.t list [@@deriving sexp, compare]
+
+  type S.data += Inputs of t
+
+  let of_examples : Examples.t -> t = fun exs ->
+    exs |> List.map ~f:Tuple.T2.get1
+
+  let signature : Library.t -> Skeleton.t -> t -> Value.t list option =
+    fun library skel exs ->
+      try
+        List.map exs ~f:(fun ctx ->
+            let fresh_name = Fresh.mk_fresh_name_fun () in
+            let name_ctx = Map.map ctx ~f:(fun _ -> fresh_name ()) in
+            let id_ctx = Map.map name_ctx ~f:(fun name -> `Id name) in
+            let expr = Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel in
+            let value_ctx =
+              Map.to_alist ctx
+              |> List.map ~f:(fun (k, v) -> Map.find_exn name_ctx k, v)
+              |> Ctx.of_alist_exn
+              |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
+            in
+            Eval.eval ~recursion_limit:100 value_ctx expr)
+        |> Option.some
+      with
+      | Eval.HitRecursionLimit
+      | Eval.RuntimeError _ -> None
+  
+  let to_spec : t -> S.t = fun exs ->
+    let verify library skel = signature library skel exs |> Option.is_some in
+
+    let compare t = match t.S.data with
+      | Inputs exs' -> compare_t exs exs'
+      | _ -> failwith "BUG: Unexpected spec variant."
+    in
+
+    let to_sexp () = sexp_of_t exs in
+    let to_string () =
+      List.map exs ~f:(fun ctx ->
+          sprintf "%s" (SD.Map.to_string Value.to_string ctx))
+      |> String.concat ~sep:"\n"
+    in
+    let data = Inputs exs in
 
     { S.verify; S.compare; S.to_sexp; S.to_string; S.data }
 end
