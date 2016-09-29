@@ -646,6 +646,12 @@ module SequenceExt = struct
       
   let inspect : 'a t -> f:('a -> unit) -> 'a t =
     fun s ~f -> map s ~f:(fun x -> f x; x)
+
+  let rec product : 'a t list -> 'a list t =
+    function
+    | [] -> empty
+    | [s] -> map ~f:(fun x -> [x]) s
+    | s::ss -> product ss |> concat_map ~f:(fun xs -> map s ~f:(fun x -> x::xs))
 end
 module Sequence = SequenceExt
 module Seq = Sequence
