@@ -1,6 +1,7 @@
 open Core.Std
 
 type t = {
+  exprs : (string * Expr.t) list;
   expr_ctx : Expr.t String.Map.t;
   value_ctx : Value.t String.Map.t;
   exprvalue_ctx : ExprValue.t String.Map.t;

@@ -5,6 +5,7 @@ open Infer
 module SMap = String.Map
 
 type t = {
+  exprs : (string * Expr.t) list;
   expr_ctx : Expr.t SMap.t;
   value_ctx : Value.t SMap.t;
   exprvalue_ctx : ExprValue.t SMap.t;
@@ -12,6 +13,7 @@ type t = {
 }
 
 let empty = {
+  exprs = [];
   expr_ctx = SMap.empty;
   value_ctx = SMap.empty;
   exprvalue_ctx = SMap.empty;
@@ -52,7 +54,7 @@ let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
       in
       SMap.add ctx ~key:name ~data:type_)
   in
-  { expr_ctx; value_ctx; exprvalue_ctx; type_ctx }
+  { exprs; expr_ctx; value_ctx; exprvalue_ctx; type_ctx }
 
 let from_channel : file:string -> In_channel.t -> t Or_error.t = fun ~file ch ->
   Or_error.try_with (fun () -> from_channel_exn ~file ch)
@@ -65,6 +67,7 @@ let from_file : string -> t Or_error.t = fun fn ->
 
 let filter_keys : t -> f:(string -> bool) -> t = fun t ~f ->
   {
+    exprs = List.filter ~f:(fun (name, _) -> f name) t.exprs;
     expr_ctx = Map.filter_keys t.expr_ctx ~f;
     value_ctx = Map.filter_keys t.value_ctx ~f;
     exprvalue_ctx = Map.filter_keys t.exprvalue_ctx ~f;
