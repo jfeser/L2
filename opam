@@ -5,7 +5,7 @@ maintainer:   "Jack Feser <jack.feser@gmail.com>"
 authors:      "Jack Feser <jack.feser@gmail.com>"
 homepage:     "https://github.com/jfeser/L2"
 bug-reports:  "https://github.com/jfeser/L2/issues"
-license:      "GPLv3"
+license:      "Apache2.0"
 dev-repo:     "https://github.com/jfeser/L2.git"
 build: [
   ["./configure" "--prefix=%{prefix}%"]
