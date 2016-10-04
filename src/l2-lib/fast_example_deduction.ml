@@ -41,8 +41,7 @@ module Seq = Sequence
 module Abstract_int = struct
   type value =
     | Int of int
-    | OmegaLow
-    | OmegaHigh
+    | Omega
   [@@deriving compare, sexp, bin_io]
   
   type domain = {
@@ -59,23 +58,17 @@ module Abstract_int = struct
   let join i1 i2 =
     match i1, i2 with
     | Int x, Int y -> if x = y then `AbsInt (Int x) else `Top
-    | Int _, OmegaLow | OmegaLow, Int _
-    | Int _, OmegaHigh | OmegaHigh, Int _
-    | OmegaHigh, OmegaLow | OmegaLow, OmegaHigh -> `Top
-    | OmegaLow, OmegaLow -> `AbsInt (OmegaLow)
-    | OmegaHigh, OmegaHigh -> `AbsInt (OmegaHigh)
+    | Int _, Omega | Omega, Int _ -> `Top
   
   let enumerate : domain -> value Seq.t =
     fun { lower; upper } ->
       Seq.range ~start:`inclusive ~stop:`inclusive lower upper
       |> Seq.map ~f:(fun x -> Int x)
-      |> Seq.append (Seq.of_list [OmegaLow; OmegaHigh])
+      |> Seq.append (Seq.of_list [Omega])
 
   let lift0 : domain -> int -> value =
     fun { lower; upper } x ->
-      if x < lower then OmegaLow else
-      if x > upper then OmegaHigh else
-        Int x
+      if x < lower || x > upper then Omega else Int x
 
   let lift1 : domain -> (int -> int) -> (value -> value) =
     fun d f ->
@@ -284,8 +277,7 @@ module Abstract_value = struct
       |> sprintf "[%s]"
     | `AbsEq Abstract_eq.Omega
     | `AbsList Abstract_list.Omega
-    | `AbsInt Abstract_int.OmegaLow -> "-ω"
-    | `AbsInt Abstract_int.OmegaHigh -> "+ω"
+    | `AbsInt Abstract_int.Omega -> "ω"
     | `Top -> "⊤"
     | `Bottom -> "⊥"
     | `Bool true -> "true"
@@ -385,15 +377,12 @@ module Abstract_value = struct
               let module AI = Abstract_int in
               match op with
               | O.Plus -> (match args with
-                  | [`AbsInt AI.OmegaLow; `AbsInt _]
-                  | [`AbsInt _; `AbsInt AI.OmegaLow] -> `Top
-                  | [`AbsInt AI.OmegaHigh; `AbsInt _]
-                  | [`AbsInt _; `AbsInt AI.OmegaHigh] -> `AbsInt AI.OmegaHigh
+                  | [`AbsInt AI.Omega; `AbsInt _]
+                  | [`AbsInt _; `AbsInt AI.Omega] -> `Top
                   | [`AbsInt x; `AbsInt y] -> `AbsInt (AI.lift2 int_domain (+) x y)
                   | _ -> `Top)
               | O.Minus -> (match args with
-                  | [`AbsInt AI.OmegaLow; _] -> `AbsInt AI.OmegaLow
-                  | [`AbsInt AI.OmegaHigh; _] -> `Top
+                  | [`AbsInt AI.Omega; _] -> `Top
                   | [`AbsInt x; `AbsInt y] -> `AbsInt (Abstract_int.lift2 int_domain (-) x y)
                   | _ -> `Top)
               | O.Mul -> (match args with
