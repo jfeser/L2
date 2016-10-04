@@ -6,6 +6,7 @@ type t = {
   value_ctx : Value.t String.Map.t;
   exprvalue_ctx : ExprValue.t String.Map.t;
   type_ctx : Infer.Type.t String.Map.t;
+  builtins : Expr.Op.t list;
 }
 
 val empty : t

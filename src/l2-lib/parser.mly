@@ -8,6 +8,7 @@ open Collections
 %token <bool> BOOL
 
 %token LET
+%token BUILTIN
 %token IN
 %token IF
 %token THEN
@@ -60,7 +61,7 @@ open Collections
 
 %start <Ast.expr> expr_eof
 %start <Ast.expr> expr_ml_eof
-%start <(Ast.id * Ast.expr) list> toplevel_ml_eof
+%start <[`Bind of (Ast.id * Ast.expr) | `Builtin of Ast.op list] list> toplevel_ml_eof
 
 %start <Ast.example> example_eof
 %start <Ast.constr> constr_eof
@@ -86,12 +87,13 @@ typ_eof:
  | x = typ; EOF { x }
 
 toplevel_ml:
- | x = list(toplevel_let_ml) { x }
+ | x = list(toplevel_decl_ml) { x }
 
-toplevel_let_ml:
- | LET; x = ID; EQ; y = expr_ml                          { (x, y) }
- | LET; x = ID; xs = nonempty_list(ID); EQ; y = expr_ml; { (x, `Lambda (xs, y)) }
-
+toplevel_decl_ml:
+ | LET; x = ID; EQ; y = expr_ml                          { `Bind (x, y) }
+ | LET; x = ID; xs = nonempty_list(ID); EQ; y = expr_ml; { `Bind (x, `Lambda (xs, y)) }
+ | BUILTIN; xs = separated_list(COMMA, op)               { `Builtin xs }
+ 
 expr_ml:
  | LET; x = ID; EQ; y = expr_ml; IN; z = expr_ml;                         { `Let (x, y, z) }
  | LET; x = ID; xs = nonempty_list(ID); EQ; y = expr_ml; IN; z = expr_ml; { `Let (x, `Lambda (xs, y), z) }
@@ -150,6 +152,13 @@ tree_ml:
  | RCONS { RCons }
  | TREE { Tree }
 
+op:
+ | x = binop      { x }
+ | x = unop       { x }
+ | x = unop_call  { x }
+ | x = binop_call { x }
+ | IF             { If }
+
 expr:
  | x = ID                                          { `Id x }
  | x = sexp(let_body)                              { x }
@@ -171,11 +180,7 @@ lambda_body:
  | LAMBDA; args = sexp(list(ID)); body = expr;     { `Lambda (args, body) }
 
 call_body:
- | op = binop; args = list(expr);                  { `Op (op, args) }
- | op = unop; args = list(expr);                   { `Op (op, args) }
- | op = unop_call; args = list(expr);              { `Op (op, args) }
- | op = binop_call; args = list(expr);             { `Op (op, args) }
- | IF; args = list(expr);                          { `Op (If, args) }
+ | op = op; args = list(expr);                     { `Op (op, args) }
  | f = expr; args = list(expr);                    { `Apply (f, args) }
 
 constr:

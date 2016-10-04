@@ -1,3 +1,5 @@
+builtin +, -, /, *, %, =, <>, <, <=, >, >=, &&, ||, not, if, ::, car, cdr, tree, value, children
+
 let inf = 4611686018427387903
 
 let rec foldr = fun l f i ->

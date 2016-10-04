@@ -111,7 +111,7 @@ module L2_Generalizer = struct
 
   let generate_expressions params ctx type_ symbol spec =
     let cost_model = params.G.cost_model in
-    let op_exprs = List.filter_map Expr.Op.all ~f:(fun op ->
+    let op_exprs = List.filter_map params.G.library.Library.builtins ~f:(fun op ->
         let op_t = instantiate 0 (Expr.Op.meta op).Expr.Op.typ in
         match op_t with
         | Arrow_t (args_t, ret_t) ->
