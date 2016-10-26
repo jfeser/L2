@@ -24,7 +24,8 @@ let default_cost_model : CostModel.t =
       | Sk.Id.Name name -> begin match name with
           | "foldr"
           | "foldl"
-          | "foldt" -> 3
+          | "foldt" 
+          | "zipWith" -> 3
           | "map"
           | "mapt"
           | "filter" -> 2
@@ -83,6 +84,12 @@ module L2_Generalizer = struct
     "map"; "mapt"; "filter"; "foldl"; "foldr"; "foldt"; "rec"
   ]
 
+  let is_combinator : Type.t -> bool = function
+    | Arrow_t (args_t, _) -> List.exists args_t ~f:(function
+        | Arrow_t _ -> true
+        | _ -> false)
+    | _ -> false
+
   let generate_constants params ctx type_ symbol spec =
     let cost_model = params.G.cost_model in
     let constants = [
@@ -126,8 +133,8 @@ module L2_Generalizer = struct
         | _ -> None)
     in
     let functions =
-      String.Map.filteri params.G.library.Library.type_ctx ~f:(fun ~key:k ~data:_ ->
-          not (List.mem ~equal:String.equal combinators k))
+      String.Map.filteri params.G.library.Library.type_ctx ~f:(fun ~key:k ~data:t ->
+          not (is_combinator t))
       |> String.Map.to_alist
     in
     let apply_exprs = List.filter_map functions ~f:(fun (func, func_t) ->
@@ -169,7 +176,7 @@ module L2_Generalizer = struct
     let cost_model = params.G.cost_model in
     String.Map.to_alist params.G.library.Library.type_ctx
     |> List.filter_map ~f:(fun (func, func_t) ->
-        if List.mem ~equal:String.equal combinators func then
+        if is_combinator func_t then
           let func_t = instantiate 0 func_t in
           match func_t with
           | Arrow_t (args_t, ret_t) ->
@@ -186,10 +193,16 @@ module L2_Generalizer = struct
                     ]
                   | "foldr", [ t1; t2; t3 ]
                   | "foldl", [ t1; t2; t3 ]
+                  | "foldli", [ t1; t2; t3 ]
                   | "foldt", [ t1; t2; t3 ] -> [
                       H.hole cost_model (Hole.create ~ctx:ctx t1 identifier) Sp.top;
                       H.hole cost_model (Hole.create ~ctx:ctx t2 lambda) Sp.top;
                       H.hole cost_model (Hole.create ~ctx:ctx t3 base_case) Sp.top;
+                    ]
+                  | "zipWith", [ t1; t2; t3; ] -> [
+                      H.hole cost_model (Hole.create ~ctx:ctx t1 identifier) Sp.top;
+                      H.hole cost_model (Hole.create ~ctx:ctx t2 identifier) Sp.top;
+                      H.hole cost_model (Hole.create ~ctx:ctx t3 lambda) Sp.top;
                     ]
                   | name, args -> List.map args ~f:(function
                       | Arrow_t _ as t -> H.hole cost_model (Hole.create ~ctx:ctx t lambda) Sp.top
