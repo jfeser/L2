@@ -338,3 +338,4 @@ coverage/
 component-specs
 
 *.json
+*.sexp

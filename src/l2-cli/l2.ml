@@ -196,6 +196,8 @@ let synth_command =
 
     +> flag "--spec-dir" (optional directory) ~doc:" directory containing component specifications"
       
+    +> flag "-q" ~aliases:["--quiet"] no_arg
+      ~doc:" no output while searching"
     +> flag "-v" ~aliases:["--verbose"] no_arg
       ~doc:" print progress messages while searching"
     +> flag "-V" ~aliases:["--very-verbose"] no_arg
@@ -205,7 +207,9 @@ let synth_command =
     +> anon (maybe ("testcase" %: file))
   in
 
-  let run config_file json_file flat_cost cost_file deduction engine m_library spec_dir verbose very_verbose use_solver m_testcase_name () =
+  let run 
+      config_file json_file flat_cost cost_file deduction engine m_library spec_dir 
+      quiet verbose very_verbose use_solver m_testcase_name () =
     let initial_config = 
       match config_file with
       | Some file -> In_channel.read_all file |> Config.of_string
@@ -242,11 +246,17 @@ let synth_command =
       let library = Library.filter_keys library
           ~f:(fun k -> not (List.mem testcase.Testcase.blacklist k))
       in
+
+      if quiet then Status.disable ();
       
       let m_solution, solve_time = synthesize ?spec_dir engine deduction cost_model library testcase in
 
-      printf "Runtime: %s\n" (Time.Span.to_short_string solve_time);
-      begin
+      if quiet then begin
+        match m_solution with
+        | `Solution s -> print_endline s
+        | `NoSolution -> ()
+      end else begin
+        printf "Runtime: %s\n" (Time.Span.to_short_string solve_time);
         match m_solution with
         | `Solution s -> printf "Found solution:\n%s" s
         | `NoSolution -> printf "No solution found."
