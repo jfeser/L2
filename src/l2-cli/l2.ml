@@ -315,8 +315,10 @@ let eval_command =
       let%bind expr = Expr.of_string ~syntax source in
       let%map () =
         if untyped then Ok () else
-          Infer.infer (ref library.Library.type_ctx) expr
-          |> Or_error.ignore
+          try
+            Infer.Type.of_expr ~ctx:library.Library.type_ctx expr |> ignore; 
+            Ok ()
+          with Infer.TypeError msg -> Error msg
       in
       Eval.eval (ref library.Library.value_ctx) expr
     in

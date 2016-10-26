@@ -31,7 +31,7 @@ let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
       let err =
         let open Lexing in 
         let pos = lexbuf.lex_curr_p in
-        sprintf "%s: Syntax error. (line: %d, col: %d)"
+        sprintf "Syntax error in library file '%s'. (line: %d, col: %d)"
           pos.pos_fname pos.pos_lnum (pos.pos_cnum - pos.pos_bol)
       in
       failwith err
