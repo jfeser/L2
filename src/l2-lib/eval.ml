@@ -4,7 +4,7 @@ open Printf
 open Collections
 
 (** Exceptions that can be thrown by the evaluation and type-checking functions. *)
-exception RuntimeError of Error.t
+exception RuntimeError of Error.t [@@deriving sexp]
 exception HitRecursionLimit
 
 (** Raise a bad argument error. *)

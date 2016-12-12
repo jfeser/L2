@@ -313,14 +313,16 @@ let eval_command =
         | None -> Library.empty |> Or_error.return
       in
       let%bind expr = Expr.of_string ~syntax source in
-      let%map () =
+      let%bind () =
         if untyped then Ok () else
           try
             Infer.Type.of_expr ~ctx:library.Library.type_ctx expr |> ignore; 
             Ok ()
           with Infer.TypeError msg -> Error msg
       in
-      Eval.eval (ref library.Library.value_ctx) expr
+      try
+        Ok (Eval.eval (ref library.Library.value_ctx) expr)
+      with Eval.RuntimeError err -> Error err
     in
         
     match output with
