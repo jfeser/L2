@@ -46,7 +46,9 @@ let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
   in
   let builtins = List.concat builtins in
 
-  let expr_ctx = SMap.of_alist_exn exprs in
+  let expr_ctx = List.fold_left exprs ~init:SMap.empty ~f:(fun m (n, e) ->
+      SMap.add m ~key:n ~data:e)
+  in
   
   let value_ctx = List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
       let ctx_ref = ref ctx in
