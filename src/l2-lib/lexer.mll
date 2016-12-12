@@ -6,7 +6,7 @@
 }
 
 let white = [' ' '\t' '\n' '\r']+
-let id = ['a'-'z' 'A'-'Z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*
+let id = ['a'-'z' 'A'-'Z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_' ''']*
 
 rule token = parse
  | white                 { token lexbuf } (* Eat whitespace. *)
