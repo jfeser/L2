@@ -287,55 +287,63 @@ module Memoizer = struct
       | H.Concrete -> if spine_cost = cost then
           Seq.singleton (hypo, Unifier.empty)
         else Seq.empty
-      | H.Abstract -> if spine_cost >= cost then Seq.empty else
-          (* Determine all possible ways to fill in the holes in this
-             generalization. We compute the total cost of all holes because
-             this is the part of the hypothesis that will be replaced when
-             we generalize, so this cost can be discounted. *)
-          let all_hole_costs =
-            let num_holes = List.length holes in
-            Combinat.m_partition (cost - spine_cost) num_holes
-            |> Seq.concat_map ~f:Combinat.permutations
-          in
-          let holes = Seq.of_list holes in
+      | H.Abstract ->
+        if spine_cost >= cost then Seq.empty else
+          begin match m.config.deduction (Hypothesis.skeleton hypo) with
+            | Some sk' ->
+              let hypo = Hypothesis.of_skeleton m.config.cost_model sk' in
 
-          (* For each list of hole costs... *)
-          Seq.concat_map all_hole_costs ~f:(fun hole_costs ->
-              let hole_costs = Array.to_sequence hole_costs in
+              (* Determine all possible ways to fill in the holes in this
+                 generalization. We compute the total cost of all holes because
+                 this is the part of the hypothesis that will be replaced when
+                 we generalize, so this cost can be discounted. *)
+              let all_hole_costs =
+                let num_holes = List.length holes in
+                Combinat.m_partition (cost - spine_cost) num_holes
+                |> Seq.concat_map ~f:Combinat.permutations
+              in
+              let holes = Seq.of_list holes in
 
-              Seq.zip holes hole_costs
+              (* For each list of hole costs... *)
+              Seq.concat_map all_hole_costs ~f:(fun hole_costs ->
+                  let hole_costs = Array.to_sequence hole_costs in
 
-              (* Fold over the holes and their corresponding cost... *)
-              |> Seq.fold
-                ~init:(Seq.singleton (hypo, Unifier.empty))
-                ~f:(fun hs ((hole, _), hole_cost) ->
-                    (* And select all hypotheses which could be used to fill them. *)
-                    Seq.concat_map hs ~f:(fun (p, p_u) ->
-                        let spec = List.find_map_exn (H.holes p) ~f:(fun (h, s) ->
-                            if Hole.equal hole h then Some s else None)
-                        in
+                  Seq.zip holes hole_costs
 
-                        let hole = Hole.apply_unifier p_u hole in
-                        let children =
-                          get m hole spec ~cost:hole_cost
-                          |> Seq.of_list 
-                        in
-
-                        (* Fill in the hole and merge the unifiers. *)
-                        Seq.map children ~f:(fun (c, c_u) ->
-                            let u = Unifier.compose ~outer:p_u ~inner:c_u in
-                            let h =
-                              H.fill_hole m.config.cost_model hole ~parent:p ~child:c
+                  (* Fold over the holes and their corresponding cost... *)
+                  |> Seq.fold
+                    ~init:(Seq.singleton (hypo, Unifier.empty))
+                    ~f:(fun hs ((hole, _), hole_cost) ->
+                        (* And select all hypotheses which could be used to fill them. *)
+                        Seq.concat_map hs ~f:(fun (p, p_u) ->
+                            let spec = List.find_map_exn (H.holes p) ~f:(fun (h, s) ->
+                                if Hole.equal hole h then Some s else None)
                             in
-                            h, u)
 
-                        |> perform_deduction m)))
+                            let hole = Hole.apply_unifier p_u hole in
+                            let children =
+                              get m hole spec ~cost:hole_cost
+                              |> Seq.of_list 
+                            in
 
-          (* Only return concrete hypotheses which match the specification. *)
-          |> select_matching m
+                            (* Fill in the hole and merge the unifiers. *)
+                            Seq.map children ~f:(fun (c, c_u) ->
+                                let u = Unifier.compose ~outer:p_u ~inner:c_u in
+                                let h =
+                                  H.fill_hole m.config.cost_model hole ~parent:p ~child:c
+                                in
+                                h, u)
 
-          (* Dump child hypotheses to channel if requested. *)
-          |> dump_to_channel m ~parent:hypo
+                            |> perform_deduction m)))
+
+              (* Only return concrete hypotheses which match the specification. *)
+              |> select_matching m
+
+              (* Dump child hypotheses to channel if requested. *)
+              |> dump_to_channel m ~parent:hypo
+
+            | None -> Seq.empty
+          end
 
   and get :
     t -> Hole.t -> Specification.t -> cost:int -> (Hypothesis.t * Unifier.t) list =
