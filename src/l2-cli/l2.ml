@@ -47,7 +47,7 @@ let get_json testcase runtime solution config argv : Json.json =
     "argv", `List (Array.map argv ~f:(fun a -> `String a) |> Array.to_list);
   ]
 
-let synthesize ?spec_dir engine deduction cost_model library testcase =
+let synthesize ?spec_dir ?max_cost engine deduction cost_model library testcase =
   let module T = Testcase in
   match testcase.T.case with
   | T.Examples (exs, bg) ->
@@ -110,7 +110,7 @@ let synthesize ?spec_dir engine deduction cost_model library testcase =
           let (m_solution, runtime) = Util.with_runtime (fun () ->
               let synth = L2_Synthesizer.create deduce ?cost_model library in
               let hypo = L2_Synthesizer.initial_hypothesis synth exs in
-              L2_Synthesizer.synthesize synth hypo)
+              L2_Synthesizer.synthesize ?max_cost synth hypo)
           in
           match m_solution with
           | Ok (Some s) ->
@@ -172,6 +172,7 @@ let synth_command =
     +> flag "--flat-cost" no_arg ~doc:" use a flat cost metric (v1 engine only)"
     +> flag "--cost" (optional file)
       ~doc:" load cost function parameters from file (only only applies when using v2 engine)"
+    +> flag "--max-cost" (optional int) ~doc:" set the maximum cost of functions to be explored"
       
     +> flag "-dd" ~aliases:["--deduction"]
       (optional_with_default [`Higher_order]
@@ -208,7 +209,7 @@ let synth_command =
   in
 
   let run 
-      config_file json_file flat_cost cost_file deduction engine m_library spec_dir 
+      config_file json_file flat_cost cost_file max_cost deduction engine m_library spec_dir 
       quiet verbose very_verbose use_solver m_testcase_name () =
     let initial_config = 
       match config_file with
@@ -249,7 +250,9 @@ let synth_command =
 
       if quiet then Status.disable ();
       
-      let m_solution, solve_time = synthesize ?spec_dir engine deduction cost_model library testcase in
+      let m_solution, solve_time =
+        synthesize ?spec_dir ?max_cost engine deduction cost_model library testcase
+      in
 
       if quiet then begin
         match m_solution with
