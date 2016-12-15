@@ -240,7 +240,7 @@ module L2_Synthesizer = struct
         | Some (sln, _) -> Ok (Some sln)
         | None -> search (cost + 1)
     in
-    search 1
+    search 0
       
   let initial_hypothesis s examples =
     let spec =

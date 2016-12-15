@@ -10,6 +10,7 @@ let array_to_string a ts =
 let m_partition : int -> int -> Array.Int.t Seq.t = fun n m ->
   (* if m <= 0 then failwiths "'m' must be greater than or equal to 1." m [%sexp_of:int]; *)
   if n < m then Seq.empty else
+  if m <= 0 then Seq.empty else
   if m = 1 then Seq.singleton (Array.create ~len:1 n) else
     let a_init = Array.create ~len:m 1 in
     a_init.(0) <- n - m + 1;
@@ -42,6 +43,18 @@ let m_partition : int -> int -> Array.Int.t Seq.t = fun n m ->
           end)
     in
     Seq.append init_seq rest_seq
+
+let m_partition_with_zeros : int -> int -> Array.Int.t Seq.t =
+  fun n m ->
+    if n = 0 then
+      Array.create ~len:m 0 |> Seq.singleton
+    else
+      Seq.init (m + 1) (fun m' ->
+          m_partition n m'
+          |> Seq.map ~f:(fun p ->
+              let p' = Array.create ~len:m 0 in
+              Array.blito ~src:p ~dst:p' (); p'))
+      |> Seq.concat
 
 let permutations : Array.Int.t -> Array.Int.t Seq.t = fun a_init ->
   let a_init = Array.copy a_init in

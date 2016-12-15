@@ -288,7 +288,7 @@ module Memoizer = struct
           Seq.singleton (hypo, Unifier.empty)
         else Seq.empty
       | H.Abstract ->
-        if spine_cost >= cost then Seq.empty else
+        if spine_cost > cost then Seq.empty else
           begin match m.config.deduction (Hypothesis.skeleton hypo) with
             | Some sk' ->
               let hypo = Hypothesis.of_skeleton m.config.cost_model sk' in
@@ -299,7 +299,7 @@ module Memoizer = struct
                  we generalize, so this cost can be discounted. *)
               let all_hole_costs =
                 let num_holes = List.length holes in
-                Combinat.m_partition (cost - spine_cost) num_holes
+                Combinat.m_partition_with_zeros (cost - spine_cost) num_holes
                 |> Seq.concat_map ~f:Combinat.permutations
               in
               let holes = Seq.of_list holes in
@@ -351,8 +351,6 @@ module Memoizer = struct
     let module H = Hypothesis in
     fun m hole spec ~cost ->
       if cost < 0 then failwiths "Argument out of range." cost [%sexp_of:int] else
-      if cost = 0 then [] else
-
         (* For the given hole and specification, select the 'state'
            object, which contains previously generated hypotheses for this
            hole, spec pair and possible generalizations of the hole. *)
