@@ -14,11 +14,11 @@ build: [
 install: [make "install"]
 remove: ["ocamlfind" "remove" "l2"]
 depends: [
-  "ocamlfind"      {build & <= "1.6.2"}
-  "menhir"         {build & <= "20160526"}
-  "ounit"          {> "1.1.2" & <= "2.0.0"}
-  "core"           {>= "113.24.00" & <= "113.43.00"}
-  "core_extended"  {>= "113.24.00" & <= "113.43.00"}
+  "ocamlfind"      {build}
+  "menhir"         {build}
+  "ounit"          {> "1.1.2"}
+  "core"           {>= "113.24.00"}
+  "core_extended"  {>= "113.24.00"}
   "yojson"         {>= "1.3.2" & < "1.4"}
-  "hashcons"       {<= "1.2"}
+  "hashcons"       
 ]
