@@ -59,6 +59,7 @@ module Abstract_int = struct
     match i1, i2 with
     | Int x, Int y -> if x = y then `AbsInt (Int x) else `Top
     | Int _, Omega | Omega, Int _ -> `Top
+    | Omega, Omega -> `Top
   
   let enumerate : domain -> value Seq.t =
     fun { lower; upper } ->
@@ -375,6 +376,7 @@ module Abstract_value = struct
             if List.mem args `Bottom then `Bottom else begin
               let module O = Expr.Op in
               let module AI = Abstract_int in
+              let module AL = Abstract_list in
               match op with
               | O.Plus -> (match args with
                   | [`AbsInt AI.Omega; `AbsInt _]
@@ -386,20 +388,20 @@ module Abstract_value = struct
                   | [`AbsInt x; `AbsInt y] -> `AbsInt (Abstract_int.lift2 int_domain (-) x y)
                   | _ -> `Top)
               | O.Mul -> (match args with
-                  | [`AbsInt Omega; `AbsInt _]
-                  | [`AbsInt _; `AbsInt Omega] -> `Top
+                  | [`AbsInt AI.Omega; `AbsInt _]
+                  | [`AbsInt _; `AbsInt AI.Omega] -> `Top
                   | [`AbsInt x; `AbsInt y] -> `AbsInt (Abstract_int.lift2 int_domain (fun x y -> x * y) x y)
                   | _ -> `Top)
               | O.Div -> (match args with
                   | [_; `AbsInt (Abstract_int.Int 0)] -> `Bottom
-                  | [`AbsInt Omega; `AbsInt _]
-                  | [`AbsInt _; `AbsInt Omega] -> `Top
+                  | [`AbsInt AI.Omega; `AbsInt _]
+                  | [`AbsInt _; `AbsInt AI.Omega] -> `Top
                   | [`AbsInt x; `AbsInt y] -> `AbsInt (Abstract_int.lift2 int_domain (/) x y)
                   | _ -> `Top)
               | O.Mod -> (match args with
                   | [_; `AbsInt (Abstract_int.Int 0)] -> `Bottom
-                  | [`AbsInt Omega; `AbsInt _]
-                  | [`AbsInt _; `AbsInt Omega] -> `Top
+                  | [`AbsInt AI.Omega; `AbsInt _]
+                  | [`AbsInt _; `AbsInt AI.Omega] -> `Top
                   | [`AbsInt x; `AbsInt y] -> `AbsInt (Abstract_int.lift2 int_domain (%) x y)
                   | _ -> `Top)
               | O.Eq -> (match args with
@@ -417,16 +419,16 @@ module Abstract_value = struct
                     end
                   | _ -> `Bottom)
               | O.Lt -> (match args with
-                  | [`AbsInt (Int x); `AbsInt (Int y)] -> `Bool (x < y)
+                  | [`AbsInt (AI.Int x); `AbsInt (AI.Int y)] -> `Bool (x < y)
                   | _ -> `Top)
               | O.Gt -> (match args with
-                  | [`AbsInt (Int x); `AbsInt (Int y)] -> `Bool (x > y)
+                  | [`AbsInt (AI.Int x); `AbsInt (AI.Int y)] -> `Bool (x > y)
                   | _ -> `Top)
               | O.Leq -> (match args with
-                  | [`AbsInt (Int x); `AbsInt (Int y)] -> `Bool (x <= y)
+                  | [`AbsInt (AI.Int x); `AbsInt (AI.Int y)] -> `Bool (x <= y)
                   | _ -> `Top)
               | O.Geq -> (match args with
-                  | [`AbsInt (Int x); `AbsInt (Int y)] -> `Bool (x >= y)
+                  | [`AbsInt (AI.Int x); `AbsInt (AI.Int y)] -> `Bool (x >= y)
                   | _ -> `Top)
               | O.And -> (match args with
                   | [`Bool x; `Bool y] -> `Bool (x && y)
@@ -442,31 +444,31 @@ module Abstract_value = struct
                   | [`Bool x] -> `Bool (not x)
                   | _ -> `Top)
               | O.Cons -> (match args with
-                  | [x; `AbsList (List xs)] ->
-                    if List.length xs >= list_domain.max_length then `AbsList Abstract_list.Omega
-                    else `AbsList (List (x::xs))
+                  | [x; `AbsList (AL.List xs)] ->
+                    if List.length xs >= list_domain.AL.max_length then `AbsList Abstract_list.Omega
+                    else `AbsList (AL.List (x::xs))
                   | [x; `AbsList Abstract_list.Omega] -> `AbsList Abstract_list.Omega
                   | [x; `List y] -> `List (x :: y)
                   | _ -> `Top)
               | O.RCons -> (match args with
-                  | [`AbsList (List xs); x] ->
-                    if List.length xs >= list_domain.max_length then `AbsList Abstract_list.Omega
-                    else `AbsList (List (x::xs))
+                  | [`AbsList (AL.List xs); x] ->
+                    if List.length xs >= list_domain.AL.max_length then `AbsList Abstract_list.Omega
+                    else `AbsList (AL.List (x::xs))
                   | [`AbsList Abstract_list.Omega; x] -> `AbsList Abstract_list.Omega
                   | [`List y; x] -> `List (x :: y)
                   | _ -> `Top)
               | O.Car -> (match args with
-                  | [`AbsList (List (x::_))] -> x
+                  | [`AbsList (AL.List (x::_))] -> x
                   | [`AbsList Abstract_list.Omega] -> `Top
                   | [`List (x::_)] -> x
-                  | [`AbsList (List [])] -> `Bottom
+                  | [`AbsList (AL.List [])] -> `Bottom
                   | [`List []] -> `Bottom
                   | _ -> `Top)
               | O.Cdr -> (match args with
-                  | [`AbsList (List (_::xs))] -> `AbsList (List xs)
+                  | [`AbsList (AL.List (_::xs))] -> `AbsList (AL.List xs)
                   | [`AbsList Abstract_list.Omega] -> `Top
                   | [`List (_::xs)] -> `List xs
-                  | [`AbsList (List [])] -> `Bottom
+                  | [`AbsList (AL.List [])] -> `Bottom
                   | [`List []] -> `Bottom
                   | _ -> `Top)
               | O.Value -> (match args with
@@ -757,7 +759,7 @@ let infer_examples :
         let deduced_exs = List.map exs ~f:(fun ex ->
             let (ax, m) =
               Abstract_example.of_spec_and_args
-                ~library ~args op_type op_specs.domain ex
+                ~library ~args op_type op_specs.Function_spec.domain ex
             in
             Abstract_example.lower m (Function_spec.find op_specs ax))
         in
