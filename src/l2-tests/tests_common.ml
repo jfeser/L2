@@ -1,6 +1,14 @@
 open Core.Std
 open OUnit2
 
+let make_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name cases =
+  name >:::
+  (List.map ~f:(fun (input, output) ->
+       let case_name = Printf.sprintf "%s => %s" (in_str input) (out_str output) in
+       case_name >:: (fun _ -> assert_equal ~printer:res_str ~cmp:cmp
+                         (out_f output) (in_f input)))
+      cases)
+
 let mk_equality_tests ?printer ?cmp name f cases =
   name >::: List.map cases ~f:(fun (input, output) ->
       test_case (fun ctxt -> assert_equal ?printer ?cmp ~ctxt output (f input)))
