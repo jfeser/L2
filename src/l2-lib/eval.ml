@@ -32,7 +32,7 @@ let eval ?recursion_limit ctx expr =
     end
     else
       let limit = limit - 1 in
-      let eval_all = List.map ~f:(eval limit ctx) in
+      let eval_all es = List.map ~f:(fun e -> eval limit ctx e) es in 
       match expr with
       | `Num x  -> `Num x
       | `Bool x -> `Bool x
