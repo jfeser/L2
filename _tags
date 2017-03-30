@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 49c10d21cfa4fa3c53faa68ab9abb38c)
+# DO NOT EDIT (digest: 5de01aced9866ad978ee0a8dbc3d65f9)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -29,9 +29,11 @@ true: annot, bin_annot
 "src/l2-lib/higher_order_deduction.cmx": for-pack(L2)
 "src/l2-lib/hypothesis.cmx": for-pack(L2)
 "src/l2-lib/infer.cmx": for-pack(L2)
-"src/l2-lib/lexer.cmx": for-pack(L2)
+"src/l2-lib/lexer_sexp.cmx": for-pack(L2)
+"src/l2-lib/lexer_ml.cmx": for-pack(L2)
 "src/l2-lib/library.cmx": for-pack(L2)
-"src/l2-lib/parser.cmx": for-pack(L2)
+"src/l2-lib/parser_sexp.cmx": for-pack(L2)
+"src/l2-lib/parser_ml.cmx": for-pack(L2)
 "src/l2-lib/random_deduction.cmx": for-pack(L2)
 "src/l2-lib/recursive_spec_deduction.cmx": for-pack(L2)
 "src/l2-lib/rewrite.cmx": for-pack(L2)

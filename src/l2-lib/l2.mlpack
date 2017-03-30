@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 4eaac44fc636d70ddf0f4775f7f65b44)
+# DO NOT EDIT (digest: 01d2d6ef7475ae6f9f7bf46ec623f6e9)
 Ast
 Collections
 Combinat
@@ -13,9 +13,11 @@ Fast_example_deduction
 Higher_order_deduction
 Hypothesis
 Infer
-Lexer
+Lexer_sexp
+Lexer_ml
 Library
-Parser
+Parser_sexp
+Parser_ml
 Random_deduction
 Recursive_spec_deduction
 Rewrite

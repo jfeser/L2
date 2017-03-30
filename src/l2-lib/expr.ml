@@ -63,9 +63,9 @@ module Op = struct
   let metadata_by_op =
     let t s =
       let lexbuf = Lexing.from_string s in
-      try Parser.typ_eof Lexer.token lexbuf with
-      | Parser.Error -> raise (ParseError s)
-      | Lexer.SyntaxError _ -> raise (ParseError s)
+      try Parser_sexp.typ_eof Lexer_sexp.token lexbuf with
+      | Parser_sexp.Error -> raise (ParseError s)
+      | Lexer_sexp.SyntaxError _ -> raise (ParseError s)
       | Parsing.Parse_error -> raise (ParseError s)
     in
     [
@@ -184,13 +184,16 @@ let rec of_value = function
 (** Parse an expression from a string. *)
 let of_string_exn ?(syntax = `Sexp) (s: string) : t =
   let lexbuf = Lexing.from_string s in
-  let _parser = match syntax with
-    | `Sexp -> Parser.expr_eof
-    | `Ml -> Parser.expr_ml_eof
-  in
-  try _parser Lexer.token lexbuf with
-  | Parser.Error -> raise (ParseError s)
-  | Lexer.SyntaxError _ -> raise (ParseError s)
+  try begin
+   match syntax with
+     | `Sexp -> Parser_sexp.expr_eof Lexer_sexp.token lexbuf
+     | `Ml -> Parser_ml.expr_ml_eof Lexer_ml.token lexbuf
+  end
+  with
+  | Parser_sexp.Error -> raise (ParseError s)
+  | Lexer_sexp.SyntaxError _ -> raise (ParseError s)
+  | Parser_ml.Error -> raise (ParseError s)
+  | Lexer_ml.SyntaxError _ -> raise (ParseError s)
   | Parsing.Parse_error -> raise (ParseError s)
 
 let of_string ?(syntax = `Sexp) (s: string) : t Or_error.t =

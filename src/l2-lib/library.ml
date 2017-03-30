@@ -25,8 +25,8 @@ let empty = {
 let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
   let exprs_and_builtins =
     let lexbuf = Lexing.from_channel ch in
-    try Parser.toplevel_ml_eof Lexer.token lexbuf with
-    | Parser.Error
+    try Parser_ml.toplevel_ml_eof Lexer_ml.token lexbuf with
+    | Parser_ml.Error
     | Parsing.Parse_error ->
       let err =
         let open Lexing in 
@@ -35,7 +35,7 @@ let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
           pos.pos_fname pos.pos_lnum (pos.pos_cnum - pos.pos_bol)
       in
       failwith err
-    | Lexer.SyntaxError err ->
+    | Lexer_ml.SyntaxError err ->
       Error.failwiths "Parsing failed." (file, err) [%sexp_of:string * string]
   in
 

@@ -14,8 +14,6 @@ open Collections
 %token THEN
 %token ELSE
 %token FUN
-%token LAMBDA
-%token FORALL
 %token ADD
 %token SUB
 %token MUL
@@ -59,32 +57,15 @@ open Collections
 %left MUL DIV MOD
 %nonassoc NOT
 
-%start <Ast.expr> expr_eof
 %start <Ast.expr> expr_ml_eof
 %start <[`Bind of (Ast.id * Ast.expr) | `Builtin of Ast.op list] list> toplevel_ml_eof
-
-%start <Ast.example> example_eof
-%start <Ast.constr> constr_eof
-%start <Ast.typ> typ_eof
 %%
-
-expr_eof:
- | x = expr; EOF { x }
 
 expr_ml_eof:
  | x = expr_ml; EOF { x }
 
 toplevel_ml_eof:
  | x = toplevel_ml; EOF { x }
-
-example_eof:
- | x = example; EOF { x }
-
-constr_eof:
- | x = constr; EOF { x }
-
-typ_eof:
- | x = typ; EOF { x }
 
 toplevel_ml:
  | x = list(toplevel_decl_ml) { x }
@@ -158,56 +139,6 @@ op:
  | x = unop_call  { x }
  | x = binop_call { x }
  | IF             { If }
-
-expr:
- | x = ID                                          { `Id x }
- | x = sexp(let_body)                              { x }
- | x = sexp(lambda_body)                           { x }
- | x = sexp(call_body)                             { x }
- | x = BOOL                                        { `Bool x }
- | x = NUM                                         { `Num x }
- | x = tree;                                       { `Tree x }
- | LBRACKET; x = list(expr); RBRACKET;             { `List x }
-
-tree:
- | LCBRACKET; RCBRACKET;                           { Tree.Empty }
- | LCBRACKET; x = expr; y = list(tree); RCBRACKET; { Tree.Node (x, y) }
-
-let_body:
- | LET; i = ID; b = expr; e = expr;                { `Let (i, b, e) }
-
-lambda_body:
- | LAMBDA; args = sexp(list(ID)); body = expr;     { `Lambda (args, body) }
-
-call_body:
- | op = op; args = list(expr);                     { `Op (op, args) }
- | f = expr; args = list(expr);                    { `Apply (f, args) }
-
-constr:
- | LPAREN; FORALL; vars = sexp(list(ID)); body = expr; RPAREN { (body, vars) }
-
-example:
- | lhs = expr; ARROW; rhs = expr { (lhs, rhs) }
-
-typ:
- | x = simple_typ                                   { x }
- | LPAREN; RPAREN; ARROW; output = typ;             { Arrow_t ([], output) }
- | input = simple_typ; ARROW; output = typ;         { Arrow_t ([input], output) }
- | inputs = sexp(typ_list); ARROW; output = typ;    { Arrow_t (inputs, output) }
-
-simple_typ:
- | x = ID                                           { match x with
-                                                      | "num" -> Const_t Num_t
-                                                      | "bool" -> Const_t Bool_t
-                                                      | _ -> Var_t (ref (Quant x)) }
- | x = sexp(typ);                                   { x }
- | constr = ID; LBRACKET; arg = typ; RBRACKET       { App_t (constr, [arg]) }
- | TREE; LBRACKET; arg = typ; RBRACKET              { App_t ("tree", [arg]) }
- | constr = ID; LBRACKET; args = typ_list; RBRACKET { App_t (constr, args) }
-
-typ_list:
- | x = typ; COMMA; y = typ                          { [x; y] }
- | x = typ; COMMA; xs = typ_list                    { x::xs }
 
 sexp(X):
  | LPAREN; x = X; RPAREN; { x }

@@ -9,9 +9,9 @@ type t = Expr.t * Expr.t [@@deriving sexp, compare]
 (** Parse an example from a string. *)
 let of_string_exn (s: string) : t =
   let lexbuf = Lexing.from_string s in
-  try Parser.example_eof Lexer.token lexbuf with
-  | Parser.Error -> raise (Ast.ParseError s)
-  | Lexer.SyntaxError _ -> raise (Ast.ParseError s)
+  try Parser_sexp.example_eof Lexer_sexp.token lexbuf with
+  | Parser_sexp.Error -> raise (Ast.ParseError s)
+  | Lexer_sexp.SyntaxError _ -> raise (Ast.ParseError s)
   | Parsing.Parse_error -> raise (Ast.ParseError s)
 
 let of_string (s: string) : t Or_error.t =

@@ -1,5 +1,5 @@
 {
-  open Parser
+  open Parser_ml
 
   exception SyntaxError of string
   let syntax_error char = raise (SyntaxError ("Unexpected character: " ^ char))
@@ -19,8 +19,6 @@ rule token = parse
  | "then"                { THEN }
  | "else"                { ELSE }
  | "fun"                 { FUN }
- | "lambda"              { LAMBDA }
- | "forall"              { FORALL }
  | "||"                  { OR }
  | "&&"                  { AND }
  | "not"                 { NOT }

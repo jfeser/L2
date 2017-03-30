@@ -86,9 +86,9 @@ module Type0 = struct
   (** Parse a type from a string. *)
   let of_string_exn : string -> t = fun s ->
     let lexbuf = Lexing.from_string s in
-    try Parser.typ_eof Lexer.token lexbuf with
-    | Parser.Error -> raise (ParseError s)
-    | Lexer.SyntaxError _ -> raise (ParseError s)
+    try Parser_sexp.typ_eof Lexer_sexp.token lexbuf with
+    | Parser_sexp.Error -> raise (ParseError s)
+    | Lexer_sexp.SyntaxError _ -> raise (ParseError s)
     | Parsing.Parse_error -> raise (ParseError s)
 
   let of_string : string -> t Or_error.t = fun s ->
