@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Core_extended.Std
 open Printf
 
@@ -360,7 +360,7 @@ let library_command =
           let expr = String.Map.find_exn library.Library.expr_ctx name in
           printf "%s: %s\n" name (Infer.Type.to_string type_);
           print_endline (Expr.to_string expr);
-          print_newline ());
+          Out_channel.newline stdout);
       printf "Summary: %d values" (String.Map.length library.Library.expr_ctx)
     | Error err -> print_endline (Error.to_string_hum err)
   in

@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Collections
 
 exception RuntimeError of Error.t

@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 
 (** Contains runtime configuration for L2. *)
 type t = {

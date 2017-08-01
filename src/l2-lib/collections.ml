@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 
 (** Custom collections. *)
 
@@ -291,17 +291,17 @@ struct
     Set.find_map result_refs ~f:(fun (id, len') ->
         let (s', v') = store_lookup i.store id in
         if len' < len then
-          if v' = subset_v && Set.subset s' s then
+          if v' = subset_v && Set.is_subset s' ~of_:s then
             (i.perf.total_set_ops <- i.perf.total_set_ops + 1; Some subset_v)
           else None
         else if len' = len then
-          if v' = subset_v && Set.subset s' s then
+          if v' = subset_v && Set.is_subset s' ~of_:s then
             (i.perf.total_set_ops <- i.perf.total_set_ops + 1; Some subset_v)
-          else if v' = superset_v && Set.subset s s' then
+          else if v' = superset_v && Set.is_subset s ~of_:s' then
             (i.perf.total_set_ops <- i.perf.total_set_ops + 1; Some superset_v)
           else None
         else
-        if v' = superset_v && Set.subset s s' then
+        if v' = superset_v && Set.is_subset s ~of_:s' then
           (i.perf.total_set_ops <- i.perf.total_set_ops + 1; Some superset_v)
         else None)
 

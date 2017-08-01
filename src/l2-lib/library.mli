@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 
 type t = {
   exprs : (string * Expr.t) list;

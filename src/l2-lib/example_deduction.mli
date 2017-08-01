@@ -1,4 +1,4 @@
-open Core.Std
+open Core
        
 open Synthesis_common
 open Collections

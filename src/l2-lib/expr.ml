@@ -1,11 +1,11 @@
-open Core.Std
+open Core
 open Printf
 
 open Ast
 open Collections
 open Util
 
-module Map = Core.Std.Map.Make(
+module Map = Core.Map.Make(
   struct
     type t = expr [@@deriving compare, sexp]
   end)
@@ -15,7 +15,7 @@ type id = Ast.id [@@deriving compare, sexp, bin_io]
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
-  module Map = Core.Std.Map.Make(
+  module Map = Core.Map.Make(
     struct
       type t = op
       let t_of_sexp = op_of_sexp

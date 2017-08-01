@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open OUnit2
 
 let make_tests ?cmp:(cmp = (=)) ~in_f ~out_f ~in_str ~out_str ~res_str name cases =

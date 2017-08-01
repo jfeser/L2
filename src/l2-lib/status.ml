@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Collections
 
 type status = {
@@ -119,6 +119,6 @@ let print_status : status -> unit =
             print_string logo;
             print_string "   ";
             print_string status_line;
-            print_newline ())
+            Out_channel.newline stdout)
       end
 

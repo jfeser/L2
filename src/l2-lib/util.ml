@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 
 (** Module for creating fresh names and numbers. *)
 module Fresh = struct
@@ -118,7 +118,7 @@ let max = List.fold_left ~f:(fun a e -> if e > a then e else a) ~init:Int.min_va
 let log verbosity level str =
   if verbosity >= level then begin
     print_endline str;
-    flush stdout;
+    Out_channel.flush stdout;
   end else ()
 
 let with_runtime (thunk: unit -> 'a) : ('a * Time.Span.t) =

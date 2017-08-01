@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 
 type t = {
   verbosity: int [@default 0] [@sexp_drop_default];
