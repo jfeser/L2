@@ -1,0 +1,15 @@
+{
+    "name": "max",
+    "description":
+    "Returns the largest number in a list, or zero if the list is empty.",
+    "kind": "examples",
+    "blacklist": ["max"],
+    "contents": {
+        "examples": [
+            "(max []) -> 0", "(max [0]) -> 0", "(max [0 2 1]) -> 2",
+            "(max [1 6 2 5]) -> 6", "(max [1 6 7 5]) -> 7",
+            "(max [10 25 7 9 18]) -> 25", "(max [100 25 7 9 18]) -> 100"
+        ],
+        "background": []
+    }
+}

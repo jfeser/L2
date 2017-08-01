@@ -1,0 +1,14 @@
+{
+  "name": "incrs",
+  "description":
+    "For each list in a list of lists, increments each number in the list by one.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(incrs []) -> []", "(incrs [[1]]) -> [[2]]",
+      "(incrs [[1] [2]]) -> [[2] [3]]",
+      "(incrs [[1 2] [3 4]]) -> [[2 3] [4 5]]"
+    ],
+    "background": []
+  }
+}

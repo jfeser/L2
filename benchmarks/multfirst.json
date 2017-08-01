@@ -1,0 +1,12 @@
+{
+  "name": "multfirst",
+  "description": "Replaces every item in a list with the first item.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(multfirst []) -> []", "(multfirst [1 0]) -> [1 1]",
+      "(multfirst [0 1 0]) -> [0 0 0]", "(multfirst [2 0 2 3]) -> [2 2 2 2]"
+    ],
+    "background": []
+  }
+}

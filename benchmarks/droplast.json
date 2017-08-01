@@ -1,0 +1,15 @@
+{
+  "name": "droplast",
+  "description": "",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+        "(droplast [1]) -> []", "(droplast [1 2 3]) -> [1 2]",
+        "(droplast [1 2]) -> [1]", "(droplast [1 5 2 7 8]) -> [1 5 2 7]",
+        "(droplast [1 1 1 1 1 1 1]) -> [1 1 1 1 1 1]",
+        "(droplast [1 1 1 1 1 1]) -> [1 1 1 1 1]",
+        "(droplast [1 0 1]) -> [1 1]"
+    ],
+    "background": []
+  }
+}

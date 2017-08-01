@@ -154,6 +154,15 @@ let rec to_string (expr: t) : string =
   | `Lambda (args, body) ->
      sprintf "(lambda (%s) %s)" (String.concat ~sep:" " args) (to_string body)
 
+(** Parse an expression from a string. *)
+let of_string_exn (s: string) : t =
+  let lexbuf = Lexing.from_string s in
+  try Parser.expr_eof Lexer.token lexbuf
+  with
+  | Parser.Error -> raise (ParseError s)
+  | Lexer.SyntaxError _ -> raise (ParseError s)
+  | Parsing.Parse_error -> raise (ParseError s)
+
 let equal (e1: t) (e2: t) = (compare_expr e1 e2) = 0
 
 (** Convert a type to a string. *)

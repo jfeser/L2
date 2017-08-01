@@ -1,0 +1,16 @@
+{
+  "name": "shiftr",
+  "description":
+    "Shift all items in a list to the right. Requires the specification of $last$.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(shiftr []) -> []", "(shiftr [1]) -> [1]", "(shiftr [1 2]) -> [2 1]",
+      "(shiftr [0 2 3]) -> [3 0 2]", "(shiftr [1 2 3 4]) -> [4 1 2 3]",
+      "(shiftr [2 9 7 4]) -> [4 2 9 7]"
+    ],
+    "background": [
+      [ "reverse", "(lambda (a) (foldl a (lambda (c b) (cons b c)) []))" ]
+    ]
+  }
+}

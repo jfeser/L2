@@ -1,0 +1,14 @@
+{
+    "name": "join",
+    "description": "Concatenates together a list of lists.",
+    "kind": "examples",
+    "blacklist": ["concat", "append"],
+    "contents": {
+        "examples": [
+            "(join []) -> []", "(join [[] [1 0]]) -> [1 0]",
+            "(join [[1 0] []]) -> [1 0]",
+            "(join [[1 0] [2 3] [6] [4 5]]) -> [1 0 2 3 6 4 5]"
+        ],
+        "background": []
+    }
+}

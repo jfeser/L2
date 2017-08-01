@@ -1,0 +1,14 @@
+{
+  "name": "prependt",
+  "description": "",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(prependt {[]} 1) -> {[1]}", "(prependt {[]} 2) -> {[2]}",
+      "(prependt {[1 2 3]} 1) -> {[1 1 2 3]}",
+      "(prependt {[1 2 3] {[3 4]}} 1) -> {[1 1 2 3] {[1 3 4]}}",
+      "(prependt {[1 2 3] {[3 4]} {[5 6]}} 7) -> {[7 1 2 3] {[7 3 4]} {[7 5 6]}}"
+    ],
+    "background": []
+  }
+}

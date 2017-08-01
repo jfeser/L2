@@ -1,0 +1,12 @@
+{
+  "name": "sumtrees",
+  "description": "",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(sumtrees []) -> []", "(sumtrees [{} {1 {2} {3}}]) -> [0 6]",
+      "(sumtrees [{5 {6}} {1}]) -> [11 1]"
+    ],
+    "background": []
+  }
+}

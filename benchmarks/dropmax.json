@@ -1,0 +1,13 @@
+{
+  "name": "dropmax",
+  "description":
+    "Removes the largest number in a list. Requires the specification of $max$.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(dropmax [3 5 2]) -> [3 2]", "(dropmax [3 1 2]) -> [1 2]",
+      "(dropmax [1 5 2]) -> [1 2]"
+    ],
+    "background": []
+  }
+}

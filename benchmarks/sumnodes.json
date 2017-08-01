@@ -1,0 +1,13 @@
+{
+  "name": "sumnodes",
+  "description": "",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(sumnodes {}) -> {}", "(sumnodes {[]}) -> {0}",
+      "(sumnodes {[1]}) -> {1}",
+      "(sumnodes {[1] {[1 2 3]} {[4 8]}}) -> {1 {6} {12}}"
+    ],
+    "background": []
+  }
+}

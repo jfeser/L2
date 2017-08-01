@@ -1,0 +1,15 @@
+{
+  "name": "shiftl",
+  "description":
+    "Shift all items in a list to the left. Requires the specification of $append$.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(shiftl []) -> []", "(shiftl [1]) -> [1]", "(shiftl [1 2]) -> [2 1]",
+      "(shiftl [5 2 3]) -> [2 3 5]", "(shiftl [1 2 3 4]) -> [2 3 4 1]"
+    ],
+    "background": [
+      [ "reverse", "(lambda (a) (foldl a (lambda (c b) (cons b c)) []))" ]
+    ]
+  }
+}

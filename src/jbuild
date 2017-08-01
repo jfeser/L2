@@ -6,7 +6,7 @@
 
 (executables
  ((names (timing tests))
-  (libraries (core ounit))
+  (libraries (core ounit yojson))
   (preprocess (pps (ppx_jane)))))
 
 (install

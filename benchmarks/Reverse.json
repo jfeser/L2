@@ -1,0 +1,15 @@
+{
+    "name": "Reverse",
+    "description": "Reverses a list.",
+    "kind": "examples",
+    "blacklist": ["reverse"],
+    "contents": {
+        "examples": [
+            "(Reverse []) -> []",
+            "(Reverse [0]) -> [0]",
+            "(Reverse [0 1]) -> [1 0]",
+            "(Reverse [0 2 1]) -> [1 2 0]"
+        ],
+        "background": []
+    }
+}

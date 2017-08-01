@@ -1,0 +1,11 @@
+{
+  "name": "sumt",
+  "description": "Sums the nodes of a tree.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(sumt {}) -> 0", "(sumt {1}) -> 1", "(sumt {1 {2} {3}}) -> 6"
+    ],
+    "background": []
+  }
+}

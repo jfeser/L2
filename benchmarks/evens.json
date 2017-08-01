@@ -1,0 +1,13 @@
+{
+  "name": "evens",
+  "description":
+    "Filters out the odd numbers in a list, leaving the even numbers.",
+  "kind": "examples",
+  "contents": {
+    "examples": [
+      "(evens []) -> []", "(evens [1]) -> []", "(evens [1 2]) -> [2]",
+      "(evens [1 2 3 4]) -> [2 4]", "(evens [5 6 3 9 8 4]) -> [6 8 4]"
+    ],
+    "background": []
+  }
+}
