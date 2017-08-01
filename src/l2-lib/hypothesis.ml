@@ -803,7 +803,7 @@ module Examples = struct
     in
 
     let compare t = match t.S.data with
-      | Examples exs' -> compare_t exs exs'
+      | Examples exs' -> compare exs exs'
       | _ -> failwith "BUG: Unexpected spec variant."
     in
 
@@ -883,7 +883,7 @@ module FunctionExamples = struct
     in
 
     let compare t = match t.S.data with
-      | FunctionExamples exs' -> compare_t exs exs'
+      | FunctionExamples exs' -> compare exs exs'
       | _ -> failwith "BUG: Unexpected spec variant."
     in
 
@@ -940,7 +940,7 @@ module Inputs = struct
     let verify library skel = signature library skel exs |> Option.is_some in
 
     let compare t = match t.S.data with
-      | Inputs exs' -> compare_t exs exs'
+      | Inputs exs' -> compare exs exs'
       | _ -> failwith "BUG: Unexpected spec variant."
     in
 

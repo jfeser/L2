@@ -8,7 +8,7 @@ open Util
 
 exception TypeError of Error.t
 
-let total_infer_time = ref (Time.Span.of_float 0.0)
+let total_infer_time = ref Time.Span.zero
 
 module Type0 = struct
   type const = const_typ =

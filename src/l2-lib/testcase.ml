@@ -21,7 +21,7 @@ let get_key_exn : ?default:Json.json -> Json.json -> string -> Json.json =
   fun ?default json key ->
     match json with
     | `Assoc kv ->
-      begin match List.Assoc.find kv key, default with
+      begin match List.Assoc.find ~equal:String.equal kv key, default with
         | Some v, _ | None, Some v -> v
         | None, None -> json_error (sprintf "Could not find key: %s" key) json
       end

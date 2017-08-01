@@ -373,7 +373,7 @@ module Abstract_value = struct
 
           | `Op (op, args) ->
             let args = List.map ~f:(ev ctx count) args in
-            if List.mem args `Bottom then `Bottom else begin
+            if List.mem ~equal:(=) args `Bottom then `Bottom else begin
               let module O = Expr.Op in
               let module AI = Abstract_int in
               let module AL = Abstract_list in

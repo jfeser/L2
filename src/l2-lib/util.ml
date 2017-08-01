@@ -78,7 +78,7 @@ let permutations_k l k = List.concat_map ~f:permutations (combinations l k)
 
 let uniq (l:'a list) : 'a list =
   List.fold_left l ~f:(fun (acc:'a list) (e:'a) ->
-                       if List.mem acc e then acc else e::acc)
+                       if List.mem ~equal:(=) acc e then acc else e::acc)
                  ~init:[]
 
 let rec all_equal (l: 'a list) ~eq:eq = match l with
@@ -100,11 +100,11 @@ let rec zip3_exn (l1: 'a list) (l2: 'b list) (l3: 'c list) : ('a * 'b * 'c) list
 
 let superset l1 l2 =
   (List.length l1) >= (List.length l2)
-  && List.for_all l2 ~f:(List.mem l1)
+  && List.for_all l2 ~f:(List.mem ~equal:(=) l1)
 
 let strict_superset l1 l2 =
   (List.length l1) > (List.length l2)
-  && List.for_all l2 ~f:(List.mem l1)
+  && List.for_all l2 ~f:(List.mem ~equal:(=) l1)
 
 let lsplit2_on_str s ~on =
   match String.substr_index s ~pattern:on with

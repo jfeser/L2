@@ -122,7 +122,7 @@ let synthesize ?spec_dir ?max_cost engine deduction cost_model library testcase 
     end
 
 let parse_symbol_exn symbols s =
-  match List.Assoc.find symbols s with
+  match List.Assoc.find ~equal:(=) symbols s with
   | Some sym -> sym
   | None ->
     Error.createf "Unexpected parameter '%s'. Expected one of: %s."
@@ -245,7 +245,7 @@ let synth_command =
 
       (* Remove functions on the blacklist from the library. *)
       let library = Library.filter_keys library
-          ~f:(fun k -> not (List.mem testcase.Testcase.blacklist k))
+          ~f:(fun k -> not (List.mem ~equal:(=) testcase.Testcase.blacklist k))
       in
 
       if quiet then Status.disable ();
