@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Printf
 
 let testcases =
@@ -420,7 +420,7 @@ let time_solve csv config (name, bk_strs, example_strs, desc) =
     end else begin
       printf "Solved %s in %s. Solutions:\n%s\n\n"
         name (Time.Span.to_short_string solve_time) solutions_str;
-    end; flush stdout;
+    end; Out_channel.flush stdout;
     name, solve_time, solutions_str, desc
   end
 
@@ -487,7 +487,7 @@ let command =
            else 0;
        } in
        if use_stdin then
-         let example_strs = In_channel.input_all stdin |> String.split_lines in
+         let example_strs = In_channel.input_all In_channel.stdin |> String.split_lines in
          let bk = List.concat_map
                     bk_strs
                     ~f:(fun bk_str -> match Util.lsplit2_on_str bk_str ~on:" " with
@@ -497,7 +497,7 @@ let command =
        else
          let testcases' = match testcase_names with
            | [] -> testcases
-           | _ -> List.filter testcases ~f:(fun (name, _, _, _) -> List.mem testcase_names name)
+           | _ -> List.filter testcases ~f:(fun (name, _, _, _) -> List.mem ~equal:(=) testcase_names name)
          in
          let _ = List.map testcases' ~f:(time_solve csv config) in ())
 

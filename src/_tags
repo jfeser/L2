@@ -1,0 +1,4 @@
+true: use_menhir
+true: debug
+<**/*.ml{,i}>: predicate(ppx_driver)
+<**/*.ml{,i}>: pp(ppx-jane -dump-ast)

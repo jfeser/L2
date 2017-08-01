@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Printf
 open Ast
 open Expr
@@ -15,7 +15,7 @@ type typed_expr =
   | Lambda of (id list * typed_expr) * typ
   | Apply of (typed_expr * (typed_expr list)) * typ
   | Op of (Op.t * (typed_expr list)) * typ
-  with compare, sexp
+  [@@deriving sexp, compare]
 
 let rec map f texpr = match texpr with
   | Num (x, t) -> Num (x, f t)

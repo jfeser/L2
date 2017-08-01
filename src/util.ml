@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 
 (** Module for creating fresh names and numbers. *)
 module Fresh = struct
@@ -10,7 +10,7 @@ end
 
 module IntListSet = Set.Make(struct
                               type t = int list
-                              let compare = List.compare ~cmp:Int.compare
+                              let compare = List.compare Int.compare
                               let sexp_of_t = List.sexp_of_t Int.sexp_of_t
                               let t_of_sexp = List.t_of_sexp Int.t_of_sexp
                             end)
@@ -108,7 +108,7 @@ let permutations_k l k = List.concat_map ~f:permutations (combinations l k)
 
 let uniq (l:'a list) : 'a list =
   List.fold_left l ~f:(fun (acc:'a list) (e:'a) ->
-                       if List.mem acc e then acc else e::acc)
+                       if List.mem ~equal:(=) acc e then acc else e::acc)
                  ~init:[]
 
 let rec all_equal (l: 'a list) ~eq:eq = match l with
@@ -124,11 +124,11 @@ let rec unzip3 l =
 
 let superset l1 l2 =
   (List.length l1) >= (List.length l2)
-  && List.for_all l2 ~f:(List.mem l1)
+  && List.for_all l2 ~f:(List.mem ~equal:(=) l1)
 
 let strict_superset l1 l2 =
   (List.length l1) > (List.length l2)
-  && List.for_all l2 ~f:(List.mem l1)
+  && List.for_all l2 ~f:(List.mem ~equal:(=) l1)
 
 let lsplit2_on_str s ~on =
   match String.substr_index s ~pattern:on with
@@ -142,7 +142,7 @@ let max = List.fold_left ~f:(fun a e -> if e > a then e else a) ~init:Int.min_va
 let log verbosity level str =
   if verbosity >= level then begin
     print_endline str;
-    flush stdout;
+    Out_channel.flush stdout;
   end else ()
 
 exception ParseError of string

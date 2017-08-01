@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Printf
 
 open Ast
@@ -6,12 +6,12 @@ open Infer
 open Structure
 open Util
     
-module Typ = struct type t = Ast.typ with compare, sexp end
+module Typ = struct type t = Ast.typ [@@deriving sexp, compare] end
 module TypedExpr = struct type t = typed_expr end
 module TypMemoizer = Sstream.Memoizer (Typ) (TypedExpr)
 
 module SimpleMemoizer =
-  Sstream.Memoizer (struct type t = typed_expr list with compare, sexp end) (Expr)
+  Sstream.Memoizer (struct type t = typed_expr list [@@deriving sexp, compare] end) (Expr)
 
 type config = {
   verbosity: int;

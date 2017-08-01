@@ -1,10 +1,10 @@
-open Core.Std
+open Core
 
 module Tree = struct
   type 'a t =
     | Empty
     | Node of 'a * 'a t list
-    with compare, sexp
+    [@@deriving sexp, compare]
     
   let rec to_string t ~str =
     match t with
@@ -36,7 +36,7 @@ module Tree = struct
     | Node (x, y) -> [x] @ List.concat_map y ~f:flatten
 end
 
-type id = string with compare, sexp
+type id = string [@@deriving sexp, compare]
 
 (** Represents the type of a value or expression. *)
 type typ =
@@ -53,7 +53,7 @@ and var_typ =
   | Link of typ
   | Quant of string
 and level = int
-with compare, sexp
+[@@deriving sexp, compare]
 
 type op =
   | Plus
@@ -77,7 +77,7 @@ type op =
   | Tree
   | Value
   | Children
-  with compare, sexp
+[@@deriving sexp, compare]
 
 type expr = 
   [ `Num of int
@@ -89,7 +89,7 @@ type expr =
   | `Lambda of id list * expr
   | `Apply of expr * (expr list)
   | `Op of op * (expr list)
-  ] with compare, sexp
+  ] [@@deriving sexp, compare]
 
-type example = expr * expr with compare, sexp
+type example = expr * expr [@@deriving sexp, compare]
 type constr = expr * (id list)

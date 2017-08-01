@@ -1,10 +1,10 @@
-open Core.Std
+open Core
 open Printf
 
 open Ast
 open Util
 
-type t = expr with compare, sexp
+type t = expr [@@deriving sexp, compare]
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
@@ -16,7 +16,7 @@ module Op = struct
       let compare = compare_op
     end)
   
-  type t = op with compare, sexp
+  type t = op [@@deriving sexp, compare]
   
   (** Type for storing operator metadata. *)
   type metadata = {
