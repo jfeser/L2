@@ -1,0 +1,14 @@
+(jbuild_version 1)
+
+(ocamllex (lexer))
+
+(menhir ((modules (parser))))
+
+(executables
+ ((names (timing tests))
+  (libraries (core ounit))
+  (preprocess (pps (ppx_jane)))))
+
+(install
+ ((section bin)
+  (files ((timing.exe as l2)))))

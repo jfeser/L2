@@ -1,0 +1,20 @@
+opam-version: "1.2"
+name:         "l2"
+version:      "1.0"
+maintainer:   "Jack Feser <jack.feser@gmail.com>"
+authors:      "Jack Feser <jack.feser@gmail.com>"
+homepage:     "https://github.com/jfeser/L2"
+bug-reports:  "https://github.com/jfeser/L2/issues"
+license:      "Apache2.0"
+dev-repo:     "https://github.com/jfeser/L2.git"
+build: [
+  ["jbuilder" "build" "--only" "l2" "--root" "." "-j" jobs "@install"]
+]
+install: ["jbuilder" "install"]
+remove: ["jbuilder" "uninstall"]
+depends: [
+  "menhir"         {build}
+  "jbuilder"       {build}
+  "ounit"          {> "1.1.2"}
+  "core"           {>= "0.9"}
+]
