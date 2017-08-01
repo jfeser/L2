@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open OUnit2
 
 open Ast
@@ -9,7 +9,7 @@ let identity (x: 'a) : 'a = x
 let cmp_partition a b =
   let sort_partition p = List.sort ~cmp:Int.compare p in
   let sort_partition_list l = List.map ~f:sort_partition l
-                              |> List.sort ~cmp:(List.compare ~cmp:Int.compare) in
+                              |> List.sort ~cmp:(List.compare Int.compare) in
   (sort_partition_list a) = (sort_partition_list b)
 
 let m_expr_to_string = function Some e -> Expr.to_string e | None -> "None"
@@ -267,26 +267,6 @@ let test_rewrite =
                 "(= (= x y) #f)", "(!= x y)";
               ]
 
-let test_normalize =
-  make_tests ~in_f:(fun str -> str |> Util.parse_expr |> Rewrite.normalize) ~out_f:Util.parse_expr
-              ~in_str:identity ~out_str:identity ~res_str:Expr.to_string
-    "normalize"
-    [ "(+ 1 (+ 2 3))", "(+ 1 2 3)";
-      "(+ (+ 1 2) (+ 3 4))", "(+ 1 2 3 4)";
-      "(+ (* (* 0 1) 2) (+ 3 4))", "(+ (* 0 1 2) 3 4)";
-      "(+ 1 (- 2 3))", "(+ (- 2 3) 1)";
-      "(- 1 (- 2 3))", "(- 1 (- 2 3))";
-    ]
-
-let test_denormalize =
-  make_tests ~in_f:(fun str -> str |> Util.parse_expr |> Rewrite.denormalize) ~out_f:Util.parse_expr
-              ~in_str:identity ~out_str:identity ~res_str:Expr.to_string
-    "normalize"
-    [ "(+ 1 2 3)", "(+ 1 (+ 2 3))";
-      "(+ 1 2 3 4)", "(+ 1 (+ 2 (+ 3 4)))";
-      "(+ (* 0 1 2) 3 4)", "(+ (* 0 (* 1 2)) (+ 3 4))";
-    ]
-
 let partition_to_string = List.to_string ~f:(List.to_string ~f:Int.to_string)
 let test_partition =
   make_tests ~in_f:Util.partition ~out_f:identity
@@ -447,8 +427,6 @@ let () = run_test_tt_main
 
                 test_fold_constants;
                 test_rewrite;
-                test_normalize;
-                test_denormalize;
 
                 (* test_sat_solver; *)
                 (* test_symb_solver; *)

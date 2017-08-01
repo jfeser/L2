@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 
 open Ast
 open Infer
@@ -259,7 +259,10 @@ module Spec = struct
           match Ctx.lookup_exn vctx list_name with
           | `List [x] -> Some ((apply_lambda init_expr x, result), vctx)
           | `List (r::rs) ->
-            let x::xs = List.rev (r::rs) in
+            let (x, xs) = match List.rev (r::rs) with
+              | x::xs -> (x, xs)
+              | [] -> failwith "Unreachable"
+            in
             let acc_result_m = List.find_map examples ~f:(fun ((_, result), vctx) ->
                 match Ctx.lookup_exn vctx list_name with
                 | `List rs' when xs = (List.rev rs') -> Some result

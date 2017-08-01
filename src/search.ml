@@ -121,7 +121,7 @@ let rec enumerate
          that have already been selected and the head of the list of
          remaining types (which will be the type of the current
          argument). *)
-      let prev_arg_typs, (current_typ::_) =
+      let prev_arg_typs, current_typ =
         (* Instantiate the argument types in the same context. Free
            type variables should be shared across arguments. For example,
            when instantiating the argument types for equals: (a, a) ->
@@ -130,7 +130,10 @@ let rec enumerate
           let ctx = Ctx.empty () in
           List.map arg_typs ~f:(instantiate ~ctx:ctx 0)
         in
-        List.split_n arg_typs' (List.length prev_args)
+
+        match List.split_n arg_typs' (List.length prev_args) with
+        | pt, (ct::_) -> (pt, ct)
+        | _ -> failwith "Unreachable"
       in
 
       (* Unify the types of the previous arguments with the actual
