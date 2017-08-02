@@ -1,0 +1,6 @@
+(jbuild_version 1)
+
+(executable
+ ((name tests)
+  (libraries (l2 ounit core core_extended yojson hashcons))
+  (preprocess (pps (ppx_jane)))))

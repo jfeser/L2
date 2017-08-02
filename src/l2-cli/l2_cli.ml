@@ -2,6 +2,7 @@ open Core
 open Core_extended.Std
 open Printf
 
+open L2
 open Synthesis_common
 open Collections
 

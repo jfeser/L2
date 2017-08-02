@@ -1,6 +1,6 @@
 opam-version: "1.2"
 name:         "l2"
-version:      "1.0"
+version:      "2.0"
 maintainer:   "Jack Feser <jack.feser@gmail.com>"
 authors:      "Jack Feser <jack.feser@gmail.com>"
 homepage:     "https://github.com/jfeser/L2"
@@ -8,11 +8,10 @@ bug-reports:  "https://github.com/jfeser/L2/issues"
 license:      "Apache2.0"
 dev-repo:     "https://github.com/jfeser/L2.git"
 build: [
-  ["./configure" "--prefix=%{prefix}%"]
-  [make]
+  ["jbuilder" "build" "@install"]
 ]
-install: [make "install"]
-remove: ["ocamlfind" "remove" "l2"]
+install: ["jbuilder" "install"]
+remove: ["jbuilder" "uninstall"]
 depends: [
   "ocamlfind"      {build}
   "menhir"         {build}
