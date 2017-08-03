@@ -119,6 +119,8 @@ let print_status : status -> unit =
             print_string logo;
             print_string "   ";
             print_string status_line;
-            Out_channel.newline stdout)
+            Out_channel.newline stdout;
+          );
+        Out_channel.flush stdout
       end
 
