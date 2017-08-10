@@ -1,4 +1,4 @@
-# λ² [![Build Status](https://travis-ci.org/jfeser/L2.svg?branch=master)](https://travis-ci.org/jfeser/L2)
+# λ² [![Build Status](https://travis-ci.org/jfeser/L2.svg?branch=pldi-modernize)](https://travis-ci.org/jfeser/L2)
 λ² is a tool for synthesizing functional programs from input-output examples.
 
 There are two versions of λ²:
