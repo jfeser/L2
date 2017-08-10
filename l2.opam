@@ -15,7 +15,7 @@ remove: ["jbuilder" "uninstall"]
 depends: [
   "menhir"         {build}
   "jbuilder"       {build}
-  "ounit"          {> "1.1.2"}
+  "ounit"          {>= "2"}
   "core"           {>= "0.9"}
   "ppx_jane"       {>= "0.9"}
   "yojson"         {>= "1.4"}
