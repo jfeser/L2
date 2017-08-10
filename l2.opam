@@ -15,9 +15,10 @@ remove: ["jbuilder" "uninstall"]
 depends: [
   "ocamlfind"      {build}
   "menhir"         {build}
-  "ounit"          {> "1.1.2"}
+  "ounit"          {>= "2"}
   "core"           {>= "0.9"}
   "core_extended"  {>= "0.9"}
-  "yojson"         {>= "1.3.2" & < "1.4"}
-  "hashcons"       
+  "ppx_jane"       {>= "0.9"}
+  "yojson"         {>= "1.4"}
+  "hashcons"       {>= "1.2"}
 ]
