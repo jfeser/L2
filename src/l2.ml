@@ -45,7 +45,7 @@ let command =
     +> flag "-b" ~aliases:["--background"] (listed string) ~doc:" use background knowledge"
     +> anon (sequence ("testcase" %: string))
   in
-  Command.basic
+  Command.basic_spec
     ~summary:"Run test cases and print timing results"
     spec
     (fun csv verbose very_verbose untyped no_deduce
