@@ -26,7 +26,7 @@ let to_triple = function
 let name (exs: t list) : id =
   let names =
     List.map exs ~f:(fun ex -> let name, _, _ = to_triple ex in name)
-    |> List.dedup ~compare:String.compare
+    |> List.dedup_and_sort ~compare:String.compare
   in
   match names with
   | [] -> failwith "Example list is empty."

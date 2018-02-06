@@ -52,7 +52,7 @@ module Spec = struct
              | `Tree x, `Tree y -> List.zip_exn (Tree.flatten x) (Tree.flatten y)
              | _ -> [])
             |> List.map ~f:(fun (i, o) -> map_example lambda_name i o, vctx))
-        |> List.dedup
+        |> List.dedup_and_sort
       in 
       if Example.check ex then
         if deduce_examples then Some ex else Some []
@@ -149,7 +149,7 @@ module Spec = struct
               in
               f x y |> List.map ~f:(fun ex -> ex, vctx)
             | _ -> [])
-        |> List.dedup
+        |> List.dedup_and_sort
       in       
       if Example.check ex then
         if deduce_examples then Some ex else Some []
@@ -213,7 +213,7 @@ module Spec = struct
           | `List [] 
           | `Tree Tree.Empty -> Some result
           | _ -> None)
-      |> List.dedup
+      |> List.dedup_and_sort
     in
     match base_cases with
     | [] -> None

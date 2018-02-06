@@ -30,7 +30,7 @@ module Ctx = struct
     | None -> raise (UnboundError id)
 
   (** Bind a type or value to an id, returning a new context. *)
-  let bind ctx id data = ref (SMap.add !ctx ~key:id ~data:data)
+  let bind ctx id data = ref (SMap.set !ctx ~key:id ~data:data)
   let bind_alist ctx alist = 
     List.fold alist ~init:ctx ~f:(fun ctx' (id, data) -> bind ctx' id data)
 
@@ -38,7 +38,7 @@ module Ctx = struct
   let unbind ctx id = ref (SMap.remove !ctx id)
 
   (** Bind a type or value to an id, updating the context in place. *)
-  let update ctx id data = ctx := SMap.add !ctx ~key:id ~data:data
+  let update ctx id data = ctx := SMap.set !ctx ~key:id ~data:data
 
   (** Remove a binding from a context, updating the context in place. *)
   let remove ctx id = ctx := SMap.remove !ctx id

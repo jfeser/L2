@@ -89,7 +89,7 @@ module Memoizer (Key: Map.Key) (Value: sig type t end) = struct
       | Some s -> s
       | None ->
         let s = { index = ref 0; head = Int.Table.create (); stream = stream (); } in
-        memo := KMap.add !memo ~key:typ ~data:s; s
+        memo := KMap.set !memo ~key:typ ~data:s; s
     in
     from (fun i -> 
         let sc = i + 1 in
