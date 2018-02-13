@@ -6,7 +6,7 @@
 
 (executables
  ((names (l2 tests))
-  (libraries (core ounit yojson))
+  (libraries (core oUnit yojson))
   (preprocess (pps (ppx_jane)))))
 
 (install
