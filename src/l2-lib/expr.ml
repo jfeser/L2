@@ -46,7 +46,7 @@ module Op = struct
     | Tree
     | Value
     | Children
-    [@@deriving compare, sexp, bin_io]
+    [@@deriving compare, sexp, bin_io, hash]
 
   (** Type for storing operator metadata. *)
   type metadata = {

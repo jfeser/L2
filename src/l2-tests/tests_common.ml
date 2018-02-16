@@ -15,7 +15,7 @@ let mk_equality_tests ?printer ?cmp name f cases =
 
 let assert_equivalent ~sexp expected real =
   let to_count_map l =
-    List.fold l ~init:(Map.empty ~comparator:Sexp.comparator) ~f:(fun m x ->
+    List.fold l ~init:(Map.empty (module Sexp)) ~f:(fun m x ->
         Map.change m (sexp x) (function
             | Some c -> Some (c + 1)
             | None -> Some 1))

@@ -289,7 +289,7 @@ let synth_command =
     | Error err -> print_string (Error.to_string_hum err)
   in
 
-  Command.basic ~summary:"Synthesize programs from specifications." spec run
+  Command.basic_spec ~summary:"Synthesize programs from specifications." spec run
 
 let eval_command =
   let spec =
@@ -334,7 +334,7 @@ let eval_command =
     | Error err -> print_string ("Error: " ^ (Error.to_string_hum err) ^ "\n")
   in
   
-  Command.basic ~summary:"Run L2 source code." spec run
+  Command.basic_spec ~summary:"Run L2 source code." spec run
 
 let library_command =
   let spec =
@@ -366,7 +366,7 @@ let library_command =
     | Error err -> print_endline (Error.to_string_hum err)
   in
 
-  Command.basic ~summary:"Load a library and print." spec run
+  Command.basic_spec ~summary:"Load a library and print." spec run
     
 let commands =
   Command.group ~summary:"A suite of tools for synthesizing and running L2 programs." [

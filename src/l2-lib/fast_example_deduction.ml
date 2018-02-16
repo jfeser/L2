@@ -42,7 +42,7 @@ module Abstract_int = struct
   type value =
     | Int of int
     | Omega
-  [@@deriving compare, sexp, bin_io]
+  [@@deriving compare, sexp]
   
   type domain = {
     lower : int;
@@ -88,7 +88,7 @@ module Abstract_eq = struct
   type value =
     | Elem of int
     | Omega
-  [@@deriving compare, sexp, bin_io]
+  [@@deriving compare, sexp]
   
   type domain = {
     max_distinct : int;
@@ -118,7 +118,7 @@ module Abstract_list = struct
   type 'a value =
     | List of 'a list
     | Omega
-  [@@deriving compare, sexp, bin_io]
+  [@@deriving compare, sexp]
 
   type domain = {
     max_length : int;
@@ -186,7 +186,7 @@ module Abstract_expr = struct
     | `Lambda of string list * t
     | `Apply of t * (t list)
     | `Op of Expr.Op.t * (t list)
-  ] [@@deriving compare, sexp, bin_io]
+  ] [@@deriving compare, sexp]
 
   let rec of_expr : Expr.t -> t = function
     | `Num x -> `Num x
@@ -217,7 +217,7 @@ module Abstract_value = struct
     | `Closure of Abstract_expr.t * (t Ctx.t)
     | `Bottom
     | `Top
-  ] [@@deriving compare, sexp, bin_io]
+  ] [@@deriving compare, sexp]
 
   exception HitRecursionLimit
 
@@ -548,11 +548,11 @@ end
 module Abstract_example = struct
   module T = struct
     type t = Abstract_value.t list * Abstract_value.t
-    [@@deriving compare, sexp, bin_io]
+    [@@deriving compare, sexp]
     let hash = Hashtbl.hash
   end
+  include Hashable.Make_and_derive_hash_fold_t(T)
   include T
-  include Hashable.Make_binable(T)
 
   let to_string (ins, out) =
     let ins_str =
@@ -611,7 +611,7 @@ module Abstract_example = struct
       let hash = Hashtbl.hash
     end
     include T
-    include Hashable.Make(T)
+    include Hashable.Make_and_derive_hash_fold_t(T)
   end
       
   let eval : Value.t String.Map.t -> Expr.t -> Value.t =
