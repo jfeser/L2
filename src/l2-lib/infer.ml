@@ -595,7 +595,7 @@ module Type = struct
       and of_lambda ctx args body =
         let (ctx, ts) = List.fold_right args ~init:(ctx, []) ~f:(fun arg (ctx, ts) ->
             let t = fresh_free 0 in
-            String.Map.add ctx ~key:arg ~data:t, t::ts)
+            String.Map.set ctx ~key:arg ~data:t, t::ts)
         in
         let t, u = of_expr ctx body in
         Unifier.apply u (Arrow_t (ts, t)), u
@@ -621,12 +621,12 @@ module Type = struct
 
       and of_let ctx name bound body =
         let tv = fresh_free 0 in
-        let bound_t, u = of_expr (String.Map.add ctx ~key:name ~data:tv) bound in
+        let bound_t, u = of_expr (String.Map.set ctx ~key:name ~data:tv) bound in
         let u = Unifier.compose ~outer:u ~inner:(Unifier.of_types_exn (Unifier.apply u tv) (Unifier.apply u bound_t)) in
         let bound_t = Unifier.apply u bound_t in
         let ctx = Unifier.apply_ctx u ctx in
         let bound_t = generalize ctx bound_t in
-        let body_t, u' = of_expr (String.Map.add ctx ~key:name ~data:bound_t) body in
+        let body_t, u' = of_expr (String.Map.set ctx ~key:name ~data:bound_t) body in
         let u = Unifier.compose ~outer:u ~inner:u' in
         Unifier.apply u body_t, u
         

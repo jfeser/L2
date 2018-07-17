@@ -47,19 +47,19 @@ let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
   let builtins = List.concat builtins in
 
   let expr_ctx = List.fold_left exprs ~init:SMap.empty ~f:(fun m (n, e) ->
-      SMap.add m ~key:n ~data:e)
+      SMap.set m ~key:n ~data:e)
   in
   
   let value_ctx = List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
       let ctx_ref = ref ctx in
       let value = Eval.eval ctx_ref (`Let (name, expr, `Id name)) in
-      SMap.add !ctx_ref ~key:name ~data:value)
+      SMap.set !ctx_ref ~key:name ~data:value)
   in
   
   let exprvalue_ctx = List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
       let ctx_ref = ref ctx in
       let value = Eval.partial_eval ~ctx:ctx_ref (`Let (name, (ExprValue.of_expr expr), `Id name)) in
-      SMap.add !ctx_ref ~key:name ~data:value)
+      SMap.set !ctx_ref ~key:name ~data:value)
   in
 
   let type_ctx = List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
@@ -69,7 +69,7 @@ let from_channel_exn : file:string -> In_channel.t -> t = fun ~file ch ->
           generalize (-1) t |> normalize
         with TypeError err -> Error.raise err
       in
-      SMap.add ctx ~key:name ~data:type_)
+      SMap.set ctx ~key:name ~data:type_)
   in
   { exprs; expr_ctx; value_ctx; exprvalue_ctx; type_ctx; builtins }
 

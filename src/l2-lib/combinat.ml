@@ -58,7 +58,7 @@ let m_partition_with_zeros : int -> int -> Array.Int.t Seq.t =
 
 let permutations : Array.Int.t -> Array.Int.t Seq.t = fun a_init ->
   let a_init = Array.copy a_init in
-  Array.sort ~cmp:Int.compare a_init;
+  Array.sort ~compare:Int.compare a_init;
   let init_seq = Seq.singleton a_init in
   let rest_seq = Seq.unfold ~init:a_init ~f:(fun a ->
       let a = Array.copy a in

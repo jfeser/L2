@@ -162,7 +162,7 @@ module StreamMemoizer (Key: Map.Key) (Value: sig type t end) = struct
       | Some s -> s
       | None ->
         let s = { index = ref 0; head = Int.Table.create (); stream = stream (); } in
-        memo := KMap.add !memo ~key:typ ~data:s; s
+        memo := KMap.set !memo ~key:typ ~data:s; s
     in
     Stream.from (fun i ->
         let sc = i + 1 in
@@ -244,8 +244,8 @@ struct
     let index' =
       List.fold_left (Set.to_list k) ~init:i.index ~f:(fun i e ->
           match KMap.find i e with
-          | Some s -> KMap.add i ~key:e ~data:(IntPairSet.add s kv_key_pair)
-          | None -> KMap.add i ~key:e ~data:(IntPairSet.singleton kv_key_pair))
+          | Some s -> KMap.set i ~key:e ~data:(IntPairSet.add s kv_key_pair)
+          | None -> KMap.set i ~key:e ~data:(IntPairSet.singleton kv_key_pair))
     in
 
     (* Update the index. *)
@@ -334,7 +334,7 @@ module Ctx = struct
     | None -> raise (UnboundError id)
 
   (** Bind a type or value to an id, returning a new context. *)
-  let bind ctx id data = ref (String.Map.add !ctx ~key:id ~data:data)
+  let bind ctx id data = ref (String.Map.set !ctx ~key:id ~data:data)
   let bind_alist ctx alist =
     List.fold alist ~init:ctx ~f:(fun ctx' (id, data) -> bind ctx' id data)
 
@@ -342,7 +342,7 @@ module Ctx = struct
   let unbind ctx id = ref (String.Map.remove !ctx id)
 
   (** Bind a type or value to an id, updating the context in place. *)
-  let update ctx id data = ctx := String.Map.add !ctx ~key:id ~data:data
+  let update ctx id data = ctx := String.Map.set !ctx ~key:id ~data:data
 
   (** Remove a binding from a context, updating the context in place. *)
   let remove ctx id = ctx := String.Map.remove !ctx id
@@ -512,17 +512,17 @@ module SortedList = struct
 
   module SortedList0 = struct
     let of_list : comparator:('a, 'cmp) Comparator.t -> 'a list -> ('a, 'cmp) t =
-      fun ~comparator -> List.sort ~cmp:comparator.Comparator.compare
+      fun ~comparator -> List.sort ~compare:comparator.Comparator.compare
 
     let to_list : ('a, 'cmp) t -> 'a list = fun l -> l
 
     let length : ('a, 'cmp) t -> int = List.length
 
     let append : comparator:('a, 'cmp) Comparator.t -> ('a, 'cmp) t -> ('a, 'cmp) t -> ('a, 'cmp) t = fun ~comparator ->
-      List.merge ~cmp:comparator.Comparator.compare
+      List.merge ~compare:comparator.Comparator.compare
 
     let map : comparator:('a, 'cmp) Comparator.t -> f:('a -> 'a) -> ('a, 'cmp) t -> ('a, 'cmp) t = fun ~comparator ~f l ->
-      List.map ~f l |> List.sort ~cmp:comparator.Comparator.compare
+      List.map ~f l |> List.sort ~compare:comparator.Comparator.compare
 
     let filter : f:('a -> bool) -> ('a, 'cmp) t -> ('a, 'cmp) t = fun ~f l ->
       List.filter ~f l
@@ -604,7 +604,7 @@ module Tree = struct
     | Node (x, children) -> f x (List.map ~f:(fold ~f:f ~init:init) children)
 
   let max t ~cmp = fold t ~init:None ~f:(fun elem children ->
-      let max_children = List.filter_opt children |> List.max_elt ~cmp:cmp in
+      let max_children = List.filter_opt children |> List.max_elt ~compare:cmp in
       match max_children with
       | Some elem' -> if cmp elem elem' > 0 then Some elem else Some elem'
       | None -> Some elem)

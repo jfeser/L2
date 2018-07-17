@@ -365,7 +365,7 @@ module Skeleton = struct
           let name = fresh_name () in
           let names =
             SD.map_increment_scope names
-            |> Map.add ~key:(SD.create ~distance:1 ~index:1) ~data:name
+            |> Map.set ~key:(SD.create ~distance:1 ~index:1) ~data:name
           in
           let pp =
             text "let" $/ text name $/ text "=" $/
@@ -380,7 +380,7 @@ module Skeleton = struct
                 SD.create ~distance:1 ~index:(i + 1), fresh_name ())
           in
           let names =
-            List.fold ~f:(fun m (sd, name) -> Map.add m ~key:sd ~data:name)
+            List.fold ~f:(fun m (sd, name) -> Map.set m ~key:sd ~data:name)
               new_names ~init:(SD.map_increment_scope names)
           in
           let pp =
@@ -475,7 +475,7 @@ module Skeleton = struct
           let name = fresh_name () in
           let ctx =
             SD.Map.increment_scope ctx
-            |> Map.add ~key:(SD.create ~distance:1 ~index:1) ~data:(`Id name)
+            |> Map.set ~key:(SD.create ~distance:1 ~index:1) ~data:(`Id name)
           in
           `Let (name, to_expr ctx bound, to_expr ctx body)
         | Lambda { num_args; body } ->
@@ -483,7 +483,7 @@ module Skeleton = struct
           let arg_names = List.init num_args ~f:(fun _ -> fresh_name ()) in
           let ctx =
             List.fold2_exn arg_names (SD.args num_args) ~init:ctx
-              ~f:(fun ctx name sd -> Map.add ctx ~key:sd ~data:(`Id name))
+              ~f:(fun ctx name sd -> Map.set ctx ~key:sd ~data:(`Id name))
           in
           `Lambda (arg_names, to_expr ctx body)
         | Apply { func; args } ->
@@ -768,7 +768,7 @@ module Examples = struct
         match I.Map.find m ctx with
         | Some ret' when ret' = ret -> Ok m
         | Some _ -> error_string "Different return value for same input."
-        | None -> Ok (I.Map.add m ~key:ctx ~data:ret))
+        | None -> Ok (I.Map.set m ~key:ctx ~data:ret))
     |> ignore
     >>| fun () -> List.dedup ~compare:compare_example exs
       
@@ -844,7 +844,7 @@ module FunctionExamples = struct
         match Map.find m key with
         | Some ret' when ret' = ret -> Ok m
         | Some _ -> error_string "Different return value for same input."
-        | None -> Ok (Map.add m ~key ~data:ret))
+        | None -> Ok (Map.set m ~key ~data:ret))
     |> ignore
     >>| fun () -> List.dedup ~compare:compare_example exs
   let of_list_exn exs = of_list exs |> Or_error.ok_exn    

@@ -9,4 +9,4 @@
   (public_name l2)
   (libraries (core core_extended yojson hashcons))
   (preprocess (pps (ppx_jane)))
-  (modules (:standard \ Symbolic_execution Unification_deduction Automaton Generate_functions))))
+  (modules (:standard \ Symbolic_execution Automaton Generate_functions))))

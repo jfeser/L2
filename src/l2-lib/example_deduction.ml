@@ -60,7 +60,7 @@ let compose : ExprValue.t String.Map.t -> ExprValue.t String.Map.t -> ExprValue.
   fun u1 u2 ->
   let merge outer inner =
     String.Map.fold ~f:(fun ~key:name ~data:typ m ->
-        String.Map.add ~key:name ~data:typ m) ~init:outer inner
+        String.Map.set ~key:name ~data:typ m) ~init:outer inner
   in
   merge u1 (String.Map.map ~f:(fun t -> apply_unifier u1 t) u2)
 
@@ -132,7 +132,7 @@ let infer_example :
       let possible_specs =
         run_with_time "scan" (fun () -> 
             List.filter_map specs ~f:(unify_example ex)
-            |> List.dedup)
+            |> List.dedup ~compare:Polymorphic_compare.compare)
       in
       let (args, ret) = ex in
       let arity = List.length args in

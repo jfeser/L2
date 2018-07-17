@@ -23,7 +23,7 @@ module Generalizer = struct
     let open Hypothesis in
     fun params generalize hypo -> 
       holes hypo
-      |> List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2)
+      |> List.sort ~compare:(fun (h1, _) (h2, _) -> Hole.compare h1 h2)
       |> List.map ~f:(fun (hole, spec) ->
           generalize hole.Hole.ctx hole.Hole.type_ hole.Hole.symbol spec
           |> List.filter ~f:(fun (c, _) ->
@@ -37,7 +37,7 @@ module Generalizer = struct
   let generalize_all params generalize hypo =
     let open Hypothesis in
     List.fold_left
-      (List.sort ~cmp:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
+      (List.sort ~compare:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
       ~init:[ hypo ]
       ~f:(fun hypos (hole, spec) ->
           let children =
@@ -164,7 +164,7 @@ module Memoizer = struct
              | Some id -> Type.free id level
              | None ->
                let new_id = fresh_int () in
-               ctx := Int.Map.add !ctx ~key:new_id ~data:id;
+               ctx := Int.Map.set !ctx ~key:new_id ~data:id;
                Type.free new_id level)
           | Var_t { contents = Link t } -> norm t
         in

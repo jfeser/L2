@@ -162,7 +162,7 @@ module L2_Generalizer = struct
       let type_ctx =
         List.fold (List.zip_exn arg_names args_t)
           ~init:(StaticDistance.map_increment_scope ctx)
-          ~f:(fun ctx (arg, arg_t) -> StaticDistance.Map.add ctx ~key:arg ~data:arg_t)
+          ~f:(fun ctx (arg, arg_t) -> StaticDistance.Map.set ctx ~key:arg ~data:arg_t)
       in
       let lambda =
         H.lambda cost_model num_args (H.hole cost_model (Hole.create ~ctx:type_ctx ret_t combinator) Sp.top) spec

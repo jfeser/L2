@@ -511,7 +511,7 @@ module Abstract_value = struct
             | None -> 
               if !count <= d.eq.Abstract_eq.max_distinct then begin
                 let id = !count in
-                ctx := Map.add !ctx ~key:v ~data:id;
+                ctx := Map.set !ctx ~key:v ~data:id;
                 incr count;
                 `AbsEq (Abstract_eq.Elem id)
               end else `AbsEq Abstract_eq.Omega
