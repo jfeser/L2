@@ -65,7 +65,7 @@ end
 
 let partition n : int list list =
   let map_range a b f = List.map (List.range a b) ~f:f in
-  let add_to_partition x p = List.sort ~cmp:Int.compare (p @ [x]) in
+  let add_to_partition x p = List.sort ~compare:Int.compare (p @ [x]) in
   let rec part n : IntListSet.t =
     (match n with
      | 0 -> IntListSet.empty
