@@ -2,16 +2,14 @@ open Core
 open OUnit2
 open L2
 open Tests_common
-open Ast
 open Collections
-open Infer
 
 let identity (x : 'a) : 'a = x
 
 let cmp_partition a b =
-  let sort_partition p = List.sort ~cmp:Int.compare p in
+  let sort_partition p = List.sort ~compare:Int.compare p in
   let sort_partition_list l =
-    List.map ~f:sort_partition l |> List.sort ~cmp:(List.compare Int.compare)
+    List.map ~f:sort_partition l |> List.sort ~compare:(List.compare Int.compare)
   in
   sort_partition_list a = sort_partition_list b
 

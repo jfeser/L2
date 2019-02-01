@@ -24,7 +24,8 @@ let assert_equivalent ~sexp expected real =
     List.fold l
       ~init:(Map.empty (module Sexp))
       ~f:(fun m x ->
-        Map.change m (sexp x) (function Some c -> Some (c + 1) | None -> Some 1) )
+        Map.change m (sexp x) ~f:(function Some c -> Some (c + 1) | None -> Some 1)
+        )
   in
   let expected_m = to_count_map expected in
   let real_m = to_count_map real in

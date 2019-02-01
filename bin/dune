@@ -1,6 +1,7 @@
 (executable
  (name l2_cli)
  (libraries l2 core core_extended yojson hashcons)
+ (modules l2_cli)
  (preprocess (pps ppx_jane)))
 
 (install

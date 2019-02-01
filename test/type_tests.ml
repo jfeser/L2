@@ -81,7 +81,7 @@ let infer_typeof_tests =
     ~printer:(fun t -> Sexp.to_string (Type.sexp_of_t t))
     ~cmp:Type.equal "infer-typeof-tests"
     (fun input ->
-      let t, u = Type.of_expr input in
+      let t, _ = Type.of_expr input in
       t )
     cases
 

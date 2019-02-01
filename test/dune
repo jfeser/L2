@@ -1,4 +1,4 @@
-(executable
+(test
  (name tests)
  (libraries l2 oUnit core core_extended yojson hashcons)
  (preprocess (pps ppx_jane)))

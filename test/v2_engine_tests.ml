@@ -1,10 +1,7 @@
 open Core
 open OUnit2
 open L2
-open Tests_common
 open Synthesis_common
-open Ast
-open Infer
 open Hypothesis
 open V2_engine
 module Sym = L2_Generalizer.Symbols
