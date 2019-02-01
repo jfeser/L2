@@ -1,6 +1,5 @@
 open Core
 open Ast
-open Hypothesis
 
 type id = string
 

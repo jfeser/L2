@@ -46,7 +46,7 @@ module Spec = struct
             | `Tree x, `Tree y -> List.zip_exn (Tree.flatten x) (Tree.flatten y)
             | _ -> [] )
             |> List.map ~f:(fun (i, o) -> (map_example lambda_name i o, vctx)) )
-        |> List.dedup ~compare:Polymorphic_compare.compare
+        |> List.dedup_and_sort ~compare:Polymorphic_compare.compare
       in
       if Example.check ex then if deduce_examples then Some ex else Some []
       else None
@@ -156,7 +156,7 @@ module Spec = struct
                 in
                 f x y |> List.map ~f:(fun ex -> (ex, vctx))
             | _ -> [] )
-        |> List.dedup ~compare:Polymorphic_compare.compare
+        |> List.dedup_and_sort ~compare:Polymorphic_compare.compare
       in
       if Example.check ex then if deduce_examples then Some ex else Some []
       else None
@@ -227,7 +227,7 @@ module Spec = struct
              match Ctx.lookup_exn vctx input_name with
              | `List [] | `Tree Tree.Empty -> Some result
              | _ -> None )
-      |> List.dedup ~compare:Polymorphic_compare.compare
+      |> List.dedup_and_sort ~compare:Polymorphic_compare.compare
     in
     match base_cases with [] -> None | [base] -> Some base | _ :: _ :: _ -> None
 

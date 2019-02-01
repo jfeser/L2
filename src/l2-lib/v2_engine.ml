@@ -24,7 +24,7 @@ let default_cost_model : CostModel.t =
         | "foldr" | "foldl" | "foldt" | "zipWith" -> 3
         | "map" | "mapt" | "filter" -> 2
         | _ -> 1 )
-      | Sk.Id.StaticDistance sd -> 1) }
+      | Sk.Id.StaticDistance _ -> 1) }
 
 module L2_Generalizer = struct
   (* This generalizer generates programs of the following form. Each
@@ -77,7 +77,7 @@ module L2_Generalizer = struct
   module Sp = Specification
   module H = Hypothesis
 
-  let generate_constants params ctx type_ symbol spec =
+  let generate_constants params _ type_ _ spec =
     match type_ with
     | Arrow_t _ -> []
     | _ ->
@@ -96,7 +96,7 @@ module L2_Generalizer = struct
             | Some u -> List.map xs ~f:(fun x -> (x, u))
             | None -> [] )
 
-  let generate_identifiers params ctx type_ symbol spec =
+  let generate_identifiers params ctx type_ _ spec =
     match type_ with
     | Arrow_t _ -> []
     | _ ->
@@ -104,7 +104,7 @@ module L2_Generalizer = struct
             Option.map (Unifier.of_types type_ id_t) ~f:(fun u ->
                 (H.id_sd params.G.cost_model id spec, u) ) )
 
-  let generate_expressions params ctx type_ symbol spec =
+  let generate_expressions params ctx type_ _ spec =
     match type_ with
     | Arrow_t _ -> []
     | _ ->
@@ -149,7 +149,7 @@ module L2_Generalizer = struct
         in
         op_exprs @ apply_exprs
 
-  let generate_lambdas params ctx type_ symbol spec =
+  let generate_lambdas params ctx type_ _ spec =
     let cost_model = params.G.cost_model in
     match type_ with
     (* If the hole has an arrow type, generate a lambda expression with
@@ -180,7 +180,7 @@ module L2_Generalizer = struct
     generalize
 
   module With_components = struct
-    let select symbol =
+    let select _ =
       [ generate_constants
       ; generate_identifiers
       ; generate_expressions
@@ -190,7 +190,7 @@ module L2_Generalizer = struct
   end
 
   module No_components = struct
-    let select symbol =
+    let select _ =
       [ generate_constants
       ; generate_identifiers
       ; generate_expressions
@@ -200,7 +200,7 @@ module L2_Generalizer = struct
   end
 
   module No_lambdas = struct
-    let select symbol =
+    let select _ =
       [ generate_constants
       ; generate_identifiers
       ; generate_expressions
@@ -218,8 +218,6 @@ module L2_Synthesizer = struct
     ; deduce: Deduction.t
     ; memoizer: Memoizer.t
     ; library: Library.t }
-
-  exception SynthesisException of Hypothesis.t
 
   let create ?(cost_model = default_cost_model) deduce library =
     let gen_no_lambdas = L2_Generalizer.No_lambdas.create cost_model library in

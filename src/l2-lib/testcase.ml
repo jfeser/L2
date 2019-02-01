@@ -1,6 +1,5 @@
 open Core
 open Collections
-open Hypothesis
 
 exception JsonDecodeError of {msg: string; json: Json.json}
 

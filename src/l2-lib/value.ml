@@ -17,7 +17,7 @@ module T = struct
         list [atom "Closure"; [%sexp_of: Expr.t] expr; ctx_sexp]
     | `Unit -> atom "Unit"
 
-  let rec t_of_sexp : Sexp.t -> t =
+  let t_of_sexp : Sexp.t -> t =
    fun _ -> Or_error.unimplemented "Value.t_of_sexp" |> Or_error.ok_exn
 end
 

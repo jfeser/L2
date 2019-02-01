@@ -1,5 +1,4 @@
 open Core
-open Core_extended.Std
 open Synthesis_common
 open Hypothesis
 open Collections
@@ -25,8 +24,8 @@ let push_specs_exn : Sk.t -> unit =
     | Sk.List l -> List.iter l ~f:(push sps)
     | Sk.Tree t -> Tree.iter t ~f:(push sps)
     | Sk.Let {bound; body} -> push sps bound ; push sps body
-    | Sk.Lambda {body} -> push sps body
-    | Sk.Op {args} | Sk.Apply {args} -> List.iter args ~f:(push sps)
+    | Sk.Lambda {body; _} -> push sps body
+    | Sk.Op {args; _} | Sk.Apply {args; _} -> List.iter args ~f:(push sps)
   in
   push Sp.Set.empty
 

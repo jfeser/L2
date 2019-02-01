@@ -3,8 +3,6 @@ open Collections
 open Hypothesis
 open Infer
 
-let print_sexp x s = print_endline (Sexp.to_string_hum (s x))
-
 module Generalizer = struct
   type t =
        Type.t StaticDistance.Map.t
@@ -79,15 +77,15 @@ module Deduction = struct
       | Sk.List l -> List.iter l ~f:bot
       | Sk.Tree t -> Tree.iter t ~f:bot
       | Sk.Let {bound; body} -> bot bound ; bot body
-      | Sk.Lambda {num_args; body} -> bot body
-      | Sk.Op {op; args} -> List.iter args ~f:bot
+      | Sk.Lambda {body; _} -> bot body
+      | Sk.Op {args; _} -> List.iter args ~f:bot
       | Sk.Apply {func; args} -> bot func ; List.iter args ~f:bot
     in
     try bot sk ; Some sk with Bottom -> None
 
   let no_op : t = Option.return
 
-  let compose : t -> t -> t = fun d1 d2 skel -> Option.bind (d1 skel) d2
+  let compose : t -> t -> t = fun d1 d2 skel -> Option.bind (d1 skel) ~f:d2
 end
 
 let timer =
@@ -95,8 +93,6 @@ let timer =
   let n = Timer.add_zero t in
   n "deduction_time" "Total time spent in deduction methods." ;
   t
-
-let run_with_time = Timer.run_with_time timer
 
 let counter =
   let c = Counter.empty () in
@@ -124,8 +120,6 @@ let sexp_log =
   let n = SexpLog.add s in
   n "specs" "Specifications in memoization table." ;
   s
-
-let set_sexp = SexpLog.set sexp_log
 
 (** Maps (hole, spec) pairs to the hypotheses that can fill in the
     hole and match the spec.
@@ -182,8 +176,6 @@ module Memoizer = struct
     type t = {hole: Hole_without_id.t; spec: Specification.t}
     [@@deriving compare, sexp]
 
-    let to_string k = Sexp.to_string_hum ([%sexp_of: t] k)
-
     let hash = Hashtbl.hash
 
     let of_hole_spec hole spec =
@@ -236,7 +228,7 @@ module Memoizer = struct
           | H.Concrete -> Some (h, u)
           | H.Abstract ->
               let sk = Hypothesis.skeleton h in
-              Option.map (m.config.deduction sk) (fun sk' ->
+              Option.map (m.config.deduction sk) ~f:(fun sk' ->
                   (Hypothesis.of_skeleton m.config.cost_model sk', u) ) )
 
   let select_matching :
@@ -258,7 +250,7 @@ module Memoizer = struct
       -> (Hypothesis.t * 'a) Sequence.t
       -> (Hypothesis.t * 'a) Sequence.t =
     let module H = Hypothesis in
-    fun m ~parent seq ->
+    fun m ~parent:_ seq ->
       match m.config.search_space_out with
       | Some ch ->
           Sequence.inspect seq ~f:(fun (h, _) ->

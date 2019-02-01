@@ -64,7 +64,7 @@ let default_stdlib =
     |> List.map ~f:(fun (name, str) -> (name, Expr.of_string_exn str)) )
   |> eval_ctx_of_alist
 
-let stdlib =
+let _stdlib =
   [("inf", `Num Int.max_value)]
   @ ( [ ("foldr", "(lambda (l f i) (if (= l []) i (f (foldr (cdr l) f i) (car l))))")
       ; ("foldl", "(lambda (l f i) (if (= l []) i (foldl (cdr l) f (f i (car l)))))")
@@ -135,14 +135,6 @@ let stdlib =
           \                       (if (= x1 x2) (dedup (cdr sl)) (cons x1 (dedup \
            (cdr sl))))))))))" ) ]
     |> List.map ~f:(fun (name, str) -> (name, Expr.of_string_exn str)) )
-
-let (stdlib_vctx : Value.t Ctx.t) = eval_ctx_of_alist stdlib
-
-let (stdlib_evctx : ExprValue.t Ctx.t) =
-  List.fold_left stdlib ~init:(Ctx.empty ()) ~f:(fun ctx (name, lambda) ->
-      let ctx' = Ctx.bind ctx name `Unit in
-      let value = `Closure (ExprValue.of_expr lambda, ctx') in
-      Ctx.update ctx' name value ; Ctx.bind ctx name value )
 
 let matrix_of_texpr_list ~size (texprs : TypedExpr.t list) :
     TypedExpr.t Sstream.matrix =
@@ -332,9 +324,8 @@ let rec enumerate ?(ops = default_ops) ?(memo = TypMemoizer.empty ()) config ini
 
 type hypothesis = {skel: Spec.t; max_exh_cost: int; generalized: bool}
 
-let solve_single ?(init = []) ?(ops = default_ops)
-    ?(verify = Verify.verify_examples ~ctx:(Ctx.empty ())) ~config
-    (examples : example list) =
+let solve_single ?(init = []) ?(verify = Verify.verify_examples ~ctx:(Ctx.empty ()))
+    ~config (examples : example list) =
   let initial_spec =
     let target_name = Example.name examples in
     let target ctx expr =

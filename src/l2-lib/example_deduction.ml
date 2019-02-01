@@ -1,6 +1,5 @@
 open Core
 open Core_extended.Std
-open Synthesis_common
 open Hypothesis
 open Collections
 module Sk = Skeleton
@@ -95,10 +94,6 @@ let unify : ExprValue.t -> ExprValue.t -> ExprValue.t String.Map.t Option.t =
   try Some (run_with_time "unify" (fun () -> unify_exn e1 e2))
   with Non_unifiable -> None
 
-let rec unify_with : ExprValue.t -> ExprValue.t -> ExprValue.t Option.t =
- fun e1 e2 ->
-  try Some (apply_unifier (unify_exn e1 e2) e1) with Non_unifiable -> None
-
 let unify_example : example -> example -> example Option.t =
   let module Let_syntax = Option.Let_syntax.Let_syntax in
   fun ex1 ex2 ->
@@ -132,9 +127,9 @@ let infer_example :
       let possible_specs =
         run_with_time "scan" (fun () ->
             List.filter_map specs ~f:(unify_example ex)
-            |> List.dedup ~compare:Polymorphic_compare.compare )
+            |> List.dedup_and_sort ~compare:Polymorphic_compare.compare )
       in
-      let args, ret = ex in
+      let args, _ = ex in
       let arity = List.length args in
       match possible_specs with
       | [] ->
@@ -192,7 +187,7 @@ let infer_examples :
                 in
                 let ret_eval = ExprValue.of_value ret in
                 infer_example ~op ~specs:op_specs ~ctx (arg_evals, ret_eval)
-              with Eval.RuntimeError err ->
+              with Eval.RuntimeError _ ->
                 (* printf "ERROR: %s\n" (Error.to_string_hum err); *)
                 List.repeat arity Sp.bottom )
           |> List.transpose
@@ -250,7 +245,7 @@ let push_specs_exn' :
       match Sp.data spec with
       | Examples.Examples exs ->
           let name = Expr.Op.to_string op in
-          let arg_specs, runtime =
+          let arg_specs, _ =
             Util.with_runtime (fun () ->
                 memoized_infer_examples ~specs ~op:name ~args (Examples.to_list exs)
             )
@@ -261,7 +256,7 @@ let push_specs_exn' :
     | Sk.Apply {func; args} -> (
       match (Sp.data spec, Sk.ast func) with
       | Examples.Examples exs, Sk.Id (Sk.Id.Name name) ->
-          let arg_specs, runtime =
+          let arg_specs, _ =
             Util.with_runtime (fun () ->
                 memoized_infer_examples ~specs ~op:name ~args (Examples.to_list exs)
             )

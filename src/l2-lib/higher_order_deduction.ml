@@ -1,14 +1,8 @@
 open Core
-open Synthesis_common
 open Collections
 open Hypothesis
-open Infer
 module Sp = Specification
 module Sk = Skeleton
-
-let type_err name type_ =
-  failwiths "Unexpected type for return value of function." (name, type_)
-    [%sexp_of: Ast.id * Type.t]
 
 let spec_err name spec =
   failwiths "Unexpected spec for return value of function." (name, spec)
@@ -60,7 +54,6 @@ module Make_deduce_2 (M : Deduce_2_intf) = struct
     | _ -> spec_err M.name parent_spec
 
   let deduce spec args =
-    let open Result.Monad_infix in
     match args with
     | [list; lambda] when Sp.equal (Sk.spec lambda) Sp.top -> (
       match Sk.ast list with
@@ -75,9 +68,6 @@ module type Deduce_fold_intf = sig
   val name : string
 
   val is_base_case : Value.t -> bool
-
-  val examples_of_io :
-    Value.t -> Value.t -> ((Value.t * Value.t) list, unit) Result.t
 end
 
 module Make_deduce_fold (M : Deduce_fold_intf) = struct
@@ -86,7 +76,7 @@ module Make_deduce_fold (M : Deduce_fold_intf) = struct
     | Examples.Examples exs -> (
         let exs = Examples.to_list exs in
         let m_base_exs =
-          List.filter exs ~f:(fun (ctx, out_v) ->
+          List.filter exs ~f:(fun (ctx, _) ->
               match StaticDistance.Map.find ctx collection_id with
               | Some v -> M.is_base_case v
               | None -> lookup_err (M.name ^ "-base-case") collection_id )
@@ -100,7 +90,6 @@ module Make_deduce_fold (M : Deduce_fold_intf) = struct
     | _ -> spec_err (M.name ^ "-base-case") parent_spec
 
   let deduce spec args =
-    let open Result.Monad_infix in
     match args with
     | [input; lambda; base] -> (
       match Sk.ast input with
@@ -162,24 +151,18 @@ module Deduce_foldl = Make_deduce_fold (struct
   let name = "foldl"
 
   let is_base_case v = v = `List []
-
-  let examples_of_io _ _ = Error ()
 end)
 
 module Deduce_foldr = Make_deduce_fold (struct
   let name = "foldr"
 
   let is_base_case v = v = `List []
-
-  let examples_of_io _ _ = Error ()
 end)
 
 module Deduce_foldt = Make_deduce_fold (struct
   let name = "foldt"
 
   let is_base_case v = v = `Tree Tree.Empty
-
-  let examples_of_io _ _ = Error ()
 end)
 
 let deduce_lambda lambda spec =

@@ -283,48 +283,6 @@ type hypothesis = {
   generalized : bool;
 }
 
-let get_predicate name =
-  match name with
-  | "sort" ->
-    (fun ret ->
-       let eval = Eval.eval (Ctx.empty ()) in
-       eval (`Apply (`Id "sort", [ret])) = eval ret)
-  | "dedup" ->
-    (fun ret ->
-       match ret with
-       | `List l ->
-         not (List.contains_dup ~compare:compare_expr l)
-       | _ -> false)
-  | "intersperse" ->
-    (fun ret ->
-       match ret with
-       | `List l ->
-         (* intersperse always returns a list with an odd length,
-            unless the input list is empty. *)
-         if l <> [] && List.length l % 2 = 0 then false else
-           (* Check that all the odd indexed values are the same. *)
-           List.zip_exn l (List.range 0 (List.length l))
-           |> List.filter_map ~f:(fun (e, i) -> if i % 2 <> 0 then Some e else None)
-           |> Util.all_equal ~eq:(=)
-       | _ -> false)
-  | "zip" ->
-    (fun ret ->
-       match ret with
-       | `List l -> List.length l % 2 = 0
-       | _ -> false)
-  | _ -> (fun _ -> true)
-
-(** Given a function name `f` and a set of examples, determine whether
-    there exists an expression (f ?) that conforms to the examples. *)
-let check_predicate name examples =
-  let pred = get_predicate name in
-  List.for_all ~f:(fun (_, ret) -> pred ret) examples
-
-let check_outermost_application expr examples =
-  match expr with
-  | `Lambda (_, `Apply (`Id f, _)) -> check_predicate f examples
-  | _ -> true
-
 (** TODO: Remove me! Needed so that the check method can run randomly,
     with a probability that depends on the current search depth. *)
 let current_cost = ref 0
@@ -338,7 +296,6 @@ let run_with_probability ~default ~f p =
 
 let solve_single
     ?(init=[])
-    ?(ops=Expr.Op.all)
     ?(verify=Verify.verify_examples ~ctx:(Ctx.empty ()))
     ~config
     (examples: example list) =
@@ -428,7 +385,7 @@ let solve_single
          allows the context to be used to generate a target function even
          when some of the holes are not filled by an expression. *)
       let init_ctx =
-        Ctx.mapi ~f:(fun ~key ~data -> `Id key) spec.Spec.holes
+        Ctx.mapi ~f:(fun ~key ~data:_ -> `Id key) spec.Spec.holes
       in
           
       let check' (name: string) (e: TypedExpr.t) : bool =
@@ -441,7 +398,7 @@ let solve_single
         let target = (spec.Spec.target ctx) (`Id "_") in
 
         match target with
-        | `Let (name, body, _) ->
+        | `Let _ ->
           (* if Expr.all_abstract body then true else *)
           (* If the example output does not pass the
              postcondition of the outermost function, discard this
@@ -449,7 +406,7 @@ let solve_single
           (* if not (check_outermost_application body examples) then false else *)
           (* Attempt partial evaluation and unification. *)
           List.for_all (List.zip_exn examples result_sterms)
-            ~f:(fun ((input, result), result_sterm) ->
+            ~f:(fun ((input, _), result_sterm) ->
                 let expr =
                   ExprValue.of_expr ((spec.Spec.target ctx) input)
                 in
@@ -477,7 +434,7 @@ let solve_single
                   | _ -> true
                 with
                 | Eval.HitRecursionLimit -> true
-                | Eval.RuntimeError err -> false)
+                | Eval.RuntimeError _ -> false)
         | _ -> failwith "Bad result from solve_single."
       in
 

@@ -79,7 +79,7 @@ let fold_constants (expr : expr) : expr option =
   in
   try Some (fold expr) with BadExpression -> None
 
-let rewrite h = failwith "Implement me."
+let rewrite _ = failwith "Implement me."
 
 (*   let top = Specification.top in *)
 (*   let rec rewrite h = *)
@@ -252,7 +252,7 @@ let rewrite h = failwith "Implement me."
 (*            | _ -> Op_h ((op, args), s))) *)
 (*   in try Some (rewrite h) with BadExpression -> None *)
 
-let rewrite_e (e : Expr.t) = failwith "Implement me."
+let rewrite_e (_ : Expr.t) = failwith "Implement me."
 
 (* Option.map (rewrite (Skeleton.of_expr Specification.top e)) (fun h -> Skeleton.to_expr_exn h) *)
 

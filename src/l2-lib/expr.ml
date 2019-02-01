@@ -178,7 +178,7 @@ module Op = struct
   let arity op =
     match (meta op).typ with
     | Arrow_t (args, _) -> List.length args
-    | _ -> raise Not_found
+    | _ -> failwith "Not a function."
 
   let assoc op = (meta op).assoc
 

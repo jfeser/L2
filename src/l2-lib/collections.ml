@@ -254,8 +254,9 @@ struct
   let merge_results = IntPairSet.union_list
 
   let store_lookup store id =
-    try Hashtbl.find_exn store id with Not_found ->
-      failwith "Index contains reference to nonexistent item."
+    match Hashtbl.find store id with
+    | Some x -> x
+    | None -> failwith "Index contains reference to nonexistent item."
 
   let exists_subset_or_superset (i : t) (s : KSet.t) (subset_v : Value.t)
       (superset_v : Value.t) : Value.t option =
@@ -342,7 +343,7 @@ module Ctx = struct
 
   let merge_right (c1 : 'a t) (c2 : 'a t) : 'a t =
     merge
-      ~f:(fun ~key v -> match v with `Both (_, v) | `Left v | `Right v -> Some v)
+      ~f:(fun ~key:_ v -> match v with `Both (_, v) | `Left v | `Right v -> Some v)
       c1 c2
 
   let map ctx ~f = ref (String.Map.map !ctx ~f)
@@ -427,10 +428,10 @@ module Counter = struct
   let empty () : t = String.Table.create ()
 
   let add_zero : t -> string -> string -> unit =
-   fun t name desc -> Hashtbl.set t name {count= Simple (ref 0); desc}
+   fun t name desc -> Hashtbl.set t ~key:name ~data:{count= Simple (ref 0); desc}
 
   let add_func : t -> string -> string -> (unit -> int) -> unit =
-   fun t name desc f -> Hashtbl.set t name {count= Func f; desc}
+   fun t name desc f -> Hashtbl.set t ~key:name ~data:{count= Func f; desc}
 
   let get_count : count -> int = function Simple c -> !c | Func f -> f ()
 
@@ -441,13 +442,13 @@ module Counter = struct
    fun t name v ->
     match (Hashtbl.find_exn t name).count with
     | Simple c -> c := v
-    | Func f -> failwith "Cannot set a function counter."
+    | Func _ -> failwith "Cannot set a function counter."
 
   let incr : t -> string -> unit =
    fun t name ->
     match (Hashtbl.find_exn t name).count with
     | Simple c -> incr c
-    | Func f -> failwith "Cannot incr a function counter."
+    | Func _ -> failwith "Cannot incr a function counter."
 
   let to_strings : t -> string list =
    fun t ->
@@ -480,7 +481,7 @@ module SexpLog = struct
    fun t name value ->
     String.Table.update t name ~f:(function
       | Some v -> {v with value= Some value}
-      | None -> raise Not_found )
+      | None -> failwith "Key not found." )
 
   let rec sexp_to_json : Sexp.t -> Json.json = function
     | Sexp.Atom str -> `String str
@@ -640,7 +641,7 @@ module Tree = struct
     | Empty, Empty -> Some Empty
     | Node _, Empty | Empty, Node _ -> None
     | Node (x1, c1), Node (x2, c2) ->
-        Option.bind (List.zip c1 c2) (fun c ->
+        Option.bind (List.zip c1 c2) ~f:(fun c ->
             List.map c ~f:(fun (t1, t2) -> zip t1 t2)
             |> Option.all
             |> Option.map ~f:(fun c -> Node ((x1, x2), c)) )
@@ -649,8 +650,9 @@ module Tree = struct
     match t with
     | Empty -> Some Empty
     | Node (x, c) ->
-        Option.bind x (fun x ->
-            Option.map (List.map c ~f:all |> Option.all) (fun c -> Node (x, c)) )
+        Option.bind x ~f:(fun x ->
+            Option.map (List.map c ~f:all |> Option.all) ~f:(fun c -> Node (x, c))
+        )
 end
 
 module SequenceExt = struct

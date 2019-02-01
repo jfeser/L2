@@ -1,5 +1,4 @@
 open Core
-open Printf
 open Collections
 
 (** Exceptions that can be thrown by the evaluation and type-checking functions. *)

@@ -63,7 +63,7 @@ let from_channel_exn : file:string -> In_channel.t -> t =
     List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
         let type_ =
           try
-            let t, u = Type.of_expr ~ctx (`Let (name, expr, `Id name)) in
+            let t, _ = Type.of_expr ~ctx (`Let (name, expr, `Id name)) in
             generalize (-1) t |> normalize
           with TypeError err -> Error.raise err
         in

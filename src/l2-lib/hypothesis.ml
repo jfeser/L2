@@ -72,8 +72,6 @@ module Symbol = struct
 
     let (compare : t -> t -> int) = Int.compare
 
-    let (equal : t -> t -> bool) = Int.equal
-
     let create (name : string) : t =
       let id = incr counter ; !counter in
       match Int.Table.add names ~key:id ~data:name with
@@ -319,9 +317,6 @@ module Skeleton = struct
 
   let spec sk = sk.Hashcons.node.spec
 
-  (** Constructor functions which correctly compute hashes. *)
-  let node sk = sk.Hashcons.node
-
   let num x s = Table.hashcons table {ast= Num x; spec= s}
 
   let bool x s = Table.hashcons table {ast= Bool x; spec= s}
@@ -346,7 +341,7 @@ module Skeleton = struct
   (** Replacement functions for record fields. *)
   let replace_spec sk spec = Table.hashcons table {sk.Hashcons.node with spec}
 
-  let rec to_pp : ?indent:int -> t -> Pp.t =
+  let to_pp : ?indent:int -> t -> Pp.t =
     let module SD = StaticDistance in
     let module O = Expr.Op in
     let open Pp in
@@ -442,7 +437,7 @@ module Skeleton = struct
       in
       to_pp SD.Map.empty
 
-  let rec to_string_hum : t -> string = fun s -> to_pp s |> Pp.to_string
+  let to_string_hum : t -> string = fun s -> to_pp s |> Pp.to_string
 
   let to_expr :
          ?ctx:Expr.t StaticDistance.Map.t
@@ -542,9 +537,9 @@ module Skeleton = struct
     | List x -> List.concat_map x ~f:holes
     | Tree x -> Tree.flatten x |> List.concat_map ~f:holes
     | Let {bound; body} -> holes bound @ holes body
-    | Lambda {body} -> holes body
+    | Lambda {body; _} -> holes body
     | Apply {func; args} -> holes func @ List.concat_map args ~f:holes
-    | Op {args} -> List.concat_map args ~f:holes
+    | Op {args; _} -> List.concat_map args ~f:holes
     | Hole hole -> [(hole, spec sk)]
 end
 
@@ -627,7 +622,7 @@ module PerFunctionCostModel = struct
     ; CM.id=
         (function
         | Skeleton.Id.Name op -> lookup_func op
-        | Skeleton.Id.StaticDistance sd -> t.var) }
+        | Skeleton.Id.StaticDistance _ -> t.var) }
 
   let to_json t =
     let call_to_json m =
@@ -702,8 +697,6 @@ module Specification0 = struct
     let t_of_sexp : Sexp.t -> t = fun _ -> failwith "Unimplemented."
 
     let compare : t -> t -> int = Skeleton.compare_spec
-
-    let equal : t -> t -> bool = Skeleton.equal_spec
   end
 
   include T
@@ -770,7 +763,7 @@ module Examples = struct
         | Some _ -> error_string "Different return value for same input."
         | None -> Ok (I.Map.set m ~key:ctx ~data:ret) )
     |> ignore
-    >>| fun () -> List.dedup ~compare:compare_example exs
+    >>| fun () -> List.dedup_and_sort ~compare:compare_example exs
 
   let of_list_exn exs = of_list exs |> Or_error.ok_exn
 
@@ -778,7 +771,7 @@ module Examples = struct
 
   let singleton : example -> t = fun ex -> [ex]
 
-  let context = function [] -> [] | (inp, out) :: _ -> Map.keys inp
+  let context = function [] -> [] | (inp, _) :: _ -> Map.keys inp
 
   let to_spec : t -> S.t =
    fun exs ->
@@ -847,7 +840,7 @@ module FunctionExamples = struct
         | Some _ -> error_string "Different return value for same input."
         | None -> Ok (Map.set m ~key ~data:ret) )
     |> ignore
-    >>| fun () -> List.dedup ~compare:compare_example exs
+    >>| fun () -> List.dedup_and_sort ~compare:compare_example exs
 
   let of_list_exn exs = of_list exs |> Or_error.ok_exn
 

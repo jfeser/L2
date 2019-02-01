@@ -1,11 +1,6 @@
 open Core
 module Seq = Sequence
 
-let array_to_string a ts =
-  let elems = Array.to_list a |> List.map ~f:ts in
-  let elems_str = String.concat elems ~sep:", " in
-  "[" ^ elems_str ^ "]"
-
 let m_partition : int -> int -> Array.Int.t Seq.t =
  fun n m ->
   (* if m <= 0 then failwiths "'m' must be greater than or equal to 1." m [%sexp_of:int]; *)

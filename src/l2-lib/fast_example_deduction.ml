@@ -1,6 +1,5 @@
 open Core
 open Core_extended.Std
-open Bin_prot.Std
 open Collections
 open Hypothesis
 open Infer
@@ -213,7 +212,7 @@ module Abstract_value = struct
     | `Closure _, `Closure _ -> raise (Invalid_argument "Comparing closures.")
     | _ -> `Bool false
 
-  let rec list_join ~join x y =
+  let list_join ~join x y =
     if List.length x = List.length y then
       `AbsList (Abstract_list.List (List.map2_exn x y ~f:join))
     else `Top
@@ -419,7 +418,7 @@ module Abstract_value = struct
                     if List.length xs >= list_domain.AL.max_length then
                       `AbsList Abstract_list.Omega
                     else `AbsList (AL.List (x :: xs))
-                | [x; `AbsList Abstract_list.Omega] -> `AbsList Abstract_list.Omega
+                | [_; `AbsList Abstract_list.Omega] -> `AbsList Abstract_list.Omega
                 | [x; `List y] -> `List (x :: y)
                 | _ -> `Top )
               | O.RCons -> (
@@ -428,7 +427,7 @@ module Abstract_value = struct
                     if List.length xs >= list_domain.AL.max_length then
                       `AbsList Abstract_list.Omega
                     else `AbsList (AL.List (x :: xs))
-                | [`AbsList Abstract_list.Omega; x] -> `AbsList Abstract_list.Omega
+                | [`AbsList Abstract_list.Omega; _] -> `AbsList Abstract_list.Omega
                 | [`List y; x] -> `List (x :: y)
                 | _ -> `Top )
               | O.Car -> (
@@ -471,7 +470,7 @@ module Abstract_value = struct
     in
     ev ctx 0 expr
 
-  let rec lift :
+  let lift :
       ?ctx:int Value.Map.t -> domain -> Type.t -> Value.t -> t * int Value.Map.t =
     let module T = Type in
     fun ?(ctx = Value.Map.empty) d t v ->
@@ -544,7 +543,6 @@ module Abstract_example = struct
     "(" ^ ins_str ^ ") -> " ^ out_str
 
   let lift : domain -> Type.t -> Value.t list * Value.t -> t * Value.t Int.Map.t =
-    let open Abstract_value in
     let open Type in
     fun domain type_ (ins, out) ->
       match type_ with
@@ -587,7 +585,7 @@ module Abstract_example = struct
 
   let lower x y = Timer.run_with_time timer "lowering" (fun () -> lower x y)
 
-  let rec join : t -> t -> t =
+  let join : t -> t -> t =
    fun (i1, o1) (i2, o2) ->
     (List.map2_exn i1 i2 ~f:Abstract_value.join, Abstract_value.join o1 o2)
 
@@ -739,7 +737,7 @@ let infer_examples :
       let arg_specs =
         List.map2_exn ctxs deduced_exs ~f:(fun ctx -> function
           | `Bottom -> List.repeat arity Sp.bottom
-          | `Ex (ins, out) ->
+          | `Ex (ins, _) ->
               List.map ins ~f:(function
                 | `Top -> Sp.top
                 | `Value v -> Examples.singleton (ctx, v) |> Examples.to_spec ) )

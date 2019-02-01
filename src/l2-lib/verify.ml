@@ -118,7 +118,7 @@ let verify_example ?(ctx = Ctx.empty ()) ?(limit = 100) (target : expr -> expr)
   let input, result = example in
   let eval = Eval.eval ~recursion_limit:limit ctx in
   try eval (target input) = eval result with
-  | Eval.RuntimeError msg ->
+  | Eval.RuntimeError _ ->
       (* printf "Runtime error \"%s\" in %s\n" msg (expr_to_string (target input)); *)
       false
   | Ctx.UnboundError name ->

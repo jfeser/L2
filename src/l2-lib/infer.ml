@@ -239,12 +239,12 @@ module Unifier = struct
     | App_t (name, args) -> App_t (name, List.map ~f:(apply s) args)
     | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(apply s) args, apply s ret)
 
-  let rec apply_ctx : t -> Type0.t String.Map.t -> Type0.t String.Map.t =
+  let apply_ctx : t -> Type0.t String.Map.t -> Type0.t String.Map.t =
    fun u ctx -> String.Map.map ctx ~f:(apply u)
 
   let merge outer inner =
-    Int.Map.merge outer inner ~f:(fun ~key -> function
-      | `Both (o, i) -> Some i | `Left x | `Right x -> Some x )
+    Int.Map.merge outer inner ~f:(fun ~key:_ -> function
+      | `Both (_, i) -> Some i | `Left x | `Right x -> Some x )
 
   let compose : outer:t -> inner:t -> t =
    fun ~outer ~inner -> merge (Int.Map.map ~f:(fun t -> apply inner t) outer) inner
@@ -283,7 +283,7 @@ module Unifier = struct
       | Arrow_t (args1, ret1), Arrow_t (args2, ret2) ->
           let s1 = of_many_types_exn args1 args2 in
           let s2 = of_types_exn ret1 ret2 in
-          compose s1 s2
+          compose ~outer:s1 ~inner:s2
       | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
           of_many_types_exn args1 args2
       | _ -> unify_error t1 t2
@@ -293,7 +293,7 @@ module Unifier = struct
     match List.zip ts1 ts2 with
     | Some ts ->
         List.fold_left ts ~init:empty ~f:(fun s (a1, a2) ->
-            compose s (of_types_exn (apply s a1) (apply s a2)) )
+            compose ~outer:s ~inner:(of_types_exn (apply s a1) (apply s a2)) )
     | None ->
         let err =
           Error.create "Length mismatch." (ts1, ts2)
@@ -615,7 +615,7 @@ module Type = struct
           let t1, u1 = of_expr ctx x in
           List.fold_left ys ~init:(t1, u1) ~f:(fun (t, u) y ->
               let ctx = Unifier.apply_ctx u ctx in
-              let t', u' = of_tree ctx y in
+              let t', _ = of_tree ctx y in
               let u'' = Unifier.of_types_exn t t' in
               (Unifier.apply u'' t', u'') )
     and of_list ctx = function
@@ -678,8 +678,8 @@ module Type = struct
       try
         let t, u =
           match expr with
-          | `Num x -> (Const_t Num_t, Unifier.empty)
-          | `Bool x -> (Const_t Bool_t, Unifier.empty)
+          | `Num _ -> (Const_t Num_t, Unifier.empty)
+          | `Bool _ -> (Const_t Bool_t, Unifier.empty)
           | `Tree x ->
               let t, u = of_tree ctx x in
               (App_t ("tree", [t]), u)
