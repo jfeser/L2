@@ -1,82 +1,86 @@
 open Core
 open Option
-
 open Ast
 open Collections
 open Hypothesis
 
 exception BadExpression
 
-let rec is_constant (expr: expr) : bool =
+let rec is_constant (expr : expr) : bool =
   match expr with
   | `Id _ | `Let _ | `Lambda _ | `Apply _ | `Op _ -> false
   | `Num _ | `Bool _ -> true
   | `List [] -> true
-  | `List (x::xs) -> (is_constant x) && (is_constant (`List xs))
+  | `List (x :: xs) -> is_constant x && is_constant (`List xs)
   | `Tree Tree.Empty -> true
   | `Tree (Tree.Node (x, xs)) ->
-    (is_constant x) && (List.for_all xs ~f:(fun x' -> is_constant (`Tree x')))
+      is_constant x && List.for_all xs ~f:(fun x' -> is_constant (`Tree x'))
 
 let rec sequence = function
   | [] -> Some []
-  | (Some x)::xs -> (match sequence xs with
-      | Some xs' -> Some (x::xs')
-      | None -> None)
-  | None::_ -> None
+  | Some x :: xs -> (
+    match sequence xs with Some xs' -> Some (x :: xs') | None -> None )
+  | None :: _ -> None
 
-let is_base (base_terms: expr list) (expr: expr) : expr option =
-  let rec is_base_r (expr: expr) : bool = match expr with
+let is_base (base_terms : expr list) (expr : expr) : expr option =
+  let rec is_base_r (expr : expr) : bool =
+    match expr with
     | `Id _ -> true
-    | `Num _  | `Bool _ | `List _ | `Tree _ -> List.mem ~equal:(=) base_terms expr
-    | `Let (_, v, e) -> (is_base_r v) && (is_base_r e)
-    | `Lambda (_, e)  -> is_base_r e
-    | `Apply (f, a)   -> (is_base_r f) && (List.for_all a ~f:is_base_r)
-    | `Op (_, args)  -> List.for_all args ~f:is_base_r
-  in if is_base_r expr then Some expr else None
+    | `Num _ | `Bool _ | `List _ | `Tree _ -> List.mem ~equal:( = ) base_terms expr
+    | `Let (_, v, e) -> is_base_r v && is_base_r e
+    | `Lambda (_, e) -> is_base_r e
+    | `Apply (f, a) -> is_base_r f && List.for_all a ~f:is_base_r
+    | `Op (_, args) -> List.for_all args ~f:is_base_r
+  in
+  if is_base_r expr then Some expr else None
 
-let fold_constants (expr: expr) : expr option =
-  let rec fold (expr: expr) : expr =
+let fold_constants (expr : expr) : expr option =
+  let rec fold (expr : expr) : expr =
     let fold_all l = List.map l ~f:fold in
     match expr with
-    | `Id _
-    | `Num _
-    | `Bool _         -> expr
-    | `List l         -> `List (fold_all l)
-    | `Tree t         -> `Tree (Tree.map t ~f:fold)
-    | `Let (id, v, e) -> let fe = fold e in if is_constant fe then fe else `Let (id, fold v, fe)
-    | `Lambda (a, e)  -> let fe = fold e in if is_constant fe then fe else `Lambda (a, fe)
-    | `Apply (f, a)   -> `Apply (fold f, fold_all a)
-    | `Op (op, args)  ->
-      let rec value_to_const (value: value) : expr option =
-        match value with
-        | `Num x -> Some (`Num x)
-        | `Bool x -> Some (`Bool x)
-        | `List x -> (match sequence (List.map ~f:value_to_const x) with
+    | `Id _ | `Num _ | `Bool _ -> expr
+    | `List l -> `List (fold_all l)
+    | `Tree t -> `Tree (Tree.map t ~f:fold)
+    | `Let (id, v, e) ->
+        let fe = fold e in
+        if is_constant fe then fe else `Let (id, fold v, fe)
+    | `Lambda (a, e) ->
+        let fe = fold e in
+        if is_constant fe then fe else `Lambda (a, fe)
+    | `Apply (f, a) -> `Apply (fold f, fold_all a)
+    | `Op (op, args) ->
+        let rec value_to_const (value : value) : expr option =
+          match value with
+          | `Num x -> Some (`Num x)
+          | `Bool x -> Some (`Bool x)
+          | `List x -> (
+            match sequence (List.map ~f:value_to_const x) with
             | Some x' -> Some (`List x')
-            | None -> None)
-        | `Tree t ->
-          (try
-             Some (`Tree (Tree.map t ~f:(fun x ->
-                 match value_to_const x with
-                 | Some x' -> x'
-                 | None -> raise BadExpression)))
-           with BadExpression -> None)
-        | `Closure _
-        | `Unit -> None
-      in
-      let folded_args = fold_all args in
-      let new_op = `Op (op, folded_args) in
-      if List.for_all ~f:is_constant folded_args then
-        try
-          let value = Eval.eval (Ctx.empty ()) new_op in
-          match value_to_const value with
-          | Some const -> const
-          | None -> new_op
-        with Eval.RuntimeError _ -> raise BadExpression
-      else new_op
-  in try Some (fold expr) with BadExpression -> None
+            | None -> None )
+          | `Tree t -> (
+            try
+              Some
+                (`Tree
+                  (Tree.map t ~f:(fun x ->
+                       match value_to_const x with
+                       | Some x' -> x'
+                       | None -> raise BadExpression )))
+            with BadExpression -> None )
+          | `Closure _ | `Unit -> None
+        in
+        let folded_args = fold_all args in
+        let new_op = `Op (op, folded_args) in
+        if List.for_all ~f:is_constant folded_args then
+          try
+            let value = Eval.eval (Ctx.empty ()) new_op in
+            match value_to_const value with Some const -> const | None -> new_op
+          with Eval.RuntimeError _ -> raise BadExpression
+        else new_op
+  in
+  try Some (fold expr) with BadExpression -> None
 
 let rewrite h = failwith "Implement me."
+
 (*   let top = Specification.top in *)
 (*   let rec rewrite h = *)
 (*     let rewrite_all l = List.map l ~f:rewrite in *)
@@ -248,15 +252,16 @@ let rewrite h = failwith "Implement me."
 (*            | _ -> Op_h ((op, args), s))) *)
 (*   in try Some (rewrite h) with BadExpression -> None *)
 
-let rewrite_e (e: Expr.t) =
-  failwith "Implement me."
-  (* Option.map (rewrite (Skeleton.of_expr Specification.top e)) (fun h -> Skeleton.to_expr_exn h) *)
+let rewrite_e (e : Expr.t) = failwith "Implement me."
+
+(* Option.map (rewrite (Skeleton.of_expr Specification.top e)) (fun h -> Skeleton.to_expr_exn h) *)
 
 let simplify base_terms expr =
-  match expr |> fold_constants >>= rewrite_e >>= fold_constants >>= (is_base base_terms) with
+  match
+    expr |> fold_constants >>= rewrite_e >>= fold_constants >>= is_base base_terms
+  with
   | Some expr -> Some expr
   | None -> rewrite_e expr
 
-let is_rewritable h = match rewrite h with
-  | Some h' -> Skeleton.equal h h'
-  | None -> true
+let is_rewritable h =
+  match rewrite h with Some h' -> Skeleton.equal h h' | None -> true

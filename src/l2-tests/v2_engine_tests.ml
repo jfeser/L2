@@ -1,15 +1,12 @@
 open Core
 open OUnit2
 open L2
-
 open Tests_common
 open Synthesis_common
-    
-open Ast 
+open Ast
 open Infer
 open Hypothesis
 open V2_engine
-
 module Sym = L2_Generalizer.Symbols
 module Gen = L2_Generalizer.With_components
 module Mem = Memoizer
@@ -17,36 +14,37 @@ module Mem = Memoizer
 let cost_model = default_cost_model
 
 let top = Specification.top
-let cost_model_tests = "cost-model" >::: [
-    test_case (fun ctxt ->
-        let skel_str =
-          "(Apply_h
-   ((Id_h (Name append) Top)
-    ((Hole_h
-      ((id 27) (ctx ()) (type_ (App_t list ((Const_t Num_t))))
-       (symbol Expression))
-      Top)
-     (Hole_h
-      ((id 28) (ctx ()) (type_ (App_t list ((Const_t Num_t))))
-       (symbol Expression))
-      Top)))
-   Top)"
-        in
-        let h =
-          Skeleton.t_of_sexp (Sexp.of_string skel_str)
-          |> Hypothesis.of_skeleton cost_model
-        in
-        assert_equal ~ctxt ~printer:Int.to_string 1 (Hypothesis.cost h));
 
-    test_case (fun ctxt ->
-        let h =
-          let cm = cost_model in
-          let one = Hypothesis.num cm 1 top in
-          Hypothesis.apply cm (Hypothesis.id_name cm "append" top) [one; one] top
-        in
-        assert_equal ~ctxt ~printer:Int.to_string 3 (Hypothesis.cost h))
-
-  ]
+let cost_model_tests =
+  "cost-model"
+  >::: [ test_case (fun ctxt ->
+             let skel_str =
+               "(Apply_h\n\
+               \   ((Id_h (Name append) Top)\n\
+               \    ((Hole_h\n\
+               \      ((id 27) (ctx ()) (type_ (App_t list ((Const_t Num_t))))\n\
+               \       (symbol Expression))\n\
+               \      Top)\n\
+               \     (Hole_h\n\
+               \      ((id 28) (ctx ()) (type_ (App_t list ((Const_t Num_t))))\n\
+               \       (symbol Expression))\n\
+               \      Top)))\n\
+               \   Top)"
+             in
+             let h =
+               Skeleton.t_of_sexp (Sexp.of_string skel_str)
+               |> Hypothesis.of_skeleton cost_model
+             in
+             assert_equal ~ctxt ~printer:Int.to_string 1 (Hypothesis.cost h) )
+       ; test_case (fun ctxt ->
+             let h =
+               let cm = cost_model in
+               let one = Hypothesis.num cm 1 top in
+               Hypothesis.apply cm
+                 (Hypothesis.id_name cm "append" top)
+                 [one; one] top
+             in
+             assert_equal ~ctxt ~printer:Int.to_string 3 (Hypothesis.cost h) ) ]
 
 (* let memoizer_tests = "memoizer" >::: [ *)
 (*     "get" >::: [ *)
@@ -91,24 +89,24 @@ let cost_model_tests = "cost-model" >::: [
 (*     ] *)
 (*   ] *)
 
-let tests = "v2-engine" >::: [
-    cost_model_tests;
-    
-    "symbol" >::: [
-      "create" >::: [
-        test_case (fun _ ->
-            let s1 = Symbol.create "test1" in
-            let s2 = Symbol.create "test2" in
-            assert_bool "A symbol is only equal to itself." (not (Symbol.equal s1 s2)));
-        test_case (fun _ ->
-            let s1 = Symbol.create "test" in
-            let s2 = Symbol.create "test" in
-            assert_bool "A symbol is only equal to itself." (not (Symbol.equal s1 s2)));
-        test_case (fun _ ->
-            let s = Symbol.create "test" in
-            assert_bool "A symbol is only equal to itself." (Symbol.equal s s));
-      ]
-    ];
-
-    (* memoizer_tests; *)
-  ]
+let tests =
+  "v2-engine"
+  >::: [ cost_model_tests
+       ; "symbol"
+         >::: [ "create"
+                >::: [ test_case (fun _ ->
+                           let s1 = Symbol.create "test1" in
+                           let s2 = Symbol.create "test2" in
+                           assert_bool "A symbol is only equal to itself."
+                             (not (Symbol.equal s1 s2)) )
+                     ; test_case (fun _ ->
+                           let s1 = Symbol.create "test" in
+                           let s2 = Symbol.create "test" in
+                           assert_bool "A symbol is only equal to itself."
+                             (not (Symbol.equal s1 s2)) )
+                     ; test_case (fun _ ->
+                           let s = Symbol.create "test" in
+                           assert_bool "A symbol is only equal to itself."
+                             (Symbol.equal s s) ) ] ]
+       (* memoizer_tests; *)
+        ]
