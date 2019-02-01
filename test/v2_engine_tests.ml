@@ -15,25 +15,6 @@ let top = Specification.top
 let cost_model_tests =
   "cost-model"
   >::: [ test_case (fun ctxt ->
-             let skel_str =
-               "(Apply_h\n\
-               \   ((Id_h (Name append) Top)\n\
-               \    ((Hole_h\n\
-               \      ((id 27) (ctx ()) (type_ (App_t list ((Const_t Num_t))))\n\
-               \       (symbol Expression))\n\
-               \      Top)\n\
-               \     (Hole_h\n\
-               \      ((id 28) (ctx ()) (type_ (App_t list ((Const_t Num_t))))\n\
-               \       (symbol Expression))\n\
-               \      Top)))\n\
-               \   Top)"
-             in
-             let h =
-               Skeleton.t_of_sexp (Sexp.of_string skel_str)
-               |> Hypothesis.of_skeleton cost_model
-             in
-             assert_equal ~ctxt ~printer:Int.to_string 1 (Hypothesis.cost h) )
-       ; test_case (fun ctxt ->
              let h =
                let cm = cost_model in
                let one = Hypothesis.num cm 1 top in

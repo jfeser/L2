@@ -5,6 +5,7 @@ maintainer:   "Jack Feser <jack.feser@gmail.com>"
 authors:      "Jack Feser <jack.feser@gmail.com>"
 homepage:     "https://github.com/jfeser/L2"
 bug-reports:  "https://github.com/jfeser/L2/issues"
+doc: "https://jfeser.github.io/L2/"
 license:      "Apache2.0"
 dev-repo:     "https://github.com/jfeser/L2.git"
 build: [["dune" "build" "-p" name "-j" jobs]]
