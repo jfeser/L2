@@ -1,5 +1,4 @@
 open Core
-open Core_extended.Std
 open Collections
 open Infer
 
@@ -67,8 +66,12 @@ end
     type context, and a symbol which defines the set of expressions which
     can be used to fill the hole. *)
 module Hole : sig
-  type t = private
-    {id: int; ctx: Type.t StaticDistance.Map.t; type_: Type.t; symbol: Symbol.t}
+  type t = private {
+    id : int;
+    ctx : Type.t StaticDistance.Map.t;
+    type_ : Type.t;
+    symbol : Symbol.t;
+  }
 
   include Sexpable.S with type t := t
 
@@ -103,19 +106,20 @@ module Skeleton : sig
     | Tree of t Tree.t
     | Id of Id.t
     | Hole of Hole.t
-    | Let of {bound: t; body: t}
-    | Lambda of {num_args: int; body: t}
-    | Apply of {func: t; args: t list}
-    | Op of {op: Expr.Op.t; args: t list}
+    | Let of { bound : t; body : t }
+    | Lambda of { num_args : int; body : t }
+    | Apply of { func : t; args : t list }
+    | Op of { op : Expr.Op.t; args : t list }
 
-  and spec =
-    { verify: Library.t -> t -> bool
-    ; compare: spec -> int
-    ; to_sexp: unit -> Sexp.t
-    ; to_string: unit -> string
-    ; data: spec_data }
+  and spec = {
+    verify : Library.t -> t -> bool;
+    compare : spec -> int;
+    to_sexp : unit -> Sexp.t;
+    to_string : unit -> string;
+    data : spec_data;
+  }
 
-  and skel = {spec: spec; ast: ast}
+  and skel = { spec : spec; ast : ast }
 
   and t = skel Hashcons.hash_consed
 
@@ -148,6 +152,31 @@ module Skeleton : sig
 
   val op : Expr.Op.t -> t List.t -> spec -> t
 
+  class ['c] endo :
+    object
+      method apply : 'c -> t -> t list -> spec -> t * t list * spec
+
+      method bool : 'c -> bool -> spec -> bool * spec
+
+      method hole : 'c -> Hole.t -> spec -> Hole.t * spec
+
+      method id : 'c -> Id.t -> spec -> Id.t * spec
+
+      method lambda : 'c -> int -> t -> spec -> int * t * spec
+
+      method let_ : 'c -> t -> t -> spec -> t * t * spec
+
+      method list : 'c -> t list -> spec -> t list * spec
+
+      method num : 'c -> int -> spec -> int * spec
+
+      method op : 'c -> Ast.op -> t list -> spec -> Ast.op * t list * spec
+
+      method t : 'c -> t -> t
+
+      method tree : 'c -> t Tree.t -> spec -> t Tree.t * spec
+    end
+
   include Sexpable.S with type t := t
 
   module Table : sig
@@ -158,14 +187,14 @@ module Skeleton : sig
 
   val to_string_hum : t -> string
 
-  val to_pp : ?indent:int -> t -> Pp.t
+  val pp : Formatter.t -> t -> unit
 
   val to_expr :
-       ?ctx:Expr.t StaticDistance.Map.t
-    -> ?fresh_name:(unit -> string)
-    -> ?of_hole:(Hole.t -> Expr.t)
-    -> t
-    -> Expr.t
+    ?ctx:Expr.t StaticDistance.Map.t ->
+    ?fresh_name:(unit -> string) ->
+    ?of_hole:(Hole.t -> Expr.t) ->
+    t ->
+    Expr.t
   (** Convert a skeleton to an {!Expr.t}.
       @param ctx A mapping from static distance variables to expressions. All SD variables will be replaced according to this mapping.
       @param fresh_name A function which generates a fresh name.
@@ -181,17 +210,18 @@ end
 (** A CostModel assigns a cost to each variant of a skeleton. The
     total cost is the sum of the costs of the nodes. *)
 module CostModel : sig
-  type t =
-    { num: int -> int
-    ; bool: bool -> int
-    ; hole: Hole.t -> int
-    ; id: Skeleton.Id.t -> int
-    ; list: 'a. 'a list -> int
-    ; tree: 'a. 'a Tree.t -> int
-    ; _let: 'a. 'a -> 'a -> int
-    ; lambda: 'a. int -> 'a -> int
-    ; apply: 'a. 'a -> 'a list -> int
-    ; op: 'a. Expr.Op.t -> 'a list -> int }
+  type t = {
+    num : int -> int;
+    bool : bool -> int;
+    hole : Hole.t -> int;
+    id : Skeleton.Id.t -> int;
+    list : 'a. 'a list -> int;
+    tree : 'a. 'a Tree.t -> int;
+    _let : 'a. 'a -> 'a -> int;
+    lambda : 'a. int -> 'a -> int;
+    apply : 'a. 'a -> 'a list -> int;
+    op : 'a. Expr.Op.t -> 'a list -> int;
+  }
 
   val constant : int -> t
   (** A cost model where variant has a constant cost. *)
@@ -208,9 +238,9 @@ module PerFunctionCostModel : sig
 
   val to_cost_model : t -> CostModel.t
 
-  val to_json : t -> Json.json
+  val to_json : t -> Json.t
 
-  val of_json : Json.json -> t
+  val of_json : Json.t -> t
 end
 
 module Specification : sig
@@ -218,12 +248,13 @@ module Specification : sig
 
   type data += private Top | Bottom
 
-  type t = Skeleton.spec =
-    { verify: 'a. Library.t -> Skeleton.t -> bool
-    ; compare: t -> int
-    ; to_sexp: unit -> Sexp.t
-    ; to_string: unit -> string
-    ; data: data }
+  type t = Skeleton.spec = {
+    verify : 'a. Library.t -> Skeleton.t -> bool;
+    compare : t -> int;
+    to_sexp : unit -> Sexp.t;
+    to_string : unit -> string;
+    data : data;
+  }
 
   include Comparable.S with type t := t
 

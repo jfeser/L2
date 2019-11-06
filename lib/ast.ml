@@ -3,7 +3,7 @@ open Collections
 
 exception ParseError of string
 
-type id = string [@@deriving compare, sexp, bin_io]
+type id = string [@@deriving compare, hash, sexp, bin_io]
 
 (** Represents the type of a value or expression. *)
 type typ =
@@ -43,7 +43,7 @@ type op =
   | Tree
   | Value
   | Children
-[@@deriving compare, sexp]
+[@@deriving compare, hash, sexp]
 
 type expr =
   [ `Num of int
@@ -55,7 +55,7 @@ type expr =
   | `Lambda of id list * expr
   | `Apply of expr * expr list
   | `Op of op * expr list ]
-[@@deriving compare, sexp]
+[@@deriving compare, hash, sexp]
 
 type example = expr * expr [@@deriving compare, sexp]
 

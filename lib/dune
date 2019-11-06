@@ -5,6 +5,6 @@
 (library
  (name l2)
  (public_name l2)
- (libraries core core_extended yojson hashcons)
+ (libraries core yojson hashcons typerep)
  (preprocess (pps ppx_jane))
  (modules (:standard \ Symbolic_execution Automaton Generate_functions)))

@@ -18,8 +18,8 @@ type t = {
   blacklist : string list;
 }
 
-val of_json : Json.json -> t Or_error.t
-val to_json : t -> Json.json
+val of_json : Json.t -> t Or_error.t
+val to_json : t -> Json.t
                      
 val from_file : filename:string -> t Or_error.t
     

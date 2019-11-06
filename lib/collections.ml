@@ -33,22 +33,21 @@ module ListExt = struct
   let rec fold_left1 (l : 'a list) ~(f : 'a -> 'a -> 'a) : 'a =
     match l with
     | [] -> failwith "List must be non-empty."
-    | [x] -> x
+    | [ x ] -> x
     | x :: y :: xs -> fold_left1 (f x y :: xs) ~f
 
   let rec insert (l : 'a list) (x : 'a) ~(cmp : 'a -> 'a -> int) : 'a list =
     match l with
-    | [] -> [x]
+    | [] -> [ x ]
     | y :: ys -> if cmp x y <= 0 then x :: l else y :: insert ys x ~cmp
 
-  let max =
-    List.fold_left ~f:(fun a e -> if e > a then e else a) ~init:Int.min_value
+  let max = List.fold_left ~f:(fun a e -> if e > a then e else a) ~init:Int.min_value
 
   let int_sum : int list -> int = List.fold_left ~f:(fun x y -> x + y) ~init:0
 
   let rec all_equal ?(eq = ( = )) (l : 'a list) =
     match l with
-    | [] | [_] -> true
+    | [] | [ _ ] -> true
     | x :: y :: xs -> eq x y && all_equal (y :: xs) ~eq
 
   let rec unzip3 l =
@@ -62,7 +61,8 @@ module ListExt = struct
 
   (* diag [1,2,3] 0 = [[0,2,3], [1,0,3], [1,2,0]] *)
   let diag l x =
-    List.init (List.length l) ~f:(fun i -> List.take l i @ [x] @ List.drop l (i + 1))
+    List.init (List.length l) ~f:(fun i ->
+        List.take l i @ [ x ] @ List.drop l (i + 1))
 
   let random : ?state:Random.State.t -> 'a list -> 'a option =
    fun ?(state = Random.State.default) l ->
@@ -104,7 +104,7 @@ module StreamExt = struct
     from (fun _ ->
         match peek s1 with
         | Some _ -> Some (next s1)
-        | None -> ( match peek s2 with Some _ -> Some (next s2) | None -> None ) )
+        | None -> ( match peek s2 with Some _ -> Some (next s2) | None -> None ))
 
   (* Map a function over a stream. *)
   let map s ~f = from (fun _ -> try Some (f (next s)) with Failure -> None)
@@ -114,11 +114,11 @@ module StreamExt = struct
         let rec collect () =
           match npeek 2 s with
           | [] -> None
-          | [_] -> Some [next s]
-          | [x; y] -> if break x y then Some [next s] else collect ()
+          | [ _ ] -> Some [ next s ]
+          | [ x; y ] -> if break x y then Some [ next s ] else collect ()
           | _ -> failwith "Stream.npeek returned a larger list than expected."
         in
-        collect () )
+        collect ())
 end
 
 module Stream = StreamExt
@@ -146,13 +146,16 @@ end
 
 module StreamMemoizer
     (Key : Map.Key) (Value : sig
-        type t
+      type t
     end) =
 struct
   module KMap = Map.Make (Key)
 
-  type memo_stream =
-    {index: int ref; head: Value.t list Int.Table.t; stream: Value.t Matrix.t}
+  type memo_stream = {
+    index : int ref;
+    head : Value.t list Int.Table.t;
+    stream : Value.t Matrix.t;
+  }
 
   type t = memo_stream KMap.t ref
 
@@ -164,8 +167,10 @@ struct
       match KMap.find !memo typ with
       | Some s -> s
       | None ->
-          let s = {index= ref 0; head= Int.Table.create (); stream= stream ()} in
-          memo := KMap.set !memo ~key:typ ~data:s ;
+          let s =
+            { index = ref 0; head = Int.Table.create (); stream = stream () }
+          in
+          memo := KMap.set !memo ~key:typ ~data:s;
           s
     in
     Stream.from (fun i ->
@@ -176,11 +181,11 @@ struct
           |> List.iter ~f:(fun j ->
                  try
                    Int.Table.add_exn mstream.head ~key:j
-                     ~data:(Stream.next mstream.stream) ;
+                     ~data:(Stream.next mstream.stream);
                    incr mstream.index
-                 with Stream.Failure -> () ) ;
+                 with Stream.Failure -> ());
           if sc = !(mstream.index) then Some (Int.Table.find_exn mstream.head sc)
-          else None ) )
+          else None ))
 end
 
 (** An inverted index maps sets to values so that queries can be
@@ -212,27 +217,33 @@ struct
     type t = int * int [@@deriving sexp, compare]
   end)
 
-  type perf_counters =
-    { mutable total_lookups: int
-    ; mutable total_full_lookups: int
-    ; mutable total_set_ops: int
-    ; mutable total_results_examined: int }
+  type perf_counters = {
+    mutable total_lookups : int;
+    mutable total_full_lookups : int;
+    mutable total_set_ops : int;
+    mutable total_results_examined : int;
+  }
 
-  type t =
-    { mutable index: IntPairSet.t KMap.t
-    ; store: KVPair.t Int.Table.t
-    ; fresh_int: unit -> int
-    ; perf: perf_counters }
+  type t = {
+    mutable index : IntPairSet.t KMap.t;
+    store : KVPair.t Int.Table.t;
+    fresh_int : unit -> int;
+    perf : perf_counters;
+  }
 
   let create () : t =
-    { index= KMap.empty
-    ; store= Int.Table.create ()
-    ; fresh_int= Util.Fresh.mk_fresh_int_fun ()
-    ; perf=
-        { total_lookups= 0
-        ; total_full_lookups= 0
-        ; total_set_ops= 0
-        ; total_results_examined= 0 } }
+    {
+      index = KMap.empty;
+      store = Int.Table.create ();
+      fresh_int = Util.Fresh.mk_fresh_int_fun ();
+      perf =
+        {
+          total_lookups = 0;
+          total_full_lookups = 0;
+          total_set_ops = 0;
+          total_results_examined = 0;
+        };
+    }
 
   let add (i : t) (k : KSet.t) (v : Value.t) : unit =
     let kv_key = i.fresh_int () in
@@ -243,10 +254,10 @@ struct
       List.fold_left (Set.to_list k) ~init:i.index ~f:(fun i e ->
           match KMap.find i e with
           | Some s -> KMap.set i ~key:e ~data:(IntPairSet.add s kv_key_pair)
-          | None -> KMap.set i ~key:e ~data:(IntPairSet.singleton kv_key_pair) )
+          | None -> KMap.set i ~key:e ~data:(IntPairSet.singleton kv_key_pair))
     in
     (* Update the index. *)
-    i.index <- index' ;
+    i.index <- index';
     (* Update the key-value store. *)
     Hashtbl.add_exn i.store ~key:kv_key ~data:(k, v)
 
@@ -268,35 +279,35 @@ struct
           match KMap.find i.index elem with
           | Some refs as r ->
               if Set.length refs = Hashtbl.length i.store then None else r
-          | None -> None )
+          | None -> None)
     in
     (* Merge the result lists. *)
     let result_refs = merge_results result_ref_lists in
     (* Update performance counters *)
-    (i.perf).total_lookups <- i.perf.total_lookups + 1 ;
+    i.perf.total_lookups <- i.perf.total_lookups + 1;
     if Set.length result_refs = Hashtbl.length i.store then
-      (i.perf).total_full_lookups <- i.perf.total_full_lookups + 1 ;
-    (i.perf).total_results_examined
-    <- i.perf.total_results_examined + Set.length result_refs ;
+      i.perf.total_full_lookups <- i.perf.total_full_lookups + 1;
+    i.perf.total_results_examined <-
+      i.perf.total_results_examined + Set.length result_refs;
     Set.find_map result_refs ~f:(fun (id, len') ->
         let s', v' = store_lookup i.store id in
         if len' < len then
           if v' = subset_v && Set.is_subset s' ~of_:s then (
-            (i.perf).total_set_ops <- i.perf.total_set_ops + 1 ;
+            i.perf.total_set_ops <- i.perf.total_set_ops + 1;
             Some subset_v )
           else None
         else if len' = len then
           if v' = subset_v && Set.is_subset s' ~of_:s then (
-            (i.perf).total_set_ops <- i.perf.total_set_ops + 1 ;
+            i.perf.total_set_ops <- i.perf.total_set_ops + 1;
             Some subset_v )
           else if v' = superset_v && Set.is_subset s ~of_:s' then (
-            (i.perf).total_set_ops <- i.perf.total_set_ops + 1 ;
+            i.perf.total_set_ops <- i.perf.total_set_ops + 1;
             Some superset_v )
           else None
         else if v' = superset_v && Set.is_subset s ~of_:s' then (
-          (i.perf).total_set_ops <- i.perf.total_set_ops + 1 ;
+          i.perf.total_set_ops <- i.perf.total_set_ops + 1;
           Some superset_v )
-        else None )
+        else None)
 
   (* Return a summary of the performance counters suitable for writing to a log. *)
   let log_summary (i : t) : string =
@@ -380,18 +391,18 @@ module Ctx = struct
 end
 
 module Timer = struct
-  type timing_info = {time: Time.Span.t; desc: string}
+  type timing_info = { time : Time.Span.t; desc : string }
 
   type t = timing_info Ctx.t
 
   let empty () : t = Ctx.empty ()
 
   let add_zero (t : t) (name : string) (desc : string) : unit =
-    Ctx.update t name {time= Time.Span.zero; desc}
+    Ctx.update t name { time = Time.Span.zero; desc }
 
   let add (t : t) (name : string) (time : Time.Span.t) : unit =
     let time' = Ctx.lookup_exn t name in
-    Ctx.update t name {time' with time= Time.Span.( + ) time time'.time}
+    Ctx.update t name { time' with time = Time.Span.( + ) time time'.time }
 
   let find_exn (t : t) (name : string) : Time.Span.t = (Ctx.lookup_exn t name).time
 
@@ -399,39 +410,41 @@ module Timer = struct
     let start_t = Time.now () in
     let x = thunk () in
     let end_t = Time.now () in
-    add t name (Time.diff end_t start_t) ;
+    add t name (Time.diff end_t start_t);
     x
 
   let to_strings (t : t) : string list =
-    List.map (Ctx.data t) ~f:(fun {desc= d; time= t} ->
-        sprintf "%s: %s" d (Time.Span.to_short_string t) )
+    List.map (Ctx.data t) ~f:(fun { desc = d; time = t } ->
+        sprintf "%s: %s" d (Time.Span.to_short_string t))
 
   (** Serialize a timer to JSON. This creates an object of the form \{
       name: time, ...\}. Times are stored in seconds. *)
-  let to_json (t : t) : Json.json =
+  let to_json (t : t) =
     `Assoc
       ( Ctx.to_alist t
       |> List.map ~f:(fun (k, v) ->
-             ( k
-             , `Assoc
-                 [ ("time", `Float (Time.Span.to_sec v.time))
-                 ; ("description", `String v.desc) ] ) ) )
+             ( k,
+               `Assoc
+                 [
+                   ("time", `Float (Time.Span.to_sec v.time));
+                   ("description", `String v.desc);
+                 ] )) )
 end
 
 module Counter = struct
   type count = Simple of int ref | Func of (unit -> int)
 
-  type counter_info = {count: count; desc: string}
+  type counter_info = { count : count; desc : string }
 
   type t = counter_info String.Table.t
 
   let empty () : t = String.Table.create ()
 
   let add_zero : t -> string -> string -> unit =
-   fun t name desc -> Hashtbl.set t ~key:name ~data:{count= Simple (ref 0); desc}
+   fun t name desc -> Hashtbl.set t ~key:name ~data:{ count = Simple (ref 0); desc }
 
   let add_func : t -> string -> string -> (unit -> int) -> unit =
-   fun t name desc f -> Hashtbl.set t ~key:name ~data:{count= Func f; desc}
+   fun t name desc f -> Hashtbl.set t ~key:name ~data:{ count = Func f; desc }
 
   let get_count : count -> int = function Simple c -> !c | Func f -> f ()
 
@@ -453,52 +466,55 @@ module Counter = struct
   let to_strings : t -> string list =
    fun t ->
     Hashtbl.data t
-    |> List.map ~f:(fun {desc= d; count= c} -> sprintf "%s: %d" d (get_count c))
+    |> List.map ~f:(fun { desc = d; count = c } -> sprintf "%s: %d" d (get_count c))
 
   (** Serialize a counter to JSON. This creates an object of the form
       \{ name: count, ... \}. *)
-  let to_json (t : t) : Json.json =
+  let to_json t =
     `Assoc
       ( Hashtbl.to_alist t
       |> List.map ~f:(fun (k, v) ->
-             ( k
-             , `Assoc
-                 [ ("count", `Int (get_count v.count))
-                 ; ("description", `String v.desc) ] ) ) )
+             ( k,
+               `Assoc
+                 [
+                   ("count", `Int (get_count v.count));
+                   ("description", `String v.desc);
+                 ] )) )
 end
 
 module SexpLog = struct
-  type v = {value: Sexp.t option; desc: string}
+  type v = { value : Sexp.t option; desc : string }
 
   type t = v String.Table.t
 
   let empty : unit -> t = String.Table.create
 
   let add : t -> string -> string -> unit =
-   fun t name desc -> String.Table.add_exn t ~key:name ~data:{value= None; desc}
+   fun t name desc -> String.Table.add_exn t ~key:name ~data:{ value = None; desc }
 
   let set : t -> string -> Sexp.t -> unit =
    fun t name value ->
     String.Table.update t name ~f:(function
-      | Some v -> {v with value= Some value}
-      | None -> failwith "Key not found." )
+      | Some v -> { v with value = Some value }
+      | None -> failwith "Key not found.")
 
-  let rec sexp_to_json : Sexp.t -> Json.json = function
+  let rec sexp_to_json = function
     | Sexp.Atom str -> `String str
     | Sexp.List lst -> `List (List.map lst ~f:sexp_to_json)
 
-  let to_json : t -> Json.json =
-   fun t ->
+  let to_json t =
     `Assoc
       ( String.Table.to_alist t
       |> List.map ~f:(fun (k, v) ->
-             ( k
-             , `Assoc
-                 [ ( "value"
-                   , match v.value with
+             ( k,
+               `Assoc
+                 [
+                   ( "value",
+                     match v.value with
                      | Some vv -> `String (Sexp.to_string_hum vv)
-                     | None -> `Null )
-                 ; ("description", `String v.desc) ] ) ) )
+                     | None -> `Null );
+                   ("description", `String v.desc);
+                 ] )) )
 end
 
 module SortedList = struct
@@ -513,17 +529,17 @@ module SortedList = struct
     let length : ('a, 'cmp) t -> int = List.length
 
     let append :
-           comparator:('a, 'cmp) Comparator.t
-        -> ('a, 'cmp) t
-        -> ('a, 'cmp) t
-        -> ('a, 'cmp) t =
+        comparator:('a, 'cmp) Comparator.t ->
+        ('a, 'cmp) t ->
+        ('a, 'cmp) t ->
+        ('a, 'cmp) t =
      fun ~comparator -> List.merge ~compare:comparator.Comparator.compare
 
     let map :
-           comparator:('a, 'cmp) Comparator.t
-        -> f:('a -> 'a)
-        -> ('a, 'cmp) t
-        -> ('a, 'cmp) t =
+        comparator:('a, 'cmp) Comparator.t ->
+        f:('a -> 'a) ->
+        ('a, 'cmp) t ->
+        ('a, 'cmp) t =
      fun ~comparator ~f l ->
       List.map ~f l |> List.sort ~compare:comparator.Comparator.compare
 
@@ -567,12 +583,13 @@ module KTree = struct
     | Node (x, xs) -> Node (f x, List.map xs ~f:(map ~f))
 
   let rec flatten = function
-    | Leaf x -> [x]
+    | Leaf x -> [ x ]
     | Node (x, xs) -> x :: (List.map xs ~f:flatten |> List.concat)
 end
 
 module Tree = struct
-  type 'a t = Empty | Node of 'a * 'a t list [@@deriving compare, sexp, bin_io]
+  type 'a t = Empty | Node of 'a * 'a t list
+  [@@deriving compare, hash, sexp, bin_io]
 
   let rec hash : ?hash_elem:('a -> int) -> 'a t -> int =
    fun ?(hash_elem = Hashtbl.hash) -> function
@@ -603,7 +620,7 @@ module Tree = struct
     match t with
     | Empty -> ()
     | Node (x, children) ->
-        f x ;
+        f x;
         List.iter children ~f:(iter ~f)
 
   let rec fold t ~f ~init =
@@ -616,17 +633,16 @@ module Tree = struct
         let max_children = List.filter_opt children |> List.max_elt ~compare:cmp in
         match max_children with
         | Some elem' -> if cmp elem elem' > 0 then Some elem else Some elem'
-        | None -> Some elem )
+        | None -> Some elem)
 
   let rec equal ~equal:e t1 t2 =
     match (t1, t2) with
     | Empty, Empty -> true
-    | Node (x1, c1), Node (x2, c2) ->
-        e x1 x2 && List.equal c1 c2 ~equal:(equal ~equal:e)
+    | Node (x1, c1), Node (x2, c2) -> e x1 x2 && List.equal (equal ~equal:e) c1 c2
     | _ -> false
 
   let rec flatten (t : 'a t) : 'a list =
-    match t with Empty -> [] | Node (x, y) -> [x] @ List.concat_map y ~f:flatten
+    match t with Empty -> [] | Node (x, y) -> [ x ] @ List.concat_map y ~f:flatten
 
   let rec for_all t ~f =
     match t with
@@ -640,30 +656,34 @@ module Tree = struct
     match (t1, t2) with
     | Empty, Empty -> Some Empty
     | Node _, Empty | Empty, Node _ -> None
-    | Node (x1, c1), Node (x2, c2) ->
-        Option.bind (List.zip c1 c2) ~f:(fun c ->
+    | Node (x1, c1), Node (x2, c2) -> (
+        match List.zip c1 c2 with
+        | Ok c ->
             List.map c ~f:(fun (t1, t2) -> zip t1 t2)
             |> Option.all
-            |> Option.map ~f:(fun c -> Node ((x1, x2), c)) )
+            |> Option.map ~f:(fun c -> Node ((x1, x2), c))
+        | Unequal_lengths -> None )
 
   let rec all (t : 'a Option.t t) : 'a t Option.t =
     match t with
     | Empty -> Some Empty
     | Node (x, c) ->
         Option.bind x ~f:(fun x ->
-            Option.map (List.map c ~f:all |> Option.all) ~f:(fun c -> Node (x, c))
-        )
+            Option.map (List.map c ~f:all |> Option.all) ~f:(fun c -> Node (x, c)))
 end
 
 module SequenceExt = struct
   include Sequence
 
   let inspect : 'a t -> f:('a -> unit) -> 'a t =
-   fun s ~f -> map s ~f:(fun x -> f x ; x)
+   fun s ~f ->
+    map s ~f:(fun x ->
+        f x;
+        x)
 
   let rec product : 'a t list -> 'a list t = function
     | [] -> empty
-    | [s] -> map ~f:(fun x -> [x]) s
+    | [ s ] -> map ~f:(fun x -> [ x ]) s
     | s :: ss -> product ss |> concat_map ~f:(fun xs -> map s ~f:(fun x -> x :: xs))
 end
 

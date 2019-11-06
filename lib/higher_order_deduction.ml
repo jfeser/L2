@@ -40,7 +40,7 @@ module Make_deduce_2 (M : Deduce_2_intf) = struct
                 | None -> lookup_err M.name collection_id
               in
               Result.map (M.examples_of_io in_v out_v) ~f:(fun io ->
-                  List.map io ~f:(fun (i, o) -> ((ctx, [i]), o)) ) )
+                  List.map io ~f:(fun (i, o) -> ((ctx, [ i ]), o))))
           |> Result.all >>| List.concat
           >>= fun hole_exs ->
           Result.map_error (FunctionExamples.of_list hole_exs) ~f:(fun _ -> ())
@@ -55,13 +55,13 @@ module Make_deduce_2 (M : Deduce_2_intf) = struct
 
   let deduce spec args =
     match args with
-    | [list; lambda] when Sp.equal (Sk.spec lambda) Sp.top -> (
-      match Sk.ast list with
-      | Sk.Id (Sk.Id.StaticDistance sd) ->
-          let child_spec = lambda_spec sd spec in
-          [list; Sk.replace_spec lambda child_spec]
-      | _ -> args )
-    | _ -> args
+    | [ list; lambda ] when Sp.equal (Sk.spec lambda) Sp.top -> (
+        match Sk.ast list with
+        | Sk.Id (Sk.Id.StaticDistance sd) ->
+            let child_spec = lambda_spec sd spec in
+            Some [ list; Sk.replace_spec lambda child_spec ]
+        | _ -> None )
+    | _ -> None
 end
 
 module type Deduce_fold_intf = sig
@@ -79,7 +79,7 @@ module Make_deduce_fold (M : Deduce_fold_intf) = struct
           List.filter exs ~f:(fun (ctx, _) ->
               match StaticDistance.Map.find ctx collection_id with
               | Some v -> M.is_base_case v
-              | None -> lookup_err (M.name ^ "-base-case") collection_id )
+              | None -> lookup_err (M.name ^ "-base-case") collection_id)
           |> Examples.of_list
         in
         match m_base_exs with
@@ -91,16 +91,16 @@ module Make_deduce_fold (M : Deduce_fold_intf) = struct
 
   let deduce spec args =
     match args with
-    | [input; lambda; base] -> (
-      match Sk.ast input with
-      | Sk.Id (Sk.Id.StaticDistance sd) ->
-          let b_spec = Sk.spec base in
-          let b_spec =
-            if Sp.equal b_spec Sp.top then base_spec sd spec else b_spec
-          in
-          [input; lambda; Sk.replace_spec base b_spec]
-      | _ -> args )
-    | _ -> args
+    | [ input; lambda; base ] -> (
+        match Sk.ast input with
+        | Sk.Id (Sk.Id.StaticDistance sd) ->
+            let b_spec = Sk.spec base in
+            let b_spec =
+              if Sp.equal b_spec Sp.top then base_spec sd spec else b_spec
+            in
+            Some [ input; lambda; Sk.replace_spec base b_spec ]
+        | _ -> None )
+    | _ -> None
 end
 
 module Deduce_map = Make_deduce_2 (struct
@@ -109,7 +109,7 @@ module Deduce_map = Make_deduce_2 (struct
   let examples_of_io in_v out_v =
     let out = match out_v with `List out -> out | _ -> ret_err name out_v in
     let inp = match in_v with `List inp -> inp | _ -> input_err name in_v in
-    Option.value_map (List.zip inp out) ~default:(Error ()) ~f:(fun io -> Ok io)
+    match List.zip inp out with Ok io -> Ok io | Unequal_lengths -> Error ()
 end)
 
 module Deduce_mapt = Make_deduce_2 (struct
@@ -131,8 +131,7 @@ module Deduce_filter = Make_deduce_2 (struct
     | [], [] -> Some []
     (* If there are some inputs and no outputs, then the inputs
          must have been filtered. *)
-    | (_ :: _ as inputs), [] ->
-        Some (List.map inputs ~f:(fun i -> (i, `Bool false)))
+    | (_ :: _ as inputs), [] -> Some (List.map inputs ~f:(fun i -> (i, `Bool false)))
     (* If there are some outputs and no inputs, then filter is
          not valid. *)
     | [], _ :: _ -> None
@@ -177,14 +176,13 @@ let deduce_lambda lambda spec =
             FunctionExamples.to_list exs
             |> List.map ~f:(fun ((in_ctx, in_args), out) ->
                    let value_ctx =
-                     StaticDistance.Map.of_alist_exn
-                       (List.zip_exn arg_names in_args)
+                     StaticDistance.Map.of_alist_exn (List.zip_exn arg_names in_args)
                    in
                    let in_ctx =
                      StaticDistance.Map.merge value_ctx in_ctx ~f:(fun ~key:_ v ->
-                         match v with `Both (x, _) | `Left x | `Right x -> Some x )
+                         match v with `Both (x, _) | `Left x | `Right x -> Some x)
                    in
-                   (in_ctx, out) )
+                   (in_ctx, out))
             |> Examples.of_list_exn
           in
           Examples.to_spec child_exs
@@ -193,46 +191,68 @@ let deduce_lambda lambda spec =
       | Inputs.Inputs _ -> Sp.top
       | _ -> spec_err "<lambda>" spec
     in
-    (num_args, Sk.replace_spec body child_spec)
-  else lambda
+    Some (Sk.replace_spec body child_spec)
+  else None
 
-let rec push_specs (skel : Skeleton.t) : Skeleton.t Option.t =
-  let open Option.Monad_infix in
-  let spec = Sk.spec skel in
-  match Sk.ast skel with
-  | Sk.Num _ | Sk.Bool _ | Sk.Id _ | Sk.Hole _ ->
-      if Sp.equal spec Sp.bottom then None else Some skel
-  | Sk.List l ->
-      let m_l = List.map l ~f:push_specs |> Option.all in
-      m_l >>| fun l -> Sk.list l spec
-  | Sk.Tree t ->
-      let m_t = Tree.map t ~f:push_specs |> Tree.all in
-      m_t >>| fun t -> Sk.tree t spec
-  | Sk.Let {bound; body} ->
-      let m_bound = push_specs bound in
-      let m_body = push_specs body in
-      m_bound >>= fun bound -> m_body >>| fun body -> Sk.let_ bound body spec
-  | Sk.Lambda {num_args; body} ->
-      let num_args, body = deduce_lambda (num_args, body) spec in
-      let m_body = push_specs body in
-      m_body >>| fun body -> Sk.lambda num_args body spec
-  | Sk.Op {op; args} ->
-      let m_args = List.map args ~f:push_specs |> Option.all in
-      m_args >>| fun args -> Sk.op op args spec
-  | Sk.Apply {func; args} ->
-      let args =
-        match Sk.ast func with
-        | Sk.Id (Sk.Id.Name "map") -> Deduce_map.deduce spec args
-        | Sk.Id (Sk.Id.Name "mapt") -> Deduce_mapt.deduce spec args
-        | Sk.Id (Sk.Id.Name "filter") -> Deduce_filter.deduce spec args
-        | Sk.Id (Sk.Id.Name "foldl") -> Deduce_foldl.deduce spec args
-        | Sk.Id (Sk.Id.Name "foldr") -> Deduce_foldr.deduce spec args
-        | Sk.Id (Sk.Id.Name "foldt") -> Deduce_foldt.deduce spec args
-        | _ -> args
-      in
-      let m_args =
-        if List.exists args ~f:(fun a -> Sp.equal (Sk.spec a) Sp.bottom) then None
-        else Option.all (List.map args ~f:push_specs)
-      in
-      let m_func = push_specs func in
-      m_args >>= fun args -> m_func >>| fun func -> Sk.apply func args spec
+let push_specs skel =
+  let exception SpecFailure in
+  let rec push_specs skel =
+    let spec = Sk.spec skel in
+    match Sk.ast skel with
+    | Sk.Num _ | Sk.Bool _ | Sk.Id _ | Sk.Hole _ ->
+        if Sp.equal spec Sp.bottom then raise SpecFailure else (false, skel)
+    | Sk.List l ->
+        let changes, l = List.map l ~f:push_specs |> List.unzip in
+        if List.exists ~f:Fun.id changes then (true, Sk.list l spec)
+        else (false, skel)
+    | Sk.Tree t ->
+        let t = Tree.map t ~f:push_specs in
+        if Tree.exists t ~f:(fun (x, _) -> x) then
+          (true, Sk.tree (Tree.map t ~f:(fun (_, x) -> x)) spec)
+        else (false, skel)
+    | Sk.Let { bound; body } ->
+        let c1, bound = push_specs bound in
+        let c2, body = push_specs body in
+        if c1 || c2 then (true, Sk.let_ bound body spec) else (false, skel)
+    | Sk.Lambda { num_args; body } -> (
+        match deduce_lambda (num_args, body) spec with
+        | Some body ->
+            let _, body = push_specs body in
+            (true, Sk.lambda num_args body spec)
+        | None ->
+            let c, body = push_specs body in
+            if c then (true, Sk.lambda num_args body spec) else (false, skel) )
+    | Sk.Op { op; args } ->
+        let cs, args = List.map args ~f:push_specs |> List.unzip in
+        if List.exists cs ~f:Fun.id then (true, Sk.op op args spec) else (false, skel)
+    | Sk.Apply { func; args } -> (
+        let pushed_args =
+          match Sk.ast func with
+          | Sk.Id (Sk.Id.Name "map") -> Deduce_map.deduce spec args
+          | Sk.Id (Sk.Id.Name "mapt") -> Deduce_mapt.deduce spec args
+          | Sk.Id (Sk.Id.Name "filter") -> Deduce_filter.deduce spec args
+          | Sk.Id (Sk.Id.Name "foldl") -> Deduce_foldl.deduce spec args
+          | Sk.Id (Sk.Id.Name "foldr") -> Deduce_foldr.deduce spec args
+          | Sk.Id (Sk.Id.Name "foldt") -> Deduce_foldt.deduce spec args
+          | _ -> None
+        in
+        match pushed_args with
+        | Some args ->
+            let _, args =
+              if List.exists args ~f:(fun a -> Sp.equal (Sk.spec a) Sp.bottom) then
+                raise SpecFailure
+              else List.map args ~f:push_specs |> List.unzip
+            in
+            let _, func = push_specs func in
+            (true, Sk.apply func args spec)
+        | None ->
+            let cs, args = List.map args ~f:push_specs |> List.unzip in
+            let c, func = push_specs func in
+            let changed = List.exists ~f:Fun.id (c :: cs) in
+            let skel = if changed then Sk.apply func args spec else skel in
+            (changed, skel) )
+  in
+  try
+    let _, s = push_specs skel in
+    Some s
+  with SpecFailure -> None

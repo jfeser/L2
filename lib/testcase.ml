@@ -1,7 +1,7 @@
 open Core
 open Collections
 
-exception JsonDecodeError of {msg: string; json: Json.json}
+exception JsonDecodeError of {msg: string; json: Json.t}
 
 type case = Examples of Example.t list * (string * Expr.t) list
 
@@ -9,8 +9,7 @@ type t = {name: string; desc: string; case: case; blacklist: string list}
 
 let json_error str json = raise (JsonDecodeError {msg= str; json})
 
-let get_key_exn : ?default:Json.json -> Json.json -> string -> Json.json =
- fun ?default json key ->
+let get_key_exn ?default json key =
   match json with
   | `Assoc kv -> (
     match (List.Assoc.find ~equal:String.equal kv key, default) with
@@ -18,11 +17,9 @@ let get_key_exn : ?default:Json.json -> Json.json -> string -> Json.json =
     | None, None -> json_error (sprintf "Could not find key: %s" key) json )
   | _ -> json_error "Expected an object." json
 
-let as_list_exn : Json.json -> Json.json list = function
-  | `List l -> l
-  | j -> json_error "Expected a list." j
+let as_list_exn = function `List l -> l | j -> json_error "Expected a list." j
 
-let as_string_exn : Json.json -> string = function
+let as_string_exn = function
   | `String s -> s
   | j -> json_error "Expected a string." j
 
