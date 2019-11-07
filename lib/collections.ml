@@ -432,36 +432,41 @@ module Timer = struct
 end
 
 module Counter = struct
+  let debug = true
+
   type count = Simple of int ref | Func of (unit -> int)
 
   type counter_info = { count : count; desc : string }
 
   type t = counter_info String.Table.t
 
-  let empty () : t = String.Table.create ()
+  let empty () = String.Table.create ()
 
-  let add_zero : t -> string -> string -> unit =
-   fun t name desc -> Hashtbl.set t ~key:name ~data:{ count = Simple (ref 0); desc }
+  let add_zero t name desc =
+    if debug then Hashtbl.set t ~key:name ~data:{ count = Simple (ref 0); desc }
+    else ()
 
-  let add_func : t -> string -> string -> (unit -> int) -> unit =
-   fun t name desc f -> Hashtbl.set t ~key:name ~data:{ count = Func f; desc }
+  let add_func t name desc f =
+    if debug then Hashtbl.set t ~key:name ~data:{ count = Func f; desc } else ()
 
-  let get_count : count -> int = function Simple c -> !c | Func f -> f ()
+  let get_count x =
+    if debug then match x with Simple c -> !c | Func f -> f () else -1
 
-  let get : t -> string -> int =
-   fun t name -> get_count (Hashtbl.find_exn t name).count
+  let get t name = if debug then get_count (Hashtbl.find_exn t name).count else -1
 
-  let set : t -> string -> int -> unit =
-   fun t name v ->
-    match (Hashtbl.find_exn t name).count with
-    | Simple c -> c := v
-    | Func _ -> failwith "Cannot set a function counter."
+  let set t name v =
+    if debug then
+      match (Hashtbl.find_exn t name).count with
+      | Simple c -> c := v
+      | Func _ -> failwith "Cannot set a function counter."
+    else ()
 
-  let incr : t -> string -> unit =
-   fun t name ->
-    match (Hashtbl.find_exn t name).count with
-    | Simple c -> incr c
-    | Func _ -> failwith "Cannot incr a function counter."
+  let incr t name =
+    if debug then
+      match (Hashtbl.find_exn t name).count with
+      | Simple c -> incr c
+      | Func _ -> failwith "Cannot incr a function counter."
+    else ()
 
   let to_strings : t -> string list =
    fun t ->
