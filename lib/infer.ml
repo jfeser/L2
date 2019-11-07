@@ -724,9 +724,7 @@ module ImmutableType = struct
       | Arrow_i of t list * t
       | Quant_i of string
       | Free_i of int * level
-    [@@deriving compare, sexp]
-
-    let hash = Hashtbl.hash
+    [@@deriving compare, hash, sexp]
   end
 
   include T

@@ -179,9 +179,7 @@ let eval ?recursion_limit ctx expr =
   | Some limit -> eval limit ctx expr
   | None -> eval (-1) ctx expr
 
-let partial_eval :
-    ?recursion_limit:int -> ?ctx:ExprValue.t Ctx.t -> ExprValue.t -> ExprValue.t =
- fun ?recursion_limit:(limit = -1) ?(ctx = Ctx.empty ()) expr ->
+let partial_eval ?recursion_limit:(limit = -1) ?(ctx = Ctx.empty ()) expr =
   let rec ev ctx lim expr =
     let ev_all = List.map ~f:(ev ctx lim) in
     if lim = 0 then raise HitRecursionLimit

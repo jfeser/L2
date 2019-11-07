@@ -10,20 +10,17 @@ module StaticDistance : sig
 
   include Sexpable.S with type t := t
 
-  module Map : sig
-    include Map.S with type Key.t = t
+  include Comparator.S with type t := t
 
-    val increment_scope : 'a t -> 'a t
-
-    val to_string : ('a -> string) -> 'a t -> string
-  end
+  val map_to_string : ('a -> string) -> (t, 'a, _) Map.t -> string
 
   (* include Comparable.S with type t := t and module Map := Map *)
 
   val increment_scope : t -> t
   (** Increment the scope of a coordinate. *)
 
-  val map_increment_scope : 'a Map.t -> 'a Map.t
+  val map_increment_scope :
+    (t, 'a, comparator_witness) Map.t -> (t, 'a, comparator_witness) Map.t
   (** Increment the scope of every coordinate in a Map.t. *)
 
   val create : distance:int -> index:int -> t
@@ -68,7 +65,7 @@ end
 module Hole : sig
   type t = private {
     id : int;
-    ctx : Type.t StaticDistance.Map.t;
+    ctx : Type.t Map.M(StaticDistance).t;
     type_ : Type.t;
     symbol : Symbol.t;
   }
@@ -81,7 +78,7 @@ module Hole : sig
 
   val to_string : t -> string
 
-  val create : ?ctx:Type.t StaticDistance.Map.t -> Type.t -> Symbol.t -> t
+  val create : ?ctx:Type.t Map.M(StaticDistance).t -> Type.t -> Symbol.t -> t
 
   val apply_unifier : Unifier.t -> t -> t
 end
@@ -114,6 +111,7 @@ module Skeleton : sig
   and spec = {
     verify : Library.t -> t -> bool;
     compare : spec -> int;
+    hash : int;
     to_sexp : unit -> Sexp.t;
     to_string : unit -> string;
     data : spec_data;
@@ -190,7 +188,7 @@ module Skeleton : sig
   val pp : Formatter.t -> t -> unit
 
   val to_expr :
-    ?ctx:Expr.t StaticDistance.Map.t ->
+    ?ctx:Expr.t Map.M(StaticDistance).t ->
     ?fresh_name:(unit -> string) ->
     ?of_hole:(Hole.t -> Expr.t) ->
     t ->
@@ -201,7 +199,10 @@ module Skeleton : sig
       @param of_hole A function which converts a {!Hole.t} into an {!Expr.t}. All holes will be converted according to this function. *)
 
   val to_expr_exn :
-    ?ctx:Expr.t StaticDistance.Map.t -> ?fresh_name:(unit -> string) -> t -> Expr.t
+    ?ctx:Expr.t Map.M(StaticDistance).t ->
+    ?fresh_name:(unit -> string) ->
+    t ->
+    Expr.t
   (** Convert a skeleton to an {!Expr.t}. Throws an exception if a {!Hole.t} is encountered.
       @param ctx A mapping from static distance variables to expressions. All SD variables will be replaced according to this mapping.
       @param fresh_name A function which generates a fresh name. *)
@@ -251,6 +252,7 @@ module Specification : sig
   type t = Skeleton.spec = {
     verify : 'a. Library.t -> Skeleton.t -> bool;
     compare : t -> int;
+    hash : int;
     to_sexp : unit -> Sexp.t;
     to_string : unit -> string;
     data : data;
@@ -278,7 +280,7 @@ end
 module Examples : sig
   type t
 
-  type example = Value.t StaticDistance.Map.t * Value.t [@@deriving sexp]
+  type example = Value.t Map.M(StaticDistance).t * Value.t [@@deriving sexp]
 
   type Specification.data += private Examples of t
 
@@ -300,7 +302,7 @@ end
 module FunctionExamples : sig
   type t
 
-  type example = (Value.t StaticDistance.Map.t * Value.t list) * Value.t
+  type example = (Value.t Map.M(StaticDistance).t * Value.t list) * Value.t
   [@@deriving sexp]
 
   type Specification.data += private FunctionExamples of t

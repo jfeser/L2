@@ -4,57 +4,56 @@ open Ast
 open Collections
 open Util
 
-module Map = Core.Map.Make (struct
-  type t = expr [@@deriving compare, sexp]
-end)
-
-type t = Ast.expr [@@deriving compare, sexp]
+type t = Ast.expr [@@deriving compare, hash, sexp]
 
 type id = Ast.id [@@deriving compare, sexp, bin_io]
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
-  module Map = Core.Map.Make (struct
-    type t = op
+  module T = struct
+    type t = Ast.op =
+      | Plus
+      | Minus
+      | Mul
+      | Div
+      | Mod
+      | Eq
+      | Neq
+      | Lt
+      | Leq
+      | Gt
+      | Geq
+      | And
+      | Or
+      | Not
+      | If
+      | RCons
+      | Cons
+      | Car
+      | Cdr
+      | Tree
+      | Value
+      | Children
+    [@@deriving compare, sexp, bin_io, hash]
+  end
 
-    let t_of_sexp = op_of_sexp
+  module Op = struct
+    include T
+    include Comparator.Make (T)
+  end
 
-    let sexp_of_t = sexp_of_op
+  include Op
 
-    let compare = compare_op
-  end)
-
-  type t = Ast.op =
-    | Plus
-    | Minus
-    | Mul
-    | Div
-    | Mod
-    | Eq
-    | Neq
-    | Lt
-    | Leq
-    | Gt
-    | Geq
-    | And
-    | Or
-    | Not
-    | If
-    | RCons
-    | Cons
-    | Car
-    | Cdr
-    | Tree
-    | Value
-    | Children
-  [@@deriving compare, sexp, bin_io, hash]
-
+  type metadata = {
+    typ : typ;
+    commut : bool;
+    assoc : bool;
+    str : string;
+    cost : int;
+  }
   (** Type for storing operator metadata. *)
-  type metadata = {typ: typ; commut: bool; assoc: bool; str: string; cost: int}
 
   let equal o1 o2 = compare_op o1 o2 = 0
-
-  let hash = Hashtbl.hash
 
   let metadata_by_op =
     let t s =
@@ -64,106 +63,201 @@ module Op = struct
       | Lexer_sexp.SyntaxError _ -> raise (ParseError s)
       | Parsing.Parse_error -> raise (ParseError s)
     in
-    [ ( Plus
-      , {typ= t "(num, num) -> num"; commut= true; assoc= true; str= "+"; cost= 1}
-      )
-    ; ( Minus
-      , {typ= t "(num, num) -> num"; commut= false; assoc= false; str= "-"; cost= 1}
-      )
-    ; ( Mul
-      , {typ= t "(num, num) -> num"; commut= true; assoc= true; str= "*"; cost= 1}
-      )
-    ; ( Div
-      , {typ= t "(num, num) -> num"; commut= false; assoc= false; str= "/"; cost= 1}
-      )
-    ; ( Mod
-      , {typ= t "(num, num) -> num"; commut= false; assoc= false; str= "%"; cost= 1}
-      )
-    ; (Eq, {typ= t "(a, a) -> bool"; commut= true; assoc= false; str= "="; cost= 1})
-    ; ( Neq
-      , {typ= t "(a, a) -> bool"; commut= true; assoc= false; str= "!="; cost= 1} )
-    ; ( Lt
-      , {typ= t "(num, num) -> bool"; commut= false; assoc= false; str= "<"; cost= 1}
-      )
-    ; ( Leq
-      , { typ= t "(num, num) -> bool"
-        ; commut= false
-        ; assoc= false
-        ; str= "<="
-        ; cost= 1 } )
-    ; ( Gt
-      , {typ= t "(num, num) -> bool"; commut= false; assoc= false; str= ">"; cost= 1}
-      )
-    ; ( Geq
-      , { typ= t "(num, num) -> bool"
-        ; commut= false
-        ; assoc= false
-        ; str= ">="
-        ; cost= 1 } )
-    ; ( And
-      , {typ= t "(bool, bool) -> bool"; commut= true; assoc= true; str= "&"; cost= 1}
-      )
-    ; ( Or
-      , {typ= t "(bool, bool) -> bool"; commut= true; assoc= true; str= "|"; cost= 1}
-      )
-    ; ( Not
-      , {typ= t "(bool) -> bool"; commut= false; assoc= false; str= "~"; cost= 1} )
-    ; ( If
-      , {typ= t "(bool, a, a) -> a"; commut= false; assoc= false; str= "if"; cost= 1}
-      )
-    ; ( RCons
-      , { typ= t "(list[a], a) -> list[a]"
-        ; commut= false
-        ; assoc= false
-        ; str= "rcons"
-        ; cost= 1 } )
-    ; ( Cons
-      , { typ= t "(a, list[a]) -> list[a]"
-        ; commut= false
-        ; assoc= false
-        ; str= "cons"
-        ; cost= 1 } )
-    ; ( Car
-      , {typ= t "(list[a]) -> a"; commut= false; assoc= false; str= "car"; cost= 1}
-      )
-    ; ( Cdr
-      , { typ= t "(list[a]) -> list[a]"
-        ; commut= false
-        ; assoc= false
-        ; str= "cdr"
-        ; cost= 1 } )
-    ; ( Tree
-      , { typ= t "(a, list[tree[a]]) -> tree[a]"
-        ; commut= false
-        ; assoc= false
-        ; str= "tree"
-        ; cost= 1 } )
-    ; ( Children
-      , { typ= t "(tree[a]) -> list[tree[a]]"
-        ; commut= false
-        ; assoc= false
-        ; str= "children"
-        ; cost= 1 } )
-    ; ( Value
-      , {typ= t "(tree[a]) -> a"; commut= false; assoc= false; str= "value"; cost= 1}
-      ) ]
-    |> Map.of_alist_exn
+    [
+      ( Plus,
+        {
+          typ = t "(num, num) -> num";
+          commut = true;
+          assoc = true;
+          str = "+";
+          cost = 1;
+        } );
+      ( Minus,
+        {
+          typ = t "(num, num) -> num";
+          commut = false;
+          assoc = false;
+          str = "-";
+          cost = 1;
+        } );
+      ( Mul,
+        {
+          typ = t "(num, num) -> num";
+          commut = true;
+          assoc = true;
+          str = "*";
+          cost = 1;
+        } );
+      ( Div,
+        {
+          typ = t "(num, num) -> num";
+          commut = false;
+          assoc = false;
+          str = "/";
+          cost = 1;
+        } );
+      ( Mod,
+        {
+          typ = t "(num, num) -> num";
+          commut = false;
+          assoc = false;
+          str = "%";
+          cost = 1;
+        } );
+      ( Eq,
+        {
+          typ = t "(a, a) -> bool";
+          commut = true;
+          assoc = false;
+          str = "=";
+          cost = 1;
+        } );
+      ( Neq,
+        {
+          typ = t "(a, a) -> bool";
+          commut = true;
+          assoc = false;
+          str = "!=";
+          cost = 1;
+        } );
+      ( Lt,
+        {
+          typ = t "(num, num) -> bool";
+          commut = false;
+          assoc = false;
+          str = "<";
+          cost = 1;
+        } );
+      ( Leq,
+        {
+          typ = t "(num, num) -> bool";
+          commut = false;
+          assoc = false;
+          str = "<=";
+          cost = 1;
+        } );
+      ( Gt,
+        {
+          typ = t "(num, num) -> bool";
+          commut = false;
+          assoc = false;
+          str = ">";
+          cost = 1;
+        } );
+      ( Geq,
+        {
+          typ = t "(num, num) -> bool";
+          commut = false;
+          assoc = false;
+          str = ">=";
+          cost = 1;
+        } );
+      ( And,
+        {
+          typ = t "(bool, bool) -> bool";
+          commut = true;
+          assoc = true;
+          str = "&";
+          cost = 1;
+        } );
+      ( Or,
+        {
+          typ = t "(bool, bool) -> bool";
+          commut = true;
+          assoc = true;
+          str = "|";
+          cost = 1;
+        } );
+      ( Not,
+        {
+          typ = t "(bool) -> bool";
+          commut = false;
+          assoc = false;
+          str = "~";
+          cost = 1;
+        } );
+      ( If,
+        {
+          typ = t "(bool, a, a) -> a";
+          commut = false;
+          assoc = false;
+          str = "if";
+          cost = 1;
+        } );
+      ( RCons,
+        {
+          typ = t "(list[a], a) -> list[a]";
+          commut = false;
+          assoc = false;
+          str = "rcons";
+          cost = 1;
+        } );
+      ( Cons,
+        {
+          typ = t "(a, list[a]) -> list[a]";
+          commut = false;
+          assoc = false;
+          str = "cons";
+          cost = 1;
+        } );
+      ( Car,
+        {
+          typ = t "(list[a]) -> a";
+          commut = false;
+          assoc = false;
+          str = "car";
+          cost = 1;
+        } );
+      ( Cdr,
+        {
+          typ = t "(list[a]) -> list[a]";
+          commut = false;
+          assoc = false;
+          str = "cdr";
+          cost = 1;
+        } );
+      ( Tree,
+        {
+          typ = t "(a, list[tree[a]]) -> tree[a]";
+          commut = false;
+          assoc = false;
+          str = "tree";
+          cost = 1;
+        } );
+      ( Children,
+        {
+          typ = t "(tree[a]) -> list[tree[a]]";
+          commut = false;
+          assoc = false;
+          str = "children";
+          cost = 1;
+        } );
+      ( Value,
+        {
+          typ = t "(tree[a]) -> a";
+          commut = false;
+          assoc = false;
+          str = "value";
+          cost = 1;
+        } );
+    ]
+    |> Map.of_alist_exn (module Op)
 
   let all = Map.keys metadata_by_op
 
-  let control = [If]
+  let control = [ If ]
 
-  let cmp = [Eq; Neq; Lt; Leq; Gt; Geq]
+  let cmp = [ Eq; Neq; Lt; Leq; Gt; Geq ]
 
-  let logic = [And; Or; Not]
+  let logic = [ And; Or; Not ]
 
-  let list = [Cons; Car; Cdr]
+  let list = [ Cons; Car; Cdr ]
 
-  let tree = [Tree; Children; Value]
+  let tree = [ Tree; Children; Value ]
 
-  let simple_arith = [Plus; Minus]
+  let simple_arith = [ Plus; Minus ]
 
-  let arith = [Plus; Minus; Mul; Div; Mod]
+  let arith = [ Plus; Minus; Mul; Div; Mod ]
 
   let op_by_str =
     metadata_by_op |> Map.to_alist
@@ -211,9 +305,9 @@ let normalize ?(bound = String.Set.empty) (expr : t) : expr =
     match e with
     | `Num _ | `Bool _ -> e
     | `Id x -> (
-      match Ctx.lookup ctx x with
-      | Some x' -> `Id x'
-      | None -> if String.Set.mem bound x then `Id x else `Id (fresh_name ()) )
+        match Ctx.lookup ctx x with
+        | Some x' -> `Id x'
+        | None -> if String.Set.mem bound x then `Id x else `Id (fresh_name ()) )
     | `List x -> `List (norm_all x)
     | `Tree x -> `Tree (Tree.map x ~f:(norm ctx))
     | `Op (op, args) -> `Op (op, norm_all args)
@@ -226,7 +320,7 @@ let normalize ?(bound = String.Set.empty) (expr : t) : expr =
         let ctx', args' =
           List.fold_right args ~init:(ctx, []) ~f:(fun arg (ctx', args') ->
               let arg' = fresh_name () in
-              (Ctx.bind ctx' arg arg', arg' :: args') )
+              (Ctx.bind ctx' arg arg', arg' :: args'))
         in
         `Lambda (args', norm ctx' body)
   in
@@ -255,8 +349,8 @@ let of_string_exn ?(syntax = `Sexp) (s : string) : t =
   | Parsing.Parse_error -> raise (ParseError s)
 
 let of_string ?(syntax = `Sexp) (s : string) : t Or_error.t =
-  try Ok (of_string_exn ~syntax s) with ParseError s ->
-    error "Parsing Expr.t failed." s [%sexp_of: string]
+  try Ok (of_string_exn ~syntax s)
+  with ParseError s -> error "Parsing Expr.t failed." s [%sexp_of: string]
 
 (** Convert an expression to a string. *)
 let rec to_string (expr : t) : string =

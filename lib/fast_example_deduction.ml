@@ -250,15 +250,11 @@ module Abstract_value = struct
     | `Tree _ -> "<tree>"
     | `Closure _ -> "<closure>"
 
-  let rec of_value : int_domain:Abstract_int.domain -> Value.t -> t =
-   fun ~int_domain -> function
+  let rec of_value ~int_domain = function
     | `Num x -> `AbsInt (Abstract_int.lift0 int_domain x)
     | `Bool x -> `Bool x
     | `List x -> `List (List.map x ~f:(of_value ~int_domain))
     | `Tree x -> `Tree (Tree.map x ~f:(of_value ~int_domain))
-    | `Closure (expr, ctx) ->
-        `Closure (Abstract_expr.of_expr expr, Ctx.map ctx ~f:(of_value ~int_domain))
-    | `Unit -> `Bottom
 
   let rec to_expr : t -> Abstract_expr.t = function
     | `AbsInt x -> `AbsInt x
@@ -479,10 +475,9 @@ module Abstract_value = struct
     in
     ev ctx 0 expr
 
-  let lift :
-      ?ctx:int Value.Map.t -> domain -> Type.t -> Value.t -> t * int Value.Map.t =
+  let lift =
     let module T = Type in
-    fun ?(ctx = Value.Map.empty) d t v ->
+    fun ~ctx d t v ->
       let count = ref 0 in
       let ctx = ref ctx in
       let rec lift d t v =
@@ -550,7 +545,7 @@ module Abstract_example = struct
     let out_str = Abstract_value.to_string out in
     "(" ^ ins_str ^ ") -> " ^ out_str
 
-  let lift : domain -> Type.t -> Value.t list * Value.t -> t * Value.t Int.Map.t =
+  let lift =
     let open Type in
     fun domain type_ (ins, out) ->
       match type_ with
@@ -572,12 +567,7 @@ module Abstract_example = struct
 
   let lift x y = Timer.run_with_time timer "lifting" (fun () -> lift x y)
 
-  let lower :
-      Value.t Int.Map.t ->
-      t ->
-      [ `Ex of [ `Value of Value.t | `Top ] list * [ `Value of Value.t | `Top ]
-      | `Bottom ] =
-   fun ctx (ins, out) ->
+  let lower ctx (ins, out) =
     try
       let ins =
         List.map ins ~f:(fun i ->
@@ -593,83 +583,53 @@ module Abstract_example = struct
 
   let lower x y = Timer.run_with_time timer "lowering" (fun () -> lower x y)
 
-  let join : t -> t -> t =
-   fun (i1, o1) (i2, o2) ->
+  let join (i1, o1) (i2, o2) =
     (List.map2_exn i1 i2 ~f:Abstract_value.join, Abstract_value.join o1 o2)
 
-  module V = struct
-    module T = struct
-      type t = Expr.t * Value.t String.Map.t [@@deriving sexp, compare]
-
-      let hash = Hashtbl.hash
-    end
-
-    include T
-    include Hashable.Make_and_derive_hash_fold_t (T)
-  end
-
-  let eval : Value.t String.Map.t -> Expr.t -> Value.t =
-    let table = V.Table.create () in
+  let eval ctx =
+    let table = Hashtbl.create (module Expr) in
     Counter.add_func counter "eval_distinct_args" "" (fun () -> Hashtbl.length table);
-    fun ctx expr ->
-      match Hashtbl.find table (expr, ctx) with
+    fun expr ->
+      match Hashtbl.find table expr with
       | Some v -> v
       | None ->
           let v = Eval.eval ~recursion_limit:100 (ref ctx) expr in
-          ignore (Hashtbl.add table ~key:(expr, ctx) ~data:v);
+          Hashtbl.set table ~key:expr ~data:v;
           v
 
-  let of_spec_and_args :
-      library:Library.t ->
-      args:Sk.t list ->
-      Type.t ->
-      domain ->
-      Examples.example ->
-      t * Value.t Int.Map.t =
+  let of_spec_and_args ~library ~args type_ domain spec =
     let module AV = Abstract_value in
-    let lift :
-        Expr.t StaticDistance.Map.t ->
-        Value.t String.Map.t ->
-        domain ->
-        Type.t ->
-        Skeleton.t list ->
-        Value.t ->
-        t * Value.t Int.Map.t =
-      let open Type in
-      fun expr_ctx eval_ctx domain type_ ins out ->
-        match type_ with
-        | Arrow_t (ins_t, out_t) ->
-            let ins_rev, ctx =
-              List.fold2_exn ins ins_t
-                ~f:(fun (ins, ctx) sk t ->
-                  let v', ctx =
-                    try
-                      let e = Sk.to_expr ~ctx:expr_ctx sk in
-                      run_with_time "eval" (fun () -> eval eval_ctx e)
-                      |> AV.lift ~ctx domain t
-                    with
-                    | Eval.HitRecursionLimit ->
-                        cincr "recursionlimit_failure";
-                        (`Top, ctx)
-                    | Eval.RuntimeError _ ->
-                        cincr "eval_failure";
-                        (`Bottom, ctx)
-                  in
-                  (v' :: ins, ctx))
-                ~init:([], Value.Map.empty)
-            in
-            let out, ctx = AV.lift ~ctx domain out_t out in
-            let ins = List.rev ins_rev in
-            let ctx =
-              Map.to_alist ctx |> List.map ~f:Tuple.T2.swap |> Int.Map.of_alist_exn
-            in
-            ((ins, out), ctx)
-        | _ -> failwith "Unexpected type."
-    in
-    fun ~library ~args type_ domain spec ->
-      let ctx, ret = spec in
-      let expr_ctx = StaticDistance.Map.map ctx ~f:Expr.of_value in
-      lift expr_ctx library.Library.value_ctx domain type_ args ret
+    let ctx, ret = spec in
+    let expr_ctx = Map.map ctx ~f:Expr.of_value in
+    let eval = eval library.Library.value_ctx in
+    match type_ with
+    | Type.Arrow_t (ins_t, out_t) ->
+        let ins_rev, ctx =
+          List.fold2_exn args ins_t
+            ~f:(fun (args, ctx) sk t ->
+              let v', ctx =
+                try
+                  let e = Sk.to_expr ~ctx:expr_ctx sk in
+                  run_with_time "eval" (fun () -> eval e |> Value.of_evalue_exn)
+                  |> AV.lift ~ctx domain t
+                with
+                | Eval.HitRecursionLimit ->
+                    cincr "recursionlimit_failure";
+                    (`Top, ctx)
+                | Eval.RuntimeError _ ->
+                    cincr "eval_failure";
+                    (`Bottom, ctx)
+              in
+              (v' :: args, ctx))
+            ~init:([], Value.Map.empty)
+        in
+        let out, ctx = AV.lift ~ctx domain out_t ret in
+        let ins = List.rev ins_rev in
+        let ctx =
+          Map.to_alist ctx |> List.map ~f:Tuple.T2.swap |> Int.Map.of_alist_exn
+        in
+        ((ins, out), ctx)
+    | _ -> failwith "Unexpected type."
 end
 
 module Function_spec = struct

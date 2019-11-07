@@ -5,13 +5,13 @@ open Infer
 
 module Generalizer = struct
   type t =
-       Type.t StaticDistance.Map.t
-    -> Type.t
-    -> Symbol.t
-    -> Specification.t
-    -> (Hypothesis.t * Unifier.t) list
+    Type.t Map.M(StaticDistance).t ->
+    Type.t ->
+    Symbol.t ->
+    Specification.t ->
+    (Hypothesis.t * Unifier.t) list
 
-  type params = {cost_model: CostModel.t; library: Library.t}
+  type params = { cost_model : CostModel.t; library : Library.t }
 
   let generalize_single : params -> t -> Hypothesis.t -> Hypothesis.t list =
     let open Hypothesis in
@@ -22,34 +22,29 @@ module Generalizer = struct
              generalize hole.Hole.ctx hole.Hole.type_ hole.Hole.symbol spec
              |> List.filter ~f:(fun (c, _) ->
                     kind c = Abstract
-                    || Specification.verify ~library:params.library spec
-                         (skeleton c) )
+                    || Specification.verify ~library:params.library spec (skeleton c))
              |> List.map ~f:(fun (c, u) ->
-                    let h =
-                      fill_hole params.cost_model hole ~parent:hypo ~child:c
-                    in
-                    apply_unifier h u ) )
+                    let h = fill_hole params.cost_model hole ~parent:hypo ~child:c in
+                    apply_unifier h u))
       |> List.concat
 
   let generalize_all params generalize hypo =
     let open Hypothesis in
     List.fold_left
       (List.sort ~compare:(fun (h1, _) (h2, _) -> Hole.compare h1 h2) (holes hypo))
-      ~init:[hypo]
+      ~init:[ hypo ]
       ~f:(fun hypos (hole, spec) ->
         let children =
           List.filter
             (generalize hole.Hole.ctx hole.Hole.type_ hole.Hole.symbol spec)
             ~f:(fun (c, _) ->
               kind c = Abstract
-              || Specification.verify ~library:params.library spec (skeleton c) )
+              || Specification.verify ~library:params.library spec (skeleton c))
         in
         List.map hypos ~f:(fun p ->
             List.map children ~f:(fun (c, u) ->
-                apply_unifier
-                  (fill_hole params.cost_model hole ~parent:p ~child:c)
-                  u ) )
-        |> List.concat )
+                apply_unifier (fill_hole params.cost_model hole ~parent:p ~child:c) u))
+        |> List.concat)
 
   let compose : t -> t -> t =
    fun g1 g2 ctx type_ symbol spec ->
@@ -71,17 +66,24 @@ module Deduction = struct
   let bottom : t =
    fun sk ->
     let rec bot sk =
-      if Sp.equal (Sk.spec sk) Sp.bottom then raise Bottom ;
+      if Sp.equal (Sk.spec sk) Sp.bottom then raise Bottom;
       match Sk.ast sk with
       | Sk.Num _ | Sk.Bool _ | Sk.Id _ | Sk.Hole _ -> ()
       | Sk.List l -> List.iter l ~f:bot
       | Sk.Tree t -> Tree.iter t ~f:bot
-      | Sk.Let {bound; body} -> bot bound ; bot body
-      | Sk.Lambda {body; _} -> bot body
-      | Sk.Op {args; _} -> List.iter args ~f:bot
-      | Sk.Apply {func; args} -> bot func ; List.iter args ~f:bot
+      | Sk.Let { bound; body } ->
+          bot bound;
+          bot body
+      | Sk.Lambda { body; _ } -> bot body
+      | Sk.Op { args; _ } -> List.iter args ~f:bot
+      | Sk.Apply { func; args } ->
+          bot func;
+          List.iter args ~f:bot
     in
-    try bot sk ; Some sk with Bottom -> None
+    try
+      bot sk;
+      Some sk
+    with Bottom -> None
 
   let no_op : t = Option.return
 
@@ -91,26 +93,26 @@ end
 let timer =
   let t = Timer.empty () in
   let n = Timer.add_zero t in
-  n "deduction_time" "Total time spent in deduction methods." ;
+  n "deduction_time" "Total time spent in deduction methods.";
   t
 
 let counter =
   let c = Counter.empty () in
   let n = Counter.add_zero c in
-  n "num_hypos" "Number of hypotheses verified." ;
-  n "num_holes" "Number of unique holes in the memoization table." ;
-  n "hole_hits" "Number of hits on the memoization table" ;
-  n "hole_misses" "Number of misses on the memoization table" ;
-  n "num_saved_hypos" "Number of hypotheses stored in the memoization table." ;
-  n "num_distinct_hypos" "Number of distinct hypotheses in memoization table." ;
-  n "num_distinct_types" "Number of distinct types in memoization table." ;
-  n "num_distinct_specs" "Number of distinct specs in memoization table." ;
+  n "num_hypos" "Number of hypotheses verified.";
+  n "num_holes" "Number of unique holes in the memoization table.";
+  n "hole_hits" "Number of hits on the memoization table";
+  n "hole_misses" "Number of misses on the memoization table";
+  n "num_saved_hypos" "Number of hypotheses stored in the memoization table.";
+  n "num_distinct_hypos" "Number of distinct hypotheses in memoization table.";
+  n "num_distinct_types" "Number of distinct types in memoization table.";
+  n "num_distinct_specs" "Number of distinct specs in memoization table.";
   n "top_match_count"
-    "Number of times we could have used hypos from the top spec row." ;
-  n "sigs_none" "# of hypos w/ no signature" ;
-  n "sigs_checked" "# of signatures calculated" ;
-  n "sigs_fail" "# of failing hypotheses" ;
-  n "sigs_dup" "# of duplicate hypotheses" ;
+    "Number of times we could have used hypos from the top spec row.";
+  n "sigs_none" "# of hypos w/ no signature";
+  n "sigs_checked" "# of signatures calculated";
+  n "sigs_fail" "# of failing hypotheses";
+  n "sigs_dup" "# of duplicate hypotheses";
   c
 
 let incr = Counter.incr counter
@@ -118,7 +120,7 @@ let incr = Counter.incr counter
 let sexp_log =
   let s = SexpLog.empty () in
   let n = SexpLog.add s in
-  n "specs" "Specifications in memoization table." ;
+  n "specs" "Specifications in memoization table.";
   s
 
 (** Maps (hole, spec) pairs to the hypotheses that can fill in the
@@ -137,12 +139,16 @@ module Memoizer = struct
   let denormalize_unifier u map =
     Unifier.to_alist u
     |> List.filter_map ~f:(fun (k, v) ->
-           match Int.Map.find map k with Some k' -> Some (k', v) | None -> None )
+           match Int.Map.find map k with Some k' -> Some (k', v) | None -> None)
     |> Unifier.of_alist_exn
 
   module Key = struct
     module Hole_without_id = struct
-      type t = {ctx: Type.t StaticDistance.Map.t; type_: Type.t; symbol: Symbol.t}
+      type t = {
+        ctx : Type.t Map.M(StaticDistance).t;
+        type_ : Type.t;
+        symbol : Symbol.t;
+      }
       [@@deriving compare, sexp]
 
       let normalize_free ctx t =
@@ -150,71 +156,69 @@ module Memoizer = struct
         let fresh_int = Util.Fresh.mk_fresh_int_fun () in
         let rec norm t =
           match t with
-          | Var_t {contents= Quant _} | Const_t _ -> t
+          | Var_t { contents = Quant _ } | Const_t _ -> t
           | App_t (name, args) -> App_t (name, List.map args ~f:norm)
           | Arrow_t (args, ret) -> Arrow_t (List.map args ~f:norm, norm ret)
-          | Var_t {contents= Free (id, level)} -> (
-            match Int.Map.find !ctx id with
-            | Some id -> Type.free id level
-            | None ->
-                let new_id = fresh_int () in
-                ctx := Int.Map.set !ctx ~key:new_id ~data:id ;
-                Type.free new_id level )
-          | Var_t {contents= Link t} -> norm t
+          | Var_t { contents = Free (id, level) } -> (
+              match Int.Map.find !ctx id with
+              | Some id -> Type.free id level
+              | None ->
+                  let new_id = fresh_int () in
+                  ctx := Int.Map.set !ctx ~key:new_id ~data:id;
+                  Type.free new_id level )
+          | Var_t { contents = Link t } -> norm t
         in
         norm t
 
       let of_hole h =
         let free_ctx = ref Int.Map.empty in
         let type_ = normalize_free free_ctx h.Hole.type_ in
-        let type_ctx =
-          StaticDistance.Map.map h.Hole.ctx ~f:(normalize_free free_ctx)
-        in
-        ({ctx= type_ctx; symbol= h.Hole.symbol; type_}, !free_ctx)
+        let type_ctx = Map.map h.Hole.ctx ~f:(normalize_free free_ctx) in
+        ({ ctx = type_ctx; symbol = h.Hole.symbol; type_ }, !free_ctx)
     end
 
-    type t = {hole: Hole_without_id.t; spec: Specification.t}
+    type t = { hole : Hole_without_id.t; spec : Specification.t }
     [@@deriving compare, sexp]
 
     let hash = Hashtbl.hash
 
     let of_hole_spec hole spec =
       let hole, map = Hole_without_id.of_hole hole in
-      ({hole; spec}, map)
+      ({ hole; spec }, map)
   end
 
   module SignatureSet = Hash_set.Make (struct
-    type t = Value.t list [@@deriving sexp, compare]
-
-    let hash = Hashtbl.hash
+    type t = Ast.ivalue list [@@deriving compare, hash, sexp]
   end)
 
   module HoleTable = Hashtbl.Make (Key)
   module CostTable = Int.Table
 
   module HoleState = struct
-    type t =
-      { signatures: SignatureSet.t
-      ; hypotheses: (Hypothesis.t * Unifier.t) list CostTable.t
-      ; generalizations: (Hypothesis.t * Unifier.t) list Lazy.t }
+    type t = {
+      signatures : SignatureSet.t;
+      hypotheses : (Hypothesis.t * Unifier.t) list CostTable.t;
+      generalizations : (Hypothesis.t * Unifier.t) list Lazy.t;
+    }
     [@@deriving sexp]
   end
 
   module Config = struct
-    type t =
-      { generalize: Generalizer.t
-      ; cost_model: CostModel.t
-      ; deduction: Deduction.t
-      ; library: Library.t
-      ; search_space_out: Out_channel.t Option.t }
+    type t = {
+      generalize : Generalizer.t;
+      cost_model : CostModel.t;
+      deduction : Deduction.t;
+      library : Library.t;
+      search_space_out : Out_channel.t Option.t;
+    }
   end
 
   open Config
 
-  type t = {hole_table: HoleState.t HoleTable.t; config: Config.t}
+  type t = { hole_table : HoleState.t HoleTable.t; config : Config.t }
 
   let create : Config.t -> t =
-   fun config -> {config; hole_table= HoleTable.create ()}
+   fun config -> { config; hole_table = HoleTable.create () }
 
   let to_string m =
     Sexp.to_string_hum ([%sexp_of: HoleState.t HoleTable.t] m.hole_table)
@@ -229,33 +233,32 @@ module Memoizer = struct
           | H.Abstract ->
               let sk = Hypothesis.skeleton h in
               Option.map (m.config.deduction sk) ~f:(fun sk' ->
-                  (Hypothesis.of_skeleton m.config.cost_model sk', u) ) )
+                  (Hypothesis.of_skeleton m.config.cost_model sk', u)))
 
   let select_matching :
       t -> (Hypothesis.t * 'a) Sequence.t -> (Hypothesis.t * 'a) Sequence.t =
     let module H = Hypothesis in
     fun m ->
       Sequence.filter ~f:(fun (h, _) ->
-          incr "num_hypos" ;
+          incr "num_hypos";
           Status.(
-            print_status {synthesis= counter; hashcons= Skeleton.Table.counter}) ;
+            print_status { synthesis = counter; hashcons = Skeleton.Table.counter });
           match H.kind h with
           | H.Concrete -> H.verify ~library:m.config.library h
-          | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t
-      )
+          | H.Abstract -> failwiths "BUG: Did not fill in all holes." h H.sexp_of_t)
 
   let dump_to_channel :
-         t
-      -> parent:Hypothesis.t
-      -> (Hypothesis.t * 'a) Sequence.t
-      -> (Hypothesis.t * 'a) Sequence.t =
+      t ->
+      parent:Hypothesis.t ->
+      (Hypothesis.t * 'a) Sequence.t ->
+      (Hypothesis.t * 'a) Sequence.t =
     let module H = Hypothesis in
     fun m ~parent:_ seq ->
       match m.config.search_space_out with
       | Some ch ->
           Sequence.inspect seq ~f:(fun (h, _) ->
-              let json = `List [`String (H.to_string_hum h)] in
-              Json.to_channel ~std:true ch json )
+              let json = `List [ `String (H.to_string_hum h) ] in
+              Json.to_channel ~std:true ch json)
       | None -> seq
 
   (** Requires: 'm' is a memoization table. 'hypo' is a
@@ -310,7 +313,7 @@ module Memoizer = struct
                            Seq.concat_map hs ~f:(fun (p, p_u) ->
                                let spec =
                                  List.find_map_exn (H.holes p) ~f:(fun (h, s) ->
-                                     if Hole.equal hole h then Some s else None )
+                                     if Hole.equal hole h then Some s else None)
                                in
                                let hole = Hole.apply_unifier p_u hole in
                                let children =
@@ -323,8 +326,8 @@ module Memoizer = struct
                                      H.fill_hole m.config.cost_model hole ~parent:p
                                        ~child:c
                                    in
-                                   (h, u) )
-                               |> perform_deduction m ) ) )
+                                   (h, u))
+                               |> perform_deduction m)))
                 (* Only return concrete hypotheses which match the specification. *)
                 |> select_matching m
                 (* Dump child hypotheses to channel if requested. *)
@@ -332,8 +335,7 @@ module Memoizer = struct
             | None -> Seq.empty )
 
   and get :
-      t -> Hole.t -> Specification.t -> cost:int -> (Hypothesis.t * Unifier.t) list
-      =
+      t -> Hole.t -> Specification.t -> cost:int -> (Hypothesis.t * Unifier.t) list =
     let module S = HoleState in
     let module H = Hypothesis in
     fun m hole spec ~cost ->
@@ -345,7 +347,9 @@ module Memoizer = struct
         let key, map = Key.of_hole_spec hole spec in
         let state =
           match HoleTable.find m.hole_table key with
-          | Some state -> incr "hole_hits" ; state
+          | Some state ->
+              incr "hole_hits";
+              state
           | None ->
               (* let distinct_specs = *)
               (*   m.hole_table *)
@@ -355,7 +359,7 @@ module Memoizer = struct
               (* in *)
               (* Counter.set counter "num_distinct_specs" (List.length distinct_specs); *)
               (* set_sexp "specs" ([%sexp_of:Specification.t list] distinct_specs); *)
-              
+
               (* let num_distinct_types = *)
               (*   m.hole_table *)
               (*   |> HoleTable.keys *)
@@ -364,20 +368,22 @@ module Memoizer = struct
               (*   |> List.length *)
               (* in *)
               (* Counter.set counter "num_distinct_types" num_distinct_types; *)
-              incr "hole_misses" ;
+              incr "hole_misses";
               let state' =
-                Counter.set counter "num_holes" (HoleTable.length m.hole_table) ;
-                { S.signatures= SignatureSet.create ()
-                ; S.hypotheses= CostTable.create ()
-                ; S.generalizations=
+                Counter.set counter "num_holes" (HoleTable.length m.hole_table);
+                {
+                  S.signatures = SignatureSet.create ();
+                  S.hypotheses = CostTable.create ();
+                  S.generalizations =
                     Lazy.from_fun (fun () ->
                         m.config.generalize key.Key.hole.Key.Hole_without_id.ctx
                           key.Key.hole.Key.Hole_without_id.type_
                           key.Key.hole.Key.Hole_without_id.symbol spec
                         |> Sequence.of_list |> perform_deduction m
-                        |> Sequence.to_list ) }
+                        |> Sequence.to_list);
+                }
               in
-              HoleTable.add_exn m.hole_table ~key ~data:state' ;
+              HoleTable.add_exn m.hole_table ~key ~data:state';
               state'
         in
         let ret =
@@ -404,8 +410,8 @@ module Memoizer = struct
                 |> List.concat_map ~f:(fun (p, p_u) ->
                        Sequence.map (fill_holes_in_hypothesis m p cost)
                          ~f:(fun (filled_p, filled_u) ->
-                           (filled_p, Unifier.compose ~inner:filled_u ~outer:p_u) )
-                       |> Sequence.to_list )
+                           (filled_p, Unifier.compose ~inner:filled_u ~outer:p_u))
+                       |> Sequence.to_list)
                 |> List.filter ~f:(fun (h, _) ->
                        let module Sp = Specification in
                        match (H.spec h).Sp.data with
@@ -414,19 +420,24 @@ module Memoizer = struct
                              Inputs.signature m.config.Config.library (H.skeleton h)
                                inp
                            in
-                           incr "sigs_checked" ;
+                           incr "sigs_checked";
                            match m_sign with
                            | Some sign ->
                                if Hash_set.mem state.HoleState.signatures sign then (
-                                 incr "sigs_dup" ; false )
+                                 incr "sigs_dup";
+                                 false )
                                else (
-                                 Hash_set.add state.HoleState.signatures sign ;
+                                 Hash_set.add state.HoleState.signatures sign;
                                  true )
-                           | None -> incr "sigs_fail" ; false )
-                       | _ -> incr "sigs_none" ; true )
+                           | None ->
+                               incr "sigs_fail";
+                               false )
+                       | _ ->
+                           incr "sigs_none";
+                           true)
               in
               (* Save the computed result, so we can use it later. *)
-              CostTable.add_exn state.S.hypotheses ~key:cost ~data:hs ;
+              CostTable.add_exn state.S.hypotheses ~key:cost ~data:hs;
               (* let all_saved_hypos = *)
               (*   m.hole_table *)
               (*   |> HoleTable.to_alist  *)
@@ -453,14 +464,14 @@ module Memoizer = struct
         in
         List.map ret ~f:(fun (h, u) ->
             let u' = denormalize_unifier u map in
-            (h, u') )
+            (h, u'))
 
   let to_sequence :
-         t
-      -> ?min_cost:int
-      -> ?max_cost:int
-      -> Hypothesis.t
-      -> (Hypothesis.t * Unifier.t) Sequence.t Sequence.t =
+      t ->
+      ?min_cost:int ->
+      ?max_cost:int ->
+      Hypothesis.t ->
+      (Hypothesis.t * Unifier.t) Sequence.t Sequence.t =
    fun m ?(min_cost = 0) ?max_cost hypo ->
     match max_cost with
     | Some max_cost ->
@@ -470,17 +481,17 @@ module Memoizer = struct
             (* print_newline (); *)
             (* flush stdout; *)
             if cost > max_cost then None
-            else Some (fill_holes_in_hypothesis m hypo cost, cost + 1) )
+            else Some (fill_holes_in_hypothesis m hypo cost, cost + 1))
     | None ->
         Sequence.unfold ~init:min_cost ~f:(fun cost ->
-            Some (fill_holes_in_hypothesis m hypo cost, cost + 1) )
+            Some (fill_holes_in_hypothesis m hypo cost, cost + 1))
 
   let to_flat_sequence :
-         t
-      -> ?min_cost:int
-      -> ?max_cost:int
-      -> Hypothesis.t
-      -> (Hypothesis.t * Unifier.t) Sequence.t =
+      t ->
+      ?min_cost:int ->
+      ?max_cost:int ->
+      Hypothesis.t ->
+      (Hypothesis.t * Unifier.t) Sequence.t =
    fun m ?(min_cost = 0) ?max_cost hypo ->
     to_sequence m ~min_cost ?max_cost hypo
     (* |> Sequence.map ~f:Sequence.of_list *)

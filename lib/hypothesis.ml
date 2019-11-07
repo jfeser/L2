@@ -8,10 +8,12 @@ module StaticDistance = struct
     type t = int * int [@@deriving compare, hash, sexp]
   end
 
-  include T
-  module C = Comparable.Make (T)
+  module SD = struct
+    include T
+    include Comparator.Make (T)
+  end
 
-  include (C : module type of C with module Map := C.Map)
+  include SD
 
   let create ~distance ~index =
     let open Int in
@@ -39,27 +41,21 @@ module StaticDistance = struct
     let a, b = x in
     sprintf "%d_%d" a b
 
-  module Map = struct
-    include C.Map
+  let map_increment_scope x =
+    Map.to_alist x
+    |> List.map ~f:(fun (k, v) -> (increment_scope k, v))
+    |> Map.of_alist_exn (module SD)
 
-    let increment_scope : 'a t -> 'a t =
-     fun x ->
-      to_alist x
-      |> List.map ~f:(fun (k, v) -> (increment_scope k, v))
-      |> of_alist_exn
-
-    let to_string : ('a -> string) -> 'a t -> string =
-     fun ts m ->
-      let str =
-        to_alist m
-        |> List.map ~f:(fun (k, v) -> sprintf "%s : %s" (to_string k) (ts v))
-        |> String.concat ~sep:", "
-      in
-      "{ " ^ str ^ " }"
-  end
-
-  let map_increment_scope = Map.increment_scope
+  let map_to_string ts m =
+    let str =
+      Map.to_alist m
+      |> List.map ~f:(fun (k, v) -> sprintf "%s : %s" (to_string k) (ts v))
+      |> String.concat ~sep:", "
+    in
+    "{ " ^ str ^ " }"
 end
+
+module SD = StaticDistance
 
 module Symbol = struct
   module T = struct
@@ -110,12 +106,7 @@ module Symbol = struct
 end
 
 module Hole = struct
-  type t = {
-    id : int;
-    ctx : Type.t StaticDistance.Map.t;
-    type_ : Type.t;
-    symbol : Symbol.t;
-  }
+  type t = { id : int; ctx : Type.t Map.M(SD).t; type_ : Type.t; symbol : Symbol.t }
   [@@deriving sexp, compare]
 
   let counter = ref 0
@@ -128,7 +119,7 @@ module Hole = struct
 
   let to_string h = Sexp.to_string_hum (sexp_of_t h)
 
-  let create ?(ctx = StaticDistance.Map.empty) type_ symbol =
+  let create ?(ctx = Map.empty (module SD)) type_ symbol =
     incr counter;
     if !counter < 0 then failwith "Hole id counter overflowed.";
     { id = !counter; ctx; type_; symbol }
@@ -136,7 +127,7 @@ module Hole = struct
   let apply_unifier u h =
     {
       h with
-      ctx = StaticDistance.Map.map h.ctx ~f:(Unifier.apply u);
+      ctx = Map.map h.ctx ~f:(Unifier.apply u);
       type_ = Unifier.apply u h.type_;
     }
 end
@@ -144,11 +135,9 @@ end
 module Skeleton = struct
   module Id = struct
     module T = struct
-      type t = StaticDistance of StaticDistance.t | Name of string
-      [@@deriving compare, sexp]
+      type t = StaticDistance of SD.t | Name of string
+      [@@deriving compare, hash, sexp]
     end
-
-    let hash = Hashtbl.hash
 
     include T
     include Comparable.Make (T)
@@ -268,7 +257,7 @@ module Skeleton = struct
 
       let hash_t s = s.Hashcons.hkey
 
-      let hash_spec = Hashtbl.hash
+      let hash_spec s = s.hash
 
       let hash_ast = function
         | Num x -> Int.hash x
@@ -454,70 +443,63 @@ module Skeleton = struct
           apply_parens pp () fmt
       | Hole hole -> fprintf fmt "%d?" hole.Hole.id
     in
-    pp SD.Map.empty
+    pp (Map.empty (module SD))
 
   let to_string_hum s =
     Format.(
       fprintf str_formatter "%a" pp s;
       flush_str_formatter ())
 
-  let to_expr :
-      ?ctx:Expr.t StaticDistance.Map.t ->
-      ?fresh_name:(unit -> string) ->
-      ?of_hole:(Hole.t -> Expr.t) ->
-      t ->
-      Expr.t =
-    let module SD = StaticDistance in
-    fun ?(ctx = SD.Map.empty) ?fresh_name ?of_hole s ->
-      let of_hole =
-        match of_hole with
-        | Some f -> f
-        | None ->
-            fun _ ->
-              failwiths "Unexpected hole." s (fun s ->
-                  [%sexp_of: string] (to_string_hum s))
-      in
-      let fresh_name =
-        match fresh_name with Some f -> f | None -> Fresh.mk_fresh_name_fun ()
-      in
-      let rec to_expr ctx sk =
-        match ast sk with
-        | Num x -> `Num x
-        | Bool x -> `Bool x
-        | Id (Id.StaticDistance x) -> (
-            match Map.find ctx x with
-            | Some expr -> expr
-            | None ->
-                failwiths "Context does not contain coordinate." (s, x, ctx)
-                  (Tuple.T3.sexp_of_t
-                     (fun _ -> Sexp.Atom "Implement sexp_of_skeleton")
-                     [%sexp_of: SD.t] [%sexp_of: Expr.t SD.Map.t]) )
-        | Id (Id.Name x) -> `Id x
-        | List elems -> `List (List.map elems ~f:(to_expr ctx))
-        | Tree elems -> `Tree (Tree.map elems ~f:(to_expr ctx))
-        | Let { bound; body } ->
-            let name = fresh_name () in
-            let ctx =
-              SD.Map.increment_scope ctx
-              |> Map.set ~key:(SD.create ~distance:1 ~index:1) ~data:(`Id name)
-            in
-            `Let (name, to_expr ctx bound, to_expr ctx body)
-        | Lambda { num_args; body } ->
-            let ctx = SD.Map.increment_scope ctx in
-            let arg_names = List.init num_args ~f:(fun _ -> fresh_name ()) in
-            let ctx =
-              List.fold2_exn arg_names (SD.args num_args) ~init:ctx
-                ~f:(fun ctx name sd -> Map.set ctx ~key:sd ~data:(`Id name))
-            in
-            `Lambda (arg_names, to_expr ctx body)
-        | Apply { func; args } ->
-            `Apply (to_expr ctx func, List.map ~f:(to_expr ctx) args)
-        | Op { op; args } -> `Op (op, List.map ~f:(to_expr ctx) args)
-        | Hole x -> of_hole x
-      in
-      to_expr ctx s
+  let to_expr ?(ctx = Map.empty (module SD)) ?fresh_name ?of_hole s =
+    let of_hole =
+      match of_hole with
+      | Some f -> f
+      | None ->
+          fun _ ->
+            failwiths "Unexpected hole." s (fun s ->
+                [%sexp_of: string] (to_string_hum s))
+    in
+    let fresh_name =
+      match fresh_name with Some f -> f | None -> Fresh.mk_fresh_name_fun ()
+    in
+    let rec to_expr ctx sk =
+      match ast sk with
+      | Num x -> `Num x
+      | Bool x -> `Bool x
+      | Id (Id.StaticDistance x) -> (
+          match Map.find ctx x with
+          | Some expr -> expr
+          | None ->
+              failwiths "Context does not contain coordinate." (s, x, ctx)
+                (Tuple.T3.sexp_of_t
+                   (fun _ -> Sexp.Atom "Implement sexp_of_skeleton")
+                   [%sexp_of: SD.t] [%sexp_of: Expr.t Map.M(SD).t]) )
+      | Id (Id.Name x) -> `Id x
+      | List elems -> `List (List.map elems ~f:(to_expr ctx))
+      | Tree elems -> `Tree (Tree.map elems ~f:(to_expr ctx))
+      | Let { bound; body } ->
+          let name = fresh_name () in
+          let ctx =
+            SD.map_increment_scope ctx
+            |> Map.set ~key:(SD.create ~distance:1 ~index:1) ~data:(`Id name)
+          in
+          `Let (name, to_expr ctx bound, to_expr ctx body)
+      | Lambda { num_args; body } ->
+          let ctx = SD.map_increment_scope ctx in
+          let arg_names = List.init num_args ~f:(fun _ -> fresh_name ()) in
+          let ctx =
+            List.fold2_exn arg_names (SD.args num_args) ~init:ctx
+              ~f:(fun ctx name sd -> Map.set ctx ~key:sd ~data:(`Id name))
+          in
+          `Lambda (arg_names, to_expr ctx body)
+      | Apply { func; args } ->
+          `Apply (to_expr ctx func, List.map ~f:(to_expr ctx) args)
+      | Op { op; args } -> `Op (op, List.map ~f:(to_expr ctx) args)
+      | Hole x -> of_hole x
+    in
+    to_expr ctx s
 
-  let to_expr_exn ?(ctx = StaticDistance.Map.empty) ?fresh_name s =
+  let to_expr_exn ?(ctx = Map.empty (module SD)) ?fresh_name s =
     to_expr ~ctx ?fresh_name s
 
   class ['c] endo =
@@ -841,16 +823,16 @@ module Examples = struct
 
   module Input = struct
     module T = struct
-      type t = Ast.value SD.Map.t [@@deriving compare, sexp]
+      type t = Ast.ivalue Map.M(SD).t [@@deriving compare, hash, sexp]
     end
 
     include T
     include Comparable.Make (T)
   end
 
-  type example = Input.t * Ast.value [@@deriving sexp, compare]
+  type example = Input.t * Ast.ivalue [@@deriving compare, hash, sexp]
 
-  type t = example list [@@deriving sexp, compare]
+  type t = example list [@@deriving compare, hash, sexp]
 
   type S.data += Examples of t
 
@@ -885,11 +867,13 @@ module Examples = struct
             let expr = Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel in
             let value_ctx =
               Map.to_alist in_ctx
-              |> List.map ~f:(fun (k, v) -> (Map.find_exn name_ctx k, v))
+              |> List.map ~f:(fun (k, v) ->
+                     (Map.find_exn name_ctx k, Value.to_evalue v))
               |> Ctx.of_alist_exn
               |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
             in
-            Eval.eval ~recursion_limit:100 value_ctx expr = out)
+            Eval.eval ~recursion_limit:100 value_ctx expr
+            |> Value.of_evalue_exn = out)
       with Eval.HitRecursionLimit | Eval.RuntimeError _ -> false
     in
     let compare t =
@@ -900,29 +884,30 @@ module Examples = struct
     let to_sexp () = sexp_of_t exs in
     let to_string () =
       List.map exs ~f:(fun (i, o) ->
-          sprintf "%s -> %s" (SD.Map.to_string Value.to_string i) (Value.to_string o))
+          sprintf "%s -> %s" (SD.map_to_string Value.to_string i) (Value.to_string o))
       |> String.concat ~sep:"\n"
     in
     let data = Examples exs in
-    { S.verify; S.compare; S.to_sexp; S.to_string; S.data }
+    let hash = [%hash: t] exs in
+    { S.verify; S.compare; S.hash; S.to_sexp; S.to_string; S.data }
 end
 
 module FunctionExamples = struct
   module S = Specification0
-  module SD = StaticDistance
 
   module Input = struct
     module T = struct
-      type t = Ast.value SD.Map.t * Ast.value list [@@deriving sexp, compare]
+      type t = Ast.ivalue Map.M(SD).t * Ast.ivalue list
+      [@@deriving compare, hash, sexp]
     end
 
     include T
     include Comparable.Make (T)
   end
 
-  type example = Input.t * Ast.value [@@deriving sexp, compare]
+  type example = Input.t * Ast.ivalue [@@deriving compare, hash, sexp]
 
-  type t = example list [@@deriving sexp, compare]
+  type t = example list [@@deriving compare, hash, sexp]
 
   type S.data += FunctionExamples of t
 
@@ -941,8 +926,8 @@ module FunctionExamples = struct
 
   let of_list_exn exs = of_list exs |> Or_error.ok_exn
 
-  let of_input_output_list : (Value.t list * Value.t) list -> t Or_error.t =
-   fun io -> List.map io ~f:(fun (i, o) -> ((SD.Map.empty, i), o)) |> of_list
+  let of_input_output_list io =
+    List.map io ~f:(fun (i, o) -> ((Map.empty (module SD), i), o)) |> of_list
 
   let of_input_output_list_exn : (Value.t list * Value.t) list -> t =
    fun io -> of_input_output_list io |> Or_error.ok_exn
@@ -951,29 +936,26 @@ module FunctionExamples = struct
 
   let to_list t = t
 
-  let to_spec : t -> S.t =
-   fun exs ->
+  let to_spec exs =
     let verify library skel =
       try
         List.for_all exs ~f:(fun ((in_ctx, in_args), out) ->
             let fresh_name = Fresh.mk_fresh_name_fun () in
-            let name_ctx =
-              StaticDistance.Map.map in_ctx ~f:(fun _ -> fresh_name ())
-            in
-            let id_ctx = StaticDistance.Map.map name_ctx ~f:(fun name -> `Id name) in
+            let name_ctx = Map.map in_ctx ~f:(fun _ -> fresh_name ()) in
+            let id_ctx = Map.map name_ctx ~f:(fun name -> `Id name) in
             let expr =
               `Apply
                 ( Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel,
                   List.map in_args ~f:Expr.of_value )
             in
             let value_ctx =
-              StaticDistance.Map.to_alist in_ctx
+              Map.to_alist in_ctx
               |> List.map ~f:(fun (k, v) ->
-                     (StaticDistance.Map.find_exn name_ctx k, v))
+                     (Map.find_exn name_ctx k, Value.to_evalue v))
               |> Ctx.of_alist_exn
               |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
             in
-            Eval.eval ~recursion_limit:100 value_ctx expr = out)
+            Eval.eval ~recursion_limit:100 value_ctx expr = Value.to_evalue out)
       with Eval.HitRecursionLimit | Eval.RuntimeError _ -> false
     in
     let compare t =
@@ -984,27 +966,26 @@ module FunctionExamples = struct
     let to_sexp () = sexp_of_t exs in
     let to_string () =
       List.map exs ~f:(fun ((ctx, args), o) ->
-          let ctx = SD.Map.to_string Value.to_string ctx in
+          let ctx = SD.map_to_string Value.to_string ctx in
           let args = List.map args ~f:Value.to_string |> String.concat ~sep:", " in
           sprintf "%s (%s) -> %s" ctx args (Value.to_string o))
       |> String.concat ~sep:"\n"
     in
     let data = FunctionExamples exs in
-    { S.verify; S.compare; S.to_sexp; S.to_string; S.data }
+    let hash = [%hash: t] exs in
+    { S.verify; compare; hash; to_sexp; to_string; data }
 end
 
 module Inputs = struct
   module S = Specification0
-  module SD = StaticDistance
 
-  type t = Value.t SD.Map.t list [@@deriving sexp, compare]
+  type t = Ast.ivalue Map.M(SD).t list [@@deriving compare, hash, sexp]
 
   type S.data += Inputs of t
 
-  let of_examples : Examples.t -> t = fun exs -> exs |> List.map ~f:Tuple.T2.get1
+  let of_examples exs = exs |> List.map ~f:Tuple.T2.get1
 
-  let signature : Library.t -> Skeleton.t -> t -> Value.t list option =
-   fun library skel exs ->
+  let signature library skel exs =
     try
       List.map exs ~f:(fun ctx ->
           let fresh_name = Fresh.mk_fresh_name_fun () in
@@ -1013,16 +994,16 @@ module Inputs = struct
           let expr = Skeleton.to_expr_exn ~ctx:id_ctx ~fresh_name skel in
           let value_ctx =
             Map.to_alist ctx
-            |> List.map ~f:(fun (k, v) -> (Map.find_exn name_ctx k, v))
+            |> List.map ~f:(fun (k, v) ->
+                   (Map.find_exn name_ctx k, Value.to_evalue v))
             |> Ctx.of_alist_exn
             |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
           in
-          Eval.eval ~recursion_limit:100 value_ctx expr)
+          Eval.eval ~recursion_limit:100 value_ctx expr |> Value.of_evalue_exn)
       |> Option.some
     with Eval.HitRecursionLimit | Eval.RuntimeError _ -> None
 
-  let to_spec : t -> S.t =
-   fun exs ->
+  let to_spec exs =
     let verify library skel = signature library skel exs |> Option.is_some in
     let compare t =
       match t.S.data with
@@ -1032,11 +1013,12 @@ module Inputs = struct
     let to_sexp () = sexp_of_t exs in
     let to_string () =
       List.map exs ~f:(fun ctx ->
-          sprintf "%s" (SD.Map.to_string Value.to_string ctx))
+          sprintf "%s" (SD.map_to_string Value.to_string ctx))
       |> String.concat ~sep:"\n"
     in
     let data = Inputs exs in
-    { S.verify; S.compare; S.to_sexp; S.to_string; S.data }
+    let hash = [%hash: t] exs in
+    { S.verify; S.compare; S.hash; S.to_sexp; S.to_string; S.data }
 end
 
 module Specification = struct
@@ -1049,9 +1031,9 @@ module Specification = struct
         let exs =
           List.map exs ~f:(fun (in_ctx, out) ->
               let in_ctx =
-                StaticDistance.Map.to_alist in_ctx
+                Map.to_alist in_ctx
                 |> List.map ~f:(fun (k, v) -> (StaticDistance.increment_scope k, v))
-                |> StaticDistance.Map.of_alist_exn
+                |> Map.of_alist_exn (module SD)
               in
               (in_ctx, out))
         in
@@ -1060,9 +1042,9 @@ module Specification = struct
         let exs =
           List.map exs ~f:(fun ((in_ctx, in_args), out) ->
               let in_ctx =
-                StaticDistance.Map.to_alist in_ctx
+                Map.to_alist in_ctx
                 |> List.map ~f:(fun (k, v) -> (StaticDistance.increment_scope k, v))
-                |> StaticDistance.Map.of_alist_exn
+                |> Map.of_alist_exn (module SD)
               in
               ((in_ctx, in_args), out))
         in

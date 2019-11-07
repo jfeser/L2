@@ -106,7 +106,7 @@ module L2_Generalizer = struct
     match type_ with
     | Arrow_t _ -> []
     | _ ->
-        List.filter_map (StaticDistance.Map.to_alist ctx) ~f:(fun (id, id_t) ->
+        List.filter_map (Map.to_alist ctx) ~f:(fun (id, id_t) ->
             Option.map (Unifier.of_types type_ id_t) ~f:(fun u ->
                 (H.id_sd params.G.cost_model id spec, u)))
 
@@ -164,8 +164,7 @@ module L2_Generalizer = struct
         let type_ctx =
           List.fold (List.zip_exn arg_names args_t)
             ~init:(StaticDistance.map_increment_scope ctx)
-            ~f:(fun ctx (arg, arg_t) ->
-              StaticDistance.Map.set ctx ~key:arg ~data:arg_t)
+            ~f:(fun ctx (arg, arg_t) -> Map.set ctx ~key:arg ~data:arg_t)
         in
         let lambda =
           H.lambda cost_model num_args
@@ -270,9 +269,13 @@ module L2_Synthesizer = struct
     let spec =
       List.map examples ~f:(function
         | `Apply (_, args), out ->
-            let ctx = StaticDistance.Map.empty in
-            let args = List.map ~f:(Eval.eval (Ctx.empty ())) args in
-            let ret = Eval.eval (Ctx.empty ()) out in
+            let ctx = Map.empty (module StaticDistance) in
+            let args =
+              List.map
+                ~f:(fun e -> Eval.eval (Ctx.empty ()) e |> Value.of_evalue_exn)
+                args
+            in
+            let ret = Eval.eval (Ctx.empty ()) out |> Value.of_evalue_exn in
             ((ctx, args), ret)
         | ex -> failwiths "Unexpected example type." ex sexp_of_example)
       |> FunctionExamples.of_list_exn |> FunctionExamples.to_spec

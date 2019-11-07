@@ -19,7 +19,7 @@ let rec is_constant (expr : expr) : bool =
 let rec sequence = function
   | [] -> Some []
   | Some x :: xs -> (
-    match sequence xs with Some xs' -> Some (x :: xs') | None -> None )
+      match sequence xs with Some xs' -> Some (x :: xs') | None -> None )
   | None :: _ -> None
 
 let is_base (base_terms : expr list) (expr : expr) : expr option =
@@ -49,30 +49,29 @@ let fold_constants (expr : expr) : expr option =
         if is_constant fe then fe else `Lambda (a, fe)
     | `Apply (f, a) -> `Apply (fold f, fold_all a)
     | `Op (op, args) ->
-        let rec value_to_const (value : value) : expr option =
+        let rec value_to_const value =
           match value with
           | `Num x -> Some (`Num x)
           | `Bool x -> Some (`Bool x)
           | `List x -> (
-            match sequence (List.map ~f:value_to_const x) with
-            | Some x' -> Some (`List x')
-            | None -> None )
+              match sequence (List.map ~f:value_to_const x) with
+              | Some x' -> Some (`List x')
+              | None -> None )
           | `Tree t -> (
-            try
-              Some
-                (`Tree
-                  (Tree.map t ~f:(fun x ->
-                       match value_to_const x with
-                       | Some x' -> x'
-                       | None -> raise BadExpression )))
-            with BadExpression -> None )
-          | `Closure _ | `Unit -> None
+              try
+                Some
+                  (`Tree
+                    (Tree.map t ~f:(fun x ->
+                         match value_to_const x with
+                         | Some x' -> x'
+                         | None -> raise BadExpression)))
+              with BadExpression -> None )
         in
         let folded_args = fold_all args in
         let new_op = `Op (op, folded_args) in
         if List.for_all ~f:is_constant folded_args then
           try
-            let value = Eval.eval (Ctx.empty ()) new_op in
+            let value = Eval.eval (Ctx.empty ()) new_op |> Value.of_evalue_exn in
             match value_to_const value with Some const -> const | None -> new_op
           with Eval.RuntimeError _ -> raise BadExpression
         else new_op

@@ -53,8 +53,6 @@ let rec of_value : Value.t -> t = function
   | `Bool x -> `Bool x
   | `List x -> `List (List.map x ~f:of_value)
   | `Tree x -> `Tree (Tree.map x ~f:of_value)
-  | `Closure (x, ctx) -> `Closure (of_expr x, Ctx.map ctx ~f:of_value)
-  | `Unit -> `Unit
 
 let rec to_expr_exn : t -> Expr.t = function
   | `Num x -> `Num x
@@ -70,14 +68,12 @@ let rec to_expr_exn : t -> Expr.t = function
 let rec to_value_exn : t -> Value.t = function
   | `Num x -> `Num x
   | `Bool x -> `Bool x
-  | `Op (Expr.Op.Cons, [hd; tl]) as e -> (
-    match to_value_exn tl with
-    | `List tl' -> `List (to_value_exn hd :: tl')
-    | _ -> failwiths "Cannot convert to value." e [%sexp_of: t] )
+  | `Op (Expr.Op.Cons, [ hd; tl ]) as e -> (
+      match to_value_exn tl with
+      | `List tl' -> `List (to_value_exn hd :: tl')
+      | _ -> failwiths "Cannot convert to value." e [%sexp_of: t] )
   | `List x -> `List (List.map x ~f:to_value_exn)
   | `Tree x -> `Tree (Tree.map x ~f:to_value_exn)
-  | `Closure (x, ctx) -> `Closure (to_expr_exn x, Ctx.map ~f:to_value_exn ctx)
-  | `Unit -> `Unit
   | e -> failwiths "Cannot convert to value." e [%sexp_of: t]
 
 let to_value : t -> Value.t Or_error.t =

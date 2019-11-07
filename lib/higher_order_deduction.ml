@@ -3,6 +3,7 @@ open Collections
 open Hypothesis
 module Sp = Specification
 module Sk = Skeleton
+module SD = StaticDistance
 
 let spec_err name spec =
   failwiths "Unexpected spec for return value of function." (name, spec)
@@ -18,7 +19,7 @@ let ret_err name ret =
 
 let lookup_err name id =
   failwiths "Variable name not present in context." (name, id)
-    [%sexp_of: Ast.id * StaticDistance.t]
+    [%sexp_of: Ast.id * SD.t]
 
 module type Deduce_2_intf = sig
   val name : string
@@ -35,7 +36,7 @@ module Make_deduce_2 (M : Deduce_2_intf) = struct
         let m_hole_exs =
           List.map (Examples.to_list exs) ~f:(fun (ctx, out_v) ->
               let in_v =
-                match StaticDistance.Map.find ctx collection_id with
+                match Map.find ctx collection_id with
                 | Some in_v -> in_v
                 | None -> lookup_err M.name collection_id
               in
@@ -77,7 +78,7 @@ module Make_deduce_fold (M : Deduce_fold_intf) = struct
         let exs = Examples.to_list exs in
         let m_base_exs =
           List.filter exs ~f:(fun (ctx, _) ->
-              match StaticDistance.Map.find ctx collection_id with
+              match Map.find ctx collection_id with
               | Some v -> M.is_base_case v
               | None -> lookup_err (M.name ^ "-base-case") collection_id)
           |> Examples.of_list
@@ -171,15 +172,15 @@ let deduce_lambda lambda spec =
     let child_spec =
       match Sp.data child_spec with
       | FunctionExamples.FunctionExamples exs ->
-          let arg_names = StaticDistance.args num_args in
+          let arg_names = SD.args num_args in
           let child_exs =
             FunctionExamples.to_list exs
             |> List.map ~f:(fun ((in_ctx, in_args), out) ->
                    let value_ctx =
-                     StaticDistance.Map.of_alist_exn (List.zip_exn arg_names in_args)
+                     Map.of_alist_exn (module SD) (List.zip_exn arg_names in_args)
                    in
                    let in_ctx =
-                     StaticDistance.Map.merge value_ctx in_ctx ~f:(fun ~key:_ v ->
+                     Map.merge value_ctx in_ctx ~f:(fun ~key:_ v ->
                          match v with `Both (x, _) | `Left x | `Right x -> Some x)
                    in
                    (in_ctx, out))

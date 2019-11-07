@@ -5,13 +5,13 @@ open Infer
 
 module Generalizer : sig
   type t =
-       Type.t StaticDistance.Map.t
-    -> Type.t
-    -> Symbol.t
-    -> Specification.t
-    -> (Hypothesis.t * Unifier.t) list
+    Type.t Map.M(StaticDistance).t ->
+    Type.t ->
+    Symbol.t ->
+    Specification.t ->
+    (Hypothesis.t * Unifier.t) list
 
-  type params = {cost_model: CostModel.t; library: Library.t}
+  type params = { cost_model : CostModel.t; library : Library.t }
 
   val generalize_single : params -> t -> Hypothesis.t -> Hypothesis.t list
 
@@ -42,12 +42,13 @@ module Memoizer : sig
   type t
 
   module Config : sig
-    type t =
-      { generalize: Generalizer.t
-      ; cost_model: CostModel.t
-      ; deduction: Deduction.t
-      ; library: Library.t
-      ; search_space_out: Out_channel.t Option.t }
+    type t = {
+      generalize : Generalizer.t;
+      cost_model : CostModel.t;
+      deduction : Deduction.t;
+      library : Library.t;
+      search_space_out : Out_channel.t Option.t;
+    }
   end
 
   val create : Config.t -> t
@@ -61,18 +62,18 @@ module Memoizer : sig
     t -> Hole.t -> Specification.t -> cost:int -> (Hypothesis.t * Unifier.t) list
 
   val to_sequence :
-       t
-    -> ?min_cost:int
-    -> ?max_cost:int
-    -> Hypothesis.t
-    -> (Hypothesis.t * Unifier.t) Sequence.t Sequence.t
+    t ->
+    ?min_cost:int ->
+    ?max_cost:int ->
+    Hypothesis.t ->
+    (Hypothesis.t * Unifier.t) Sequence.t Sequence.t
 
   val to_flat_sequence :
-       t
-    -> ?min_cost:int
-    -> ?max_cost:int
-    -> Hypothesis.t
-    -> (Hypothesis.t * Unifier.t) Sequence.t
+    t ->
+    ?min_cost:int ->
+    ?max_cost:int ->
+    Hypothesis.t ->
+    (Hypothesis.t * Unifier.t) Sequence.t
 end
 
 module Synthesizer : sig

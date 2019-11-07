@@ -5,20 +5,21 @@ exception ParseError of string
 
 type id = string [@@deriving compare, hash, sexp, bin_io]
 
+type const_typ = Num_t | Bool_t [@@deriving compare, hash, sexp]
+
+type level = int [@@deriving compare, hash, sexp]
+
 (** Represents the type of a value or expression. *)
 type typ =
   | Const_t of const_typ
   | App_t of id * typ list
   | Arrow_t of typ list * typ
   | Var_t of var_typ ref
-
-and const_typ = Num_t | Bool_t
+[@@deriving compare, sexp]
 
 (** Type variables can be either free or quantified. A type scheme
 cannot contain free type variables. *)
 and var_typ = Free of int * level | Link of typ | Quant of string
-
-and level = int [@@deriving compare, sexp]
 
 type op =
   | Plus
@@ -61,11 +62,11 @@ type example = expr * expr [@@deriving compare, sexp]
 
 type constr = expr * id list [@@deriving compare, sexp]
 
-type value =
-  [ `Num of int
-  | `Bool of bool
-  | `List of value list
-  | `Tree of value Tree.t
-  | `Closure of expr * value Ctx.t
-  | `Unit ]
-[@@deriving compare, sexp]
+type 'a value =
+  [ `Num of int | `Bool of bool | `List of 'a list | `Tree of 'a Tree.t ]
+[@@deriving compare, hash, sexp]
+
+type ivalue = ivalue value [@@deriving compare, hash, sexp]
+
+type evalue = [ evalue value | `Unit | `Closure of expr * evalue Ctx.t ]
+[@@deriving sexp]

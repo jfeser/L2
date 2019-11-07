@@ -330,7 +330,7 @@ let eval_command =
       with Eval.RuntimeError err -> Error err
     in
     match output with
-    | Ok value -> print_string (Value.to_string value)
+    | Ok v -> [%sexp_of: Ast.evalue] v |> print_s
     | Error err -> print_string ("Error: " ^ Error.to_string_hum err ^ "\n")
   in
   Command.basic_spec ~summary:"Run L2 source code." spec run

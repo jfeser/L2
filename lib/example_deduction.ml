@@ -116,46 +116,34 @@ let unify_example : example -> example -> example Option.t =
         [%sexp_of: example * example]
       |> Error.raise
 
-let infer_example :
-    op:string ->
-    specs:example list ->
-    ctx:Value.t StaticDistance.Map.t ->
-    example ->
-    Sp.t list =
+let infer_example ~op ~specs ~ctx ex =
   let module Let_syntax = Option.Let_syntax.Let_syntax in
-  fun ~op ~specs ~ctx ex ->
-    try
-      let possible_specs =
-        run_with_time "scan" (fun () ->
-            List.filter_map specs ~f:(unify_example ex)
-            |> List.dedup_and_sort ~compare:Poly.compare)
-      in
-      let args, _ = ex in
-      let arity = List.length args in
-      match possible_specs with
-      | [] ->
-          (* printf "No examples found. (%s)\n" op; *)
-          (* printf "%s\n" (Sexp.to_string_hum ([%sexp_of:example] ex)); *)
-          (* print_newline (); *)
-          List.repeat arity Sp.bottom
-      | [ (args', _) ] ->
-          List.map args' ~f:(fun a ->
-              match ExprValue.to_value a with
-              | Ok v -> Examples.singleton (ctx, v) |> Examples.to_spec
-              | Error _ -> Sp.top)
-      | _ -> List.repeat arity Sp.top
-    with exn ->
-      Error.tag_arg (Error.of_exn exn) "Failure in infer_example." (op, ex)
-        [%sexp_of: string * example]
-      |> Error.raise
+  try
+    let possible_specs =
+      run_with_time "scan" (fun () ->
+          List.filter_map specs ~f:(unify_example ex)
+          |> List.dedup_and_sort ~compare:Poly.compare)
+    in
+    let args, _ = ex in
+    let arity = List.length args in
+    match possible_specs with
+    | [] ->
+        (* printf "No examples found. (%s)\n" op; *)
+        (* printf "%s\n" (Sexp.to_string_hum ([%sexp_of:example] ex)); *)
+        (* print_newline (); *)
+        List.repeat arity Sp.bottom
+    | [ (args', _) ] ->
+        List.map args' ~f:(fun a ->
+            match ExprValue.to_value a with
+            | Ok v -> Examples.singleton (ctx, v) |> Examples.to_spec
+            | Error _ -> Sp.top)
+    | _ -> List.repeat arity Sp.top
+  with exn ->
+    Error.tag_arg (Error.of_exn exn) "Failure in infer_example." (op, ex)
+      [%sexp_of: string * example]
+    |> Error.raise
 
-let infer_examples :
-    specs:example list String.Map.t ->
-    op:string ->
-    args:Sk.t list ->
-    Examples.example list ->
-    Sp.t list =
- fun ~specs ~op ~args exs ->
+let infer_examples ~specs ~op ~args exs =
   try
     let arity = List.length args in
     match String.Map.find specs op with
@@ -163,7 +151,7 @@ let infer_examples :
         let arg_specs =
           List.map exs ~f:(fun (ctx, ret) ->
               try
-                let expr_ctx = StaticDistance.Map.map ctx ~f:Expr.of_value in
+                let expr_ctx = Map.map ctx ~f:Expr.of_value in
                 let fresh_name = Util.Fresh.mk_fresh_name_fun () in
                 let hole_names = Int.Table.create () in
                 let arg_evals =
