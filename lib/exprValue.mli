@@ -1,5 +1,4 @@
-open Core
-open Collections
+open! Core
 
 type t =
   [ `Apply of t * t list

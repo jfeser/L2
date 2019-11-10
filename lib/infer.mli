@@ -1,6 +1,5 @@
-open Core
+open! Core
 open Ast
-open Collections
 
 exception TypeError of Error.t
 

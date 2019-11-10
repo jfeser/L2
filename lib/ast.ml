@@ -1,5 +1,4 @@
-open Core
-open Collections
+open! Core
 
 exception ParseError of string
 

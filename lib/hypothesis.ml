@@ -624,7 +624,7 @@ module CostModel = struct
     hole : Hole.t -> int;
     id : Skeleton.Id.t -> int;
     list : 'a. 'a list -> int;
-    tree : 'a. 'a Collections.Tree.t -> int;
+    tree : 'a. 'a Tree.t -> int;
     _let : 'a. 'a -> 'a -> int;
     lambda : 'a. int -> 'a -> int;
     apply : 'a. 'a -> 'a list -> int;

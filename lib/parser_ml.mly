@@ -1,6 +1,5 @@
 %{
 open Ast
-open Collections
 %}
 
 %token <string> ID
