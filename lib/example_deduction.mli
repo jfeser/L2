@@ -1,6 +1,5 @@
-open Core
+open! Core
 open Synthesis_common
-open Collections
 
 type example = ExprValue.t list * ExprValue.t [@@deriving sexp]
 

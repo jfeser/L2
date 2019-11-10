@@ -1,6 +1,6 @@
-open Collections
+open! Core
 
-type status = {synthesis: Counter.t; hashcons: Counter.t}
+type status = { synthesis : Counter.t; hashcons : Counter.t }
 
 val enable : unit -> unit
 
