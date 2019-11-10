@@ -1,5 +1,4 @@
 open Core
-open Collections
 open Ast
 
 type t = Expr.t * Expr.t
