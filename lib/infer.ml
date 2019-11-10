@@ -9,6 +9,10 @@ exception TypeError of Error.t
 
 let total_infer_time = ref Time.Span.zero
 
+let list_id = Name.of_string "list"
+
+let tree_id = Name.of_string "tree"
+
 module Type0 = struct
   type const = const_typ = Num_t | Bool_t [@@deriving compare, sexp]
 
@@ -20,7 +24,7 @@ module Type0 = struct
     | Arrow_t of t list * t
     | Var_t of var ref
 
-  and var = var_typ = Free of int * level | Link of t | Quant of string
+  and var = var_typ = Free of int * level | Link of t | Quant of id
   [@@deriving compare, sexp]
 
   let equal t1 t2 = compare t1 t2 = 0
@@ -48,11 +52,7 @@ module Type0 = struct
 
   (** Normalize a type by renaming each of its quantified type variables. *)
   let normalize (t : t) : t =
-    let count = ref (-1) in
-    let fresh_name () =
-      incr count;
-      "t" ^ Int.to_string !count
-    in
+    let fresh_name = Fresh.mk_fresh_name_fun () in
     let rec norm ctx typ =
       match typ with
       | Const_t _ | Var_t { contents = Free _ } -> typ
@@ -77,27 +77,29 @@ module Type0 = struct
 
   let free id level = Var_t (ref (Free (id, level)))
 
-  let list t = App_t ("list", [ t ])
+  let list t = App_t (list_id, [ t ])
 
-  let tree t = App_t ("tree", [ t ])
+  let tree t = App_t (tree_id, [ t ])
+
+  let is_tree n = Name.O.(n = tree_id)
+
+  let is_list n = Name.O.(n = list_id)
 
   let arrow1 arg body = Arrow_t ([ arg ], body)
 
   let arrow2 a1 a2 body = Arrow_t ([ a1; a2 ], body)
 
-  let arity : t -> int = function Arrow_t (args, _) -> List.length args | _ -> 0
+  let arity = function Arrow_t (args, _) -> List.length args | _ -> 0
 
   (** Parse a type from a string. *)
-  let of_string_exn : string -> t =
-   fun s ->
+  let of_string_exn s =
     let lexbuf = Lexing.from_string s in
     try Parser_sexp.typ_eof Lexer_sexp.token lexbuf with
     | Parser_sexp.Error -> raise (ParseError s)
     | Lexer_sexp.SyntaxError _ -> raise (ParseError s)
     | Parsing.Parse_error -> raise (ParseError s)
 
-  let of_string : string -> t Or_error.t =
-   fun s -> Or_error.try_with (fun () -> of_string_exn s)
+  let of_string s = Or_error.try_with (fun () -> of_string_exn s)
 
   (** Convert a type to a string. *)
   let rec to_string (t : t) : string =
@@ -106,9 +108,9 @@ module Type0 = struct
     | Const_t Num_t -> "num"
     | Const_t Bool_t -> "bool"
     | Var_t { contents = Free (id, _) } -> "ft" ^ Int.to_string id
-    | Var_t { contents = Quant name } -> name
+    | Var_t { contents = Quant name } -> Name.to_string name
     | Var_t { contents = Link typ' } -> to_string typ'
-    | App_t (id, args) -> sprintf "%s[%s]" id (tlist_str args)
+    | App_t (id, args) -> sprintf "%s[%s]" (Name.to_string id) (tlist_str args)
     | Arrow_t ([ arg ], ret) -> sprintf "(%s -> %s)" (to_string arg) (to_string ret)
     | Arrow_t (args, ret) -> sprintf "((%s) -> %s)" (tlist_str args) (to_string ret)
 end
@@ -143,16 +145,7 @@ module TypedExpr = struct
   include T
 
   let normalize (expr : t) : t =
-    let count = ref (-1) in
-    let fresh_name () =
-      let n =
-        incr count;
-        !count
-      in
-      let prefix = Char.of_int_exn ((n mod 26) + 97) in
-      let suffix = if n >= 26 then Int.to_string ((n - 26) mod 26) else "" in
-      Printf.sprintf "%c%s" prefix suffix
-    in
+    let fresh_name = Fresh.mk_fresh_name_fun () in
     let rec norm ctx e =
       let norm_all = List.map ~f:(norm ctx) in
       match e with
@@ -242,8 +235,7 @@ module Unifier = struct
     | App_t (name, args) -> App_t (name, List.map ~f:(apply s) args)
     | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(apply s) args, apply s ret)
 
-  let apply_ctx : t -> Type0.t String.Map.t -> Type0.t String.Map.t =
-   fun u ctx -> String.Map.map ctx ~f:(apply u)
+  let apply_ctx u ctx = Map.map ctx ~f:(apply u)
 
   let merge outer inner =
     Int.Map.merge outer inner ~f:(fun ~key:_ ->
@@ -355,7 +347,7 @@ typed, its free type variables can be generalized. *)
 let rec generalize level typ =
   match typ with
   | Var_t { contents = Free (id, level') } when level' > level ->
-      Var_t (ref (Quant ("t" ^ Int.to_string id)))
+      Var_t (ref (Quant (Name.of_string @@ "t" ^ Int.to_string id)))
   | Var_t { contents = Link typ' } -> generalize level typ'
   | Arrow_t (args, ret) ->
       Arrow_t (List.map ~f:(generalize level) args, generalize level ret)
@@ -423,7 +415,7 @@ let typeof (ctx : typ Ctx.t) (level : level) (expr : expr) : TypedExpr.t =
          (Error.of_thunk (fun () ->
               sprintf "In %s: %s" (Expr.to_string expr) (Info.to_string_hum msg)))
   in
-  let rec typeof' ctx level expr =
+  let rec typeof' (ctx : _ Ctx.t) level expr =
     let rec typeof_func num_args typ =
       match typ with
       | Arrow_t (args, ret) -> (args, ret)
@@ -439,10 +431,10 @@ let typeof (ctx : typ Ctx.t) (level : level) (expr : expr) : TypedExpr.t =
     in
     let rec typeof_tree t : TypedExpr.t Tree.t * typ =
       match t with
-      | Tree.Empty -> (Tree.Empty, App_t ("tree", [ fresh_free level ]))
+      | Tree.Empty -> (Tree.Empty, App_t (tree_id, [ fresh_free level ]))
       | Tree.Node (x, y) ->
           let x' = typeof' ctx level x in
-          let typ = App_t ("tree", [ TypedExpr.to_type x' ]) in
+          let typ = App_t (tree_id, [ TypedExpr.to_type x' ]) in
           let y', y_typs = List.map y ~f:typeof_tree |> List.unzip in
           List.iter y_typs ~f:(unify_exn typ);
           (Tree.Node (x', y'), typ)
@@ -453,16 +445,16 @@ let typeof (ctx : typ Ctx.t) (level : level) (expr : expr) : TypedExpr.t =
     | `Tree x ->
         let x', typ = typeof_tree x in
         Tree (x', typ)
-    | `List [] -> List ([], App_t ("list", [ fresh_free level ]))
+    | `List [] -> List ([], App_t (list_id, [ fresh_free level ]))
     | `List elems ->
         List.fold_left elems
           ~init:(typeof' ctx level (`List []))
           ~f:(fun texpr elem ->
             match texpr with
-            | List (elems, App_t ("list", [ typ ])) ->
+            | List (elems, App_t (list_id, [ typ ])) ->
                 let elem' = typeof' ctx level elem in
                 unify_exn typ (TypedExpr.to_type elem');
-                List (List.append elems [ elem' ], App_t ("list", [ typ ]))
+                List (List.append elems [ elem' ], App_t (list_id, [ typ ]))
             | _ -> assert false)
     | `Id name -> (
         match Ctx.lookup ctx name with
@@ -470,7 +462,7 @@ let typeof (ctx : typ Ctx.t) (level : level) (expr : expr) : TypedExpr.t =
         | None ->
             error
               (Info.of_thunk (fun () ->
-                   sprintf "%s is unbound in context %s." name
+                   sprintf "%a is unbound in context %s." Name.fmt name
                      (Ctx.to_string ctx Type0.to_string))) )
     | `Lambda (args, body) ->
         (* Generate fresh type variables for each argument and bind them
@@ -537,7 +529,7 @@ let stdlib_tctx =
     ("zip", "(list[a], list[a]) -> list[list[a]]");
     ("inf", "num");
   ]
-  |> List.map ~f:(fun (name, str) -> (name, Type0.of_string_exn str))
+  |> List.map ~f:(fun (name, str) -> (Name.of_string name, Type0.of_string_exn str))
   |> Ctx.of_alist_exn
 
 (** Infer the type of an expression in context. Returns an expression
@@ -564,45 +556,51 @@ let typed_expr_of_string (s : string) : TypedExpr.t =
 
 (** Return a list of names that are free in the given expression,
     along with their types. *)
-module IdTypeSet = Set.Make (struct
-  type t = id * typ [@@deriving compare, sexp]
-end)
+module IdType = struct
+  module T = struct
+    type t = id * typ [@@deriving compare, sexp]
+  end
 
-let stdlib_names = Ctx.keys stdlib_tctx |> String.Set.of_list
+  include T
+  include Comparator.Make (T)
+end
 
-let free ?(bound = stdlib_names) (e : TypedExpr.t) : (id * typ) list =
-  let open TypedExpr in
-  let rec f bound e : IdTypeSet.t =
+let stdlib_names = Ctx.keys stdlib_tctx |> Set.of_list (module Name)
+
+let free ?(bound = stdlib_names) e =
+  let rec f bound e =
     match e with
-    | Num _ | Bool _ -> IdTypeSet.empty
+    | TypedExpr.Num _ | Bool _ -> Set.empty (module IdType)
     | Id (x, t) ->
-        if String.Set.mem bound x then IdTypeSet.empty else IdTypeSet.singleton (x, t)
-    | List (x, _) -> List.map ~f:(f bound) x |> IdTypeSet.union_list
-    | Tree (x, _) -> Tree.flatten x |> List.map ~f:(f bound) |> IdTypeSet.union_list
+        if Set.mem bound x then Set.empty (module IdType)
+        else Set.singleton (module IdType) (x, t)
+    | List (x, _) -> List.map ~f:(f bound) x |> Set.union_list (module IdType)
+    | Tree (x, _) ->
+        Tree.flatten x |> List.map ~f:(f bound) |> Set.union_list (module IdType)
     | Lambda ((args, body), _) ->
-        f (String.Set.union bound (String.Set.of_list args)) body
+        f (Set.union bound (Set.of_list (module Name) args)) body
     | Apply ((func, args), _) ->
-        IdTypeSet.union_list (f bound func :: List.map ~f:(f bound) args)
-    | Op ((_, args), _) -> List.map ~f:(f bound) args |> IdTypeSet.union_list
+        Set.union_list (module IdType) (f bound func :: List.map ~f:(f bound) args)
+    | Op ((_, args), _) ->
+        List.map ~f:(f bound) args |> Set.union_list (module IdType)
     | Let ((x, e1, e2), _) ->
-        let bound' = String.Set.add bound x in
-        IdTypeSet.union (f bound' e1) (f bound' e2)
+        let bound' = Set.add bound x in
+        Set.union (f bound' e1) (f bound' e2)
   in
-  f bound e |> IdTypeSet.to_list
+  f bound e |> Set.to_list
 
 module Type = struct
   include Type0
 
-  let generalize : t String.Map.t -> t -> t =
-   fun ctx t ->
+  let generalize ctx t =
     let free_ctx_vars =
-      String.Map.to_alist ctx |> List.map ~f:Tuple.T2.get2 |> List.map ~f:free_vars
+      Map.to_alist ctx |> List.map ~f:Tuple.T2.get2 |> List.map ~f:free_vars
       |> Int.Set.union_list
     in
     let gen_vars = Int.Set.diff (free_vars t) free_ctx_vars in
     let rec gen = function
       | Var_t { contents = Free (id, _) } when Set.mem gen_vars id ->
-          Var_t (ref (Quant ("t" ^ Int.to_string id)))
+          Var_t (ref (Quant (Name.of_string @@ "t" ^ Int.to_string id)))
       | Var_t { contents = Link t } -> gen t
       | Arrow_t (args, ret) -> Arrow_t (List.map ~f:gen args, gen ret)
       | App_t (const, args) -> App_t (const, List.map ~f:gen args)
@@ -612,8 +610,7 @@ module Type = struct
     in
     gen t
 
-  let of_expr : ?ctx:t String.Map.t -> Expr.t -> t * t Int.Map.t =
-   fun ?(ctx = String.Map.empty) expr ->
+  let of_expr ?(ctx = Map.empty (module Name)) (expr : Expr.t) =
     let error msg =
       raise
       @@ TypeError
@@ -639,16 +636,16 @@ module Type = struct
           let u = Unifier.compose ~inner:u3 ~outer:u in
           (Unifier.apply u3 t2, u)
     and of_id ctx id =
-      match String.Map.find ctx id with
+      match Map.find ctx id with
       | Some t -> (instantiate 0 t, Unifier.empty)
       | None ->
-          Info.create "Unbound name." (id, ctx) [%sexp_of: string * t String.Map.t]
+          Info.create "Unbound name." (id, ctx) [%sexp_of: id * t Map.M(Name).t]
           |> error
     and of_lambda ctx args body =
       let ctx, ts =
         List.fold_right args ~init:(ctx, []) ~f:(fun arg (ctx, ts) ->
             let t = fresh_free 0 in
-            (String.Map.set ctx ~key:arg ~data:t, t :: ts))
+            (Map.set ctx ~key:arg ~data:t, t :: ts))
       in
       let t, u = of_expr ctx body in
       (Unifier.apply u (Arrow_t (ts, t)), u)
@@ -673,7 +670,7 @@ module Type = struct
       of_callable ctx t Unifier.empty args
     and of_let ctx name bound body =
       let tv = fresh_free 0 in
-      let bound_t, u = of_expr (String.Map.set ctx ~key:name ~data:tv) bound in
+      let bound_t, u = of_expr (Map.set ctx ~key:name ~data:tv) bound in
       let u =
         Unifier.compose ~outer:u
           ~inner:
@@ -682,10 +679,10 @@ module Type = struct
       let bound_t = Unifier.apply u bound_t in
       let ctx = Unifier.apply_ctx u ctx in
       let bound_t = generalize ctx bound_t in
-      let body_t, u' = of_expr (String.Map.set ctx ~key:name ~data:bound_t) body in
+      let body_t, u' = of_expr (Map.set ctx ~key:name ~data:bound_t) body in
       let u = Unifier.compose ~outer:u ~inner:u' in
       (Unifier.apply u body_t, u)
-    and of_expr ctx expr =
+    and of_expr ctx (expr : Expr.t) =
       try
         let t, u =
           match expr with
@@ -693,10 +690,10 @@ module Type = struct
           | `Bool _ -> (Const_t Bool_t, Unifier.empty)
           | `Tree x ->
               let t, u = of_tree ctx x in
-              (App_t ("tree", [ t ]), u)
+              (App_t (tree_id, [ t ]), u)
           | `List x ->
               let t, u = of_list ctx x in
-              (App_t ("list", [ t ]), u)
+              (App_t (list_id, [ t ]), u)
           | `Id id -> of_id ctx id
           | `Lambda (args, body) -> of_lambda ctx args body
           | `Apply (func, args) -> of_func ctx func args
@@ -722,7 +719,7 @@ module ImmutableType = struct
       | Const_i of const_typ
       | App_i of id * t list
       | Arrow_i of t list * t
-      | Quant_i of string
+      | Quant_i of id
       | Free_i of int * level
     [@@deriving compare, hash, sexp]
   end

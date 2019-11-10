@@ -71,15 +71,15 @@ toplevel_ml:
  | x = list(toplevel_decl_ml) { x }
 
 toplevel_decl_ml:
- | LET; x = ID; EQ; y = expr_ml                          { `Bind (x, y) }
- | LET; x = ID; xs = nonempty_list(ID); EQ; y = expr_ml; { `Bind (x, `Lambda (xs, y)) }
+ | LET; x = id; EQ; y = expr_ml                          { `Bind (x, y) }
+ | LET; x = id; xs = nonempty_list(id); EQ; y = expr_ml; { `Bind (x, `Lambda (xs, y)) }
  | BUILTIN; xs = separated_list(COMMA, op)               { `Builtin xs }
  
 expr_ml:
- | LET; x = ID; EQ; y = expr_ml; IN; z = expr_ml;                         { `Let (x, y, z) }
- | LET; x = ID; xs = nonempty_list(ID); EQ; y = expr_ml; IN; z = expr_ml; { `Let (x, `Lambda (xs, y), z) }
+ | LET; x = id; EQ; y = expr_ml; IN; z = expr_ml;                         { `Let (x, y, z) }
+ | LET; x = id; xs = nonempty_list(id); EQ; y = expr_ml; IN; z = expr_ml; { `Let (x, `Lambda (xs, y), z) }
  | IF; x = expr_ml; THEN; y = expr_ml; ELSE; z = expr_ml                  { `Op (If, [x; y; z]) }
- | FUN; xs = nonempty_list(ID); ARROW; y = expr_ml                        { `Lambda(xs, y) }
+ | FUN; xs = nonempty_list(id); ARROW; y = expr_ml                        { `Lambda(xs, y) }
  | x = simple_expr_ml                                                     { x }
  
 simple_expr_ml:
@@ -93,14 +93,16 @@ simple_expr_ml:
 argument_ml:
  | x = BOOL                                                               { `Bool x }
  | x = NUM                                                                { `Num x }
- | x = ID                                                                 { `Id x }
+ | x = id                                                                 { `Id x }
  | x = sexp(expr_ml)                                                      { x }
  | x = delimited(LBRACKET, separated_list(SEMI, expr_ml), RBRACKET)       { `List x }
  | x = tree_ml                                                            { `Tree x }
 
 tree_ml:
  | LCBRACKET; RCBRACKET;                                                       { Tree.Empty }
- | LCBRACKET; x = expr_ml; SEMI; y = separated_list(SEMI, tree_ml); RCBRACKET; { Tree.Node (x, y) }
+  | LCBRACKET; x = expr_ml; SEMI; y = separated_list(SEMI, tree_ml); RCBRACKET; { Tree.Node (x, y) }
+
+id: x=ID { Name.of_string x }
 
 %inline binop:
  | MUL  { Mul }

@@ -2,11 +2,10 @@ open Core
 open Printf
 open Ast
 open Collections
-open Util
 
 type t = Ast.expr [@@deriving compare, hash, sexp]
 
-type id = Ast.id [@@deriving compare, sexp, bin_io]
+type id = Ast.id [@@deriving compare, hash, sexp]
 
 (** Module to manage built in operators and their metadata. *)
 module Op = struct
@@ -280,6 +279,8 @@ module Op = struct
 
   let cost op = (meta op).cost
 
+  let to_name op = (meta op).str |> Name.of_string
+
   let to_string op = (meta op).str
 
   let of_string str = String.Map.find_exn op_by_str str
@@ -298,7 +299,7 @@ let rec cost ?(op_cost = Op.cost) (e : t) : int =
 
 let size = cost ~op_cost:(fun _ -> 1)
 
-let normalize ?(bound = String.Set.empty) (expr : t) : expr =
+let normalize ?(bound = Set.empty (module Name)) (expr : t) : expr =
   let fresh_name = Fresh.mk_fresh_name_fun () in
   let rec norm ctx e =
     let norm_all = List.map ~f:(norm ctx) in
@@ -307,7 +308,7 @@ let normalize ?(bound = String.Set.empty) (expr : t) : expr =
     | `Id x -> (
         match Ctx.lookup ctx x with
         | Some x' -> `Id x'
-        | None -> if String.Set.mem bound x then `Id x else `Id (fresh_name ()) )
+        | None -> if Set.mem bound x then `Id x else `Id (fresh_name ()) )
     | `List x -> `List (norm_all x)
     | `Tree x -> `Tree (Tree.map x ~f:(norm ctx))
     | `Op (op, args) -> `Op (op, norm_all args)
@@ -359,13 +360,16 @@ let rec to_string (expr : t) : string =
   | `Num x -> Int.to_string x
   | `Bool true -> "#t"
   | `Bool false -> "#f"
-  | `Id x -> x
+  | `Id x -> Name.to_string x
   | `List x -> sprintf "[%s]" (list_to_string x)
   | `Tree x -> Tree.to_string x ~str:to_string
   | `Op (op, args) -> sprintf "(%s %s)" (Op.to_string op) (list_to_string args)
-  | `Let (x, y, z) -> sprintf "(let %s %s %s)" x (to_string y) (to_string z)
+  | `Let (x, y, z) ->
+      sprintf "(let %s %s %s)" (Name.to_string x) (to_string y) (to_string z)
   | `Apply (x, y) -> sprintf "(%s %s)" (to_string x) (list_to_string y)
   | `Lambda (args, body) ->
-      sprintf "(lambda (%s) %s)" (String.concat ~sep:" " args) (to_string body)
+      sprintf "(lambda (%s) %s)"
+        (String.concat ~sep:" " (List.map ~f:Name.to_string args))
+        (to_string body)
 
 let equal (e1 : t) (e2 : t) = compare_expr e1 e2 = 0

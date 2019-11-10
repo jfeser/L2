@@ -1,7 +1,6 @@
 open Core
 open Collections
 open Infer
-open Util
 
 module StaticDistance = struct
   module T = struct
@@ -115,7 +114,7 @@ module Hole = struct
 
   let equal_id h1 h2 = h1.id = h2.id
 
-  let hash = Hashtbl.hash
+  let hash h = [%hash: int] h.id
 
   let to_string h = Sexp.to_string_hum (sexp_of_t h)
 
@@ -135,7 +134,7 @@ end
 module Skeleton = struct
   module Id = struct
     module T = struct
-      type t = StaticDistance of SD.t | Name of string
+      type t = StaticDistance of SD.t | Name of Name.t
       [@@deriving compare, hash, sexp]
     end
 
@@ -348,7 +347,7 @@ module Skeleton = struct
 
   let pp =
     let module SD = StaticDistance in
-    let fresh_name = Util.Fresh.mk_fresh_name_fun () in
+    let fresh_name = Fresh.mk_fresh_name_fun () in
     let rec pp ?(parens = false) names fmt sk =
       let module O = Expr.Op in
       let open Format in
@@ -375,9 +374,9 @@ module Skeleton = struct
       | Tree _ -> fprintf fmt "<tree>"
       | Id (Id.StaticDistance x) -> (
           match Map.find names x with
-          | Some name -> fprintf fmt "%s" name
+          | Some name -> Name.pp fmt name
           | None -> fprintf fmt "%s" (SD.to_string x) )
-      | Id (Id.Name x) -> fprintf fmt "%s" x
+      | Id (Id.Name x) -> fprintf fmt "%s" (Name.to_string x)
       | Let { bound; body } ->
           let name = fresh_name () in
           let names =
@@ -385,8 +384,8 @@ module Skeleton = struct
             |> Map.set ~key:(SD.create ~distance:1 ~index:1) ~data:name
           in
           let pp fmt (bound, body) =
-            fprintf fmt "@[<hov>let %s =@ @[<4>%a@]@]@ in@ %a" name (pp names) bound
-              (pp names) body
+            fprintf fmt "@[<hov>let %a =@ @[<4>%a@]@]@ in@ %a" Name.pp name
+              (pp names) bound (pp names) body
           in
           apply_parens pp (bound, body) fmt
       | Lambda { num_args; body } ->
@@ -394,7 +393,7 @@ module Skeleton = struct
             List.init num_args ~f:(fun i ->
                 (SD.create ~distance:1 ~index:(i + 1), fresh_name ()))
           in
-          let pp_name fmt (_, n) = fprintf fmt "%s" n in
+          let pp_name fmt (_, n) = Name.pp fmt n in
           let names =
             List.fold
               ~f:(fun m (sd, name) -> Map.set m ~key:sd ~data:name)
@@ -679,15 +678,13 @@ module PerFunctionCostModel = struct
     list : int;
     tree : int;
     var : int;
-    call : int String.Map.t;
+    call : int Map.M(Name).t;
     call_default : int;
   }
 
   let to_cost_model t =
     let lookup_func op =
-      match String.Map.find t.call op with
-      | Some cost -> cost
-      | None -> t.call_default
+      match Map.find t.call op with Some cost -> cost | None -> t.call_default
     in
     {
       CM.num = (fun _ -> t.num);
@@ -698,7 +695,7 @@ module PerFunctionCostModel = struct
       CM.list = (fun _ -> t.list);
       CM.tree = (fun _ -> t.tree);
       CM.apply = (fun _ _ -> 0);
-      CM.op = (fun op _ -> lookup_func (Expr.Op.to_string op));
+      CM.op = (fun op _ -> lookup_func (Expr.Op.to_name op));
       CM.id =
         (function
         | Skeleton.Id.Name op -> lookup_func op
@@ -707,7 +704,7 @@ module PerFunctionCostModel = struct
 
   let to_json t =
     let call_to_json m =
-      String.Map.to_alist m |> List.map ~f:(fun (k, v) -> (k, `Int v))
+      Map.to_alist m |> List.map ~f:(fun (k, v) -> (Name.to_string k, `Int v))
     in
     `Assoc
       [
@@ -727,9 +724,9 @@ module PerFunctionCostModel = struct
     let call_of_json m =
       List.map m ~f:(fun (k, v_json) ->
           match v_json with
-          | `Int v -> (k, v)
+          | `Int v -> (Name.of_string k, v)
           | _ -> failwiths "Expected an Int." v_json [%sexp_of: Json.json])
-      |> String.Map.of_alist_exn
+      |> Map.of_alist_exn (module Name)
     in
     let lookup key assoc =
       match List.Assoc.find assoc ~equal:String.equal key with
@@ -742,7 +739,7 @@ module PerFunctionCostModel = struct
       | `Int x -> x
       | json -> failwiths "Expected an int." json [%sexp_of: Json.json]
     in
-    let string_int_map = function
+    let name_int_map = function
       | `Assoc x -> call_of_json x
       | json ->
           failwiths "Expected a mapping from string to int." json
@@ -759,7 +756,7 @@ module PerFunctionCostModel = struct
           list = lookup "list" kv |> int;
           tree = lookup "tree" kv |> int;
           var = lookup "var" kv |> int;
-          call = lookup "call" kv |> string_int_map;
+          call = lookup "call" kv |> name_int_map;
           call_default = lookup "call_default" kv |> int;
         }
     | _ -> failwiths "Unexpected JSON." json [%sexp_of: Json.json]

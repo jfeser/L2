@@ -1,8 +1,6 @@
 open Core
 open Ast
 
-type id = string
-
 exception Non_unifiable
 
 exception Translation_error
@@ -13,11 +11,11 @@ type term = Var of id | Term of id * term list [@@deriving sexp]
 
 type sterm =
   | Cons of sterm * sterm
-  | K of id
+  | K of string
   (* Konstant *)
-  | V of id
+  | V of string
   (* Variable *)
-  | U of id * bool
+  | U of string * bool
 
 (* Volatile? variable *)
 
@@ -41,8 +39,8 @@ let sterm_of_expr_value : ExprValue.t -> sterm option =
     | `Bool x -> K (if x then "true" else "false")
     | `List [] -> K "[]"
     | `List (x :: xs) -> Cons (f x, f (`List xs))
-    | `Id x -> V x
-    | `Op (RCons, [xs; x]) | `Op (Ast.Cons, [x; xs]) -> Cons (f x, f xs)
+    | `Id x -> V (Name.to_string x)
+    | `Op (RCons, [ xs; x ]) | `Op (Ast.Cons, [ x; xs ]) -> Cons (f x, f xs)
     | `Apply _ -> V (ExprValue.to_string e)
     | `Closure _ | `Let _ | `Tree _ | `Lambda _ | `Op _ -> raise Unknown
   in
@@ -55,8 +53,8 @@ let sterm_of_expr (e : Expr.t) : sterm option =
     | `Bool x -> K (if x then "true" else "false")
     | `List [] -> K "[]"
     | `List (x :: xs) -> Cons (f x, f (`List xs))
-    | `Id x -> V x
-    | `Op (RCons, [xs; x]) | `Op (Ast.Cons, [x; xs]) -> Cons (f x, f xs)
+    | `Id x -> V (Name.to_string x)
+    | `Op (RCons, [ xs; x ]) | `Op (Ast.Cons, [ x; xs ]) -> Cons (f x, f xs)
     | `Let _ | `Tree _ | `Apply _ | `Lambda _ | `Op _ -> raise Unknown
   in
   try Some (f e) with Unknown -> None
@@ -108,12 +106,12 @@ let apply (s : substitution) (t : term) : term =
 (* unify one pair *)
 let rec unify_one (s : term) (t : term) : substitution =
   match (s, t) with
-  | Var x, Var y -> if x = y then [] else [(x, t)]
+  | Var x, Var y -> if x = y then [] else [ (x, t) ]
   | Term (f, sc), Term (g, tc) ->
       if f = g && List.length sc = List.length tc then unify (List.zip_exn sc tc)
       else raise Non_unifiable
   | Var x, (Term (_, _) as t) | (Term (_, _) as t), Var x ->
-      if occurs x t then raise Non_unifiable else [(x, t)]
+      if occurs x t then raise Non_unifiable else [ (x, t) ]
 
 (* unify a list of pairs *)
 and unify (s : (term * term) list) : substitution =
@@ -127,7 +125,7 @@ and unify (s : (term * term) list) : substitution =
 let fvar = ref 0
 
 let fresh () : string =
-  fvar := !fvar + 1 ;
+  fvar := !fvar + 1;
   "V" ^ string_of_int !fvar
 
 (* Support code *)
@@ -135,18 +133,18 @@ let rec translate (s : sterm) : term =
   match s with
   | Cons (x, y) ->
       let t1 = translate x and t2 = translate y in
-      Term ("Cons", [t1] @ [t2])
-  | K c -> Term (c, [])
-  | V c | U (c, _) -> Var c
+      Term (Name.of_string "Cons", [ t1 ] @ [ t2 ])
+  | K c -> Term (Name.of_string c, [])
+  | V c | U (c, _) -> Var (Name.of_string c)
 
 let rec retranslate (t : term) : sterm =
   match t with
-  | Var v -> V v
-  | Term (k, []) -> K k
-  | Term ("Cons", h :: t) -> (
-    match t with
-    | [tt] -> Cons (retranslate h, retranslate tt)
-    | _ -> raise Translation_error )
+  | Var v -> V (Name.to_string v)
+  | Term (k, []) -> K (Name.to_string k)
+  | Term (n, h :: t) when Name.(O.(n = of_string "Cons")) -> (
+      match t with
+      | [ tt ] -> Cons (retranslate h, retranslate tt)
+      | _ -> raise Translation_error )
   | _ -> raise Translation_error
 
 let rec to_string (s : sterm) : string =
@@ -156,11 +154,15 @@ let rec to_string (s : sterm) : string =
   | U (t, vol) -> if vol then raise Unknown (* sanity check *) else t
 
 let sub_to_string (s : substitution) : string =
-  List.map ~f:(fun (i, t) -> i ^ " = " ^ to_string (retranslate t)) s
+  List.map ~f:(fun (i, t) -> Name.to_string i ^ " = " ^ to_string (retranslate t)) s
   |> String.concat ~sep:","
 
 and print_sub (s : substitution) =
-  let ss = List.map ~f:(fun (i, t) -> i ^ " = " ^ to_string (retranslate t)) s in
+  let ss =
+    List.map
+      ~f:(fun (i, t) -> Name.to_string i ^ " = " ^ to_string (retranslate t))
+      s
+  in
   List.iter ~f:(fun t -> Printf.printf "%s\n" t) ss
 
 (* End Support code *)
@@ -200,13 +202,13 @@ let make_one_non_volatile (s3 : sterm) =
 let rec unifiable_core_aux (s1 : sterm) (s3 : sterm) (s2 : sterm) =
   try
     let made, s3' = make_one_concrete s1 s3 false in
-    let sub = unify [(translate s3', translate s2)] in
+    let sub = unify [ (translate s3', translate s2) ] in
     if not made then (s3', sub) else unifiable_core_aux s1 s3' s2
   with Non_unifiable -> unifiable_core_aux s1 (make_one_non_volatile s3) s2
 
 (* Main *)
 let unifiable_core (s1 : sterm) (s2 : sterm) =
   try
-    let sub = unify [(translate s1, translate s2)] in
+    let sub = unify [ (translate s1, translate s2) ] in
     (s1, sub)
   with Non_unifiable -> unifiable_core_aux s1 (U (fresh (), true)) s2

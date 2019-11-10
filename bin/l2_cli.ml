@@ -352,13 +352,13 @@ let library_command =
           ( List.map library.Library.builtins ~f:Expr.Op.to_string
           |> String.concat ~sep:", " );
         printf "Functions:\n";
-        List.iter (String.Map.keys library.Library.expr_ctx) ~f:(fun name ->
-            let type_ = String.Map.find_exn library.Library.type_ctx name in
-            let expr = String.Map.find_exn library.Library.expr_ctx name in
-            printf "%s: %s\n" name (Infer.Type.to_string type_);
+        List.iter (Map.keys library.Library.expr_ctx) ~f:(fun name ->
+            let type_ = Map.find_exn library.Library.type_ctx name in
+            let expr = Map.find_exn library.Library.expr_ctx name in
+            printf "%s: %s\n" (Name.to_string name) (Infer.Type.to_string type_);
             print_endline (Expr.to_string expr);
             Out_channel.newline stdout);
-        printf "Summary: %d values" (String.Map.length library.Library.expr_ctx)
+        printf "Summary: %d values" (Map.length library.Library.expr_ctx)
     | Error err -> print_endline (Error.to_string_hum err)
   in
   Command.basic_spec ~summary:"Load a library and print." spec run

@@ -1,20 +1,20 @@
 open Core
 open Collections
 
-exception JsonDecodeError of {msg: string; json: Json.t}
+exception JsonDecodeError of { msg : string; json : Json.t }
 
-type case = Examples of Example.t list * (string * Expr.t) list
+type case = Examples of Example.t list * (Name.t * Expr.t) list
 
-type t = {name: string; desc: string; case: case; blacklist: string list}
+type t = { name : string; desc : string; case : case; blacklist : Name.t list }
 
-let json_error str json = raise (JsonDecodeError {msg= str; json})
+let json_error str json = raise (JsonDecodeError { msg = str; json })
 
 let get_key_exn ?default json key =
   match json with
   | `Assoc kv -> (
-    match (List.Assoc.find ~equal:String.equal kv key, default) with
-    | Some v, _ | None, Some v -> v
-    | None, None -> json_error (sprintf "Could not find key: %s" key) json )
+      match (List.Assoc.find ~equal:String.equal kv key, default) with
+      | Some v, _ | None, Some v -> v
+      | None, None -> json_error (sprintf "Could not find key: %s" key) json )
   | _ -> json_error "Expected an object." json
 
 let as_list_exn = function `List l -> l | j -> json_error "Expected a list." j
@@ -34,49 +34,63 @@ let examples_of_json j =
     bg_json |> as_list_exn
     |> List.map ~f:(fun pair_json ->
            match as_list_exn pair_json with
-           | [name_json; expr_json] ->
-               ( as_string_exn name_json
-               , as_string_exn expr_json |> Expr.of_string_exn )
-           | _ -> json_error "Expected name, expression pairs." pair_json )
+           | [ name_json; expr_json ] ->
+               ( as_string_exn name_json |> Name.of_string,
+                 as_string_exn expr_json |> Expr.of_string_exn )
+           | _ -> json_error "Expected name, expression pairs." pair_json)
   in
   Examples (exs, bg)
 
 let of_json j =
   let open Json.Util in
   Or_error.try_with (fun () ->
-      { name= j |> member "name" |> to_string
-      ; desc= get_key_exn j "description" ~default:(`String "") |> as_string_exn
-      ; blacklist=
+      {
+        name = j |> member "name" |> to_string;
+        desc = get_key_exn j "description" ~default:(`String "") |> as_string_exn;
+        blacklist =
           get_key_exn j "blacklist" ~default:(`List [])
-          |> as_list_exn |> List.map ~f:as_string_exn
-      ; case=
+          |> as_list_exn
+          |> List.map ~f:(fun n -> as_string_exn n |> Name.of_string);
+        case =
           ( match j |> member "kind" |> to_string with
           | "examples" -> j |> member "contents" |> examples_of_json
-          | kind -> failwiths "Unexpected kind." kind [%sexp_of: string] ) } )
+          | kind -> failwiths "Unexpected kind." kind [%sexp_of: string] );
+      })
 
 let from_file ~filename:fn =
-  try Json.from_file ~fname:fn fn |> of_json with Yojson.Json_error err ->
-    Or_error.error_string err
+  try Json.from_file ~fname:fn fn |> of_json
+  with Yojson.Json_error err -> Or_error.error_string err
 
 let to_json t =
   let rest =
-    match t.case with Examples (exs, bgs) ->
-      [ ("kind", `String "examples")
-      ; ( "contents"
-        , `Assoc
-            [ ( "examples"
-              , `List (List.map exs ~f:(fun ex -> `String (Example.to_string ex)))
-              )
-            ; ( "background"
-              , `List
-                  (List.map bgs ~f:(fun (name, expr) ->
-                       `List [`String name; `String (Expr.to_string expr)] )) ) ] )
-      ]
+    match t.case with
+    | Examples (exs, bgs) ->
+        [
+          ("kind", `String "examples");
+          ( "contents",
+            `Assoc
+              [
+                ( "examples",
+                  `List (List.map exs ~f:(fun ex -> `String (Example.to_string ex)))
+                );
+                ( "background",
+                  `List
+                    (List.map bgs ~f:(fun (name, expr) ->
+                         `List
+                           [
+                             `String (Name.to_string name);
+                             `String (Expr.to_string expr);
+                           ])) );
+              ] );
+        ]
   in
   `Assoc
-    ( [ ("name", `String t.name)
-      ; ("description", `String t.desc)
-      ; ("blacklist", `List (List.map t.blacklist ~f:(fun x -> `String x))) ]
+    ( [
+        ("name", `String t.name);
+        ("description", `String t.desc);
+        ( "blacklist",
+          `List (List.map t.blacklist ~f:(fun x -> `String (Name.to_string x))) );
+      ]
     @ rest )
 
 let to_file ?format:(fmt = `Pretty) ~filename:fn t =
@@ -86,11 +100,11 @@ let to_file ?format:(fmt = `Pretty) ~filename:fn t =
         match fmt with
         | `Pretty -> Ok (Json.pretty_to_channel ~std:true ch json)
         | `Compact -> Ok (Json.to_channel ~std:true ch json)
-      with Yojson.Json_error err -> Or_error.error_string err )
+      with Yojson.Json_error err -> Or_error.error_string err)
 
 let to_file_exn ?format:(fmt = `Pretty) ~filename:fn t =
   to_file ~format:fmt ~filename:fn t |> Or_error.ok_exn
 
 let from_channel ch =
-  try Json.from_channel ch |> of_json with Yojson.Json_error err ->
-    Or_error.error_string err
+  try Json.from_channel ch |> of_json
+  with Yojson.Json_error err -> Or_error.error_string err

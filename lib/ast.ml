@@ -3,7 +3,7 @@ open Collections
 
 exception ParseError of string
 
-type id = string [@@deriving compare, hash, sexp, bin_io]
+type id = Name.t [@@deriving compare, hash, sexp]
 
 type const_typ = Num_t | Bool_t [@@deriving compare, hash, sexp]
 
@@ -19,7 +19,7 @@ type typ =
 
 (** Type variables can be either free or quantified. A type scheme
 cannot contain free type variables. *)
-and var_typ = Free of int * level | Link of typ | Quant of string
+and var_typ = Free of int * level | Link of typ | Quant of id
 
 type op =
   | Plus

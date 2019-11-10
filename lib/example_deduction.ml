@@ -26,95 +26,88 @@ let examples_of_file : string -> example list =
 let examples_of_channel : In_channel.t -> example list =
  fun ch -> Sexp.input_sexps ch |> List.map ~f:[%of_sexp: example]
 
-let rec occurs : ExprValue.t -> id:string -> bool =
- fun e ~id ->
+let rec occurs e ~id =
   match e with
   | `Num _ | `Bool _ | `Unit -> false
-  | `Id v -> v = id
+  | `Id v -> Name.O.(v = id)
   | `List l -> List.exists l ~f:(occurs ~id)
   | `Tree t -> Tree.exists t ~f:(occurs ~id)
   | `Apply (f, args) -> occurs f ~id || List.exists args ~f:(occurs ~id)
   | `Op (_, args) -> List.exists args ~f:(occurs ~id)
   | e -> failwiths "Unexpected expr." e [%sexp_of: ExprValue.t]
 
-let rec apply_unifier : ExprValue.t String.Map.t -> ExprValue.t -> ExprValue.t =
-  let module Ctx = String.Map in
-  fun ctx e ->
-    match e with
-    | `Num _ | `Bool _ | `Unit -> e
-    | `Id v -> ( match Ctx.find ctx v with Some e' -> e' | None -> e )
-    | `List l -> `List (List.map l ~f:(apply_unifier ctx))
-    | `Tree t -> `Tree (Tree.map t ~f:(apply_unifier ctx))
-    | `Apply (f, args) ->
-        `Apply (apply_unifier ctx f, List.map args ~f:(apply_unifier ctx))
-    | `Op (op, args) -> `Op (op, List.map args ~f:(apply_unifier ctx))
-    | e -> failwiths "Unexpected expr." e [%sexp_of: ExprValue.t]
+let rec apply_unifier ctx e =
+  match e with
+  | `Num _ | `Bool _ | `Unit -> e
+  | `Id v -> ( match Map.find ctx v with Some e' -> e' | None -> e )
+  | `List l -> `List (List.map l ~f:(apply_unifier ctx))
+  | `Tree t -> `Tree (Tree.map t ~f:(apply_unifier ctx))
+  | `Apply (f, args) ->
+      `Apply (apply_unifier ctx f, List.map args ~f:(apply_unifier ctx))
+  | `Op (op, args) -> `Op (op, List.map args ~f:(apply_unifier ctx))
+  | e -> failwiths "Unexpected expr." e [%sexp_of: ExprValue.t]
 
-let compose :
-    ExprValue.t String.Map.t -> ExprValue.t String.Map.t -> ExprValue.t String.Map.t
-    =
- fun u1 u2 ->
+let compose u1 u2 =
   let merge outer inner =
-    String.Map.fold
-      ~f:(fun ~key:name ~data:typ m -> String.Map.set ~key:name ~data:typ m)
+    Map.fold
+      ~f:(fun ~key:name ~data:typ m -> Map.set ~key:name ~data:typ m)
       ~init:outer inner
   in
-  merge u1 (String.Map.map ~f:(fun t -> apply_unifier u1 t) u2)
+  merge u1 (Map.map ~f:(fun t -> apply_unifier u1 t) u2)
 
-let rec unify_exn : ExprValue.t -> ExprValue.t -> ExprValue.t String.Map.t =
-  let module Ctx = String.Map in
-  fun e1 e2 ->
-    match (e1, e2) with
-    | `Id v1, `Id v2 when v1 = v2 -> Ctx.empty
-    | `Id v1, `Id v2 when v1 <> v2 -> Ctx.singleton v1 e2
-    | `List [], `List [] -> Ctx.empty
-    | `List [], `List (_ :: _)
-    | `List [], `Op (Expr.Op.Cons, _)
-    | `List (_ :: _), `List []
-    | `Op (Expr.Op.Cons, _), `List [] ->
-        raise Non_unifiable
-    | `List (hd :: tl), `List (hd' :: tl') ->
-        let u = unify_exn hd hd' in
-        let u' = unify_exn (`List tl) (`List tl') in
-        compose u u'
-    | `List (hd :: tl), `Op (Expr.Op.Cons, [ hd'; tl' ])
-    | `Op (Expr.Op.Cons, [ hd'; tl' ]), `List (hd :: tl) ->
-        let u = unify_exn hd hd' in
-        let u' = unify_exn (`List tl) tl' in
-        compose u u'
-    | `Num x1, `Num x2 -> if x1 = x2 then Ctx.empty else raise Non_unifiable
-    | `Bool x1, `Bool x2 -> if x1 = x2 then Ctx.empty else raise Non_unifiable
-    | `Id v, e | e, `Id v ->
-        if occurs e ~id:v then raise Non_unifiable else Ctx.singleton v e
-    | es -> failwiths "Unexpected exprs." es [%sexp_of: ExprValue.t * ExprValue.t]
+let rec unify_exn e1 e2 =
+  let empty = Map.empty (module Name) in
+  match (e1, e2) with
+  | `Id v1, `Id v2 when v1 = v2 -> empty
+  | `Id v1, `Id v2 when v1 <> v2 -> Map.singleton (module Name) v1 e2
+  | `List [], `List [] -> empty
+  | `List [], `List (_ :: _)
+  | `List [], `Op (Expr.Op.Cons, _)
+  | `List (_ :: _), `List []
+  | `Op (Expr.Op.Cons, _), `List [] ->
+      raise Non_unifiable
+  | `List (hd :: tl), `List (hd' :: tl') ->
+      let u = unify_exn hd hd' in
+      let u' = unify_exn (`List tl) (`List tl') in
+      compose u u'
+  | `List (hd :: tl), `Op (Expr.Op.Cons, [ hd'; tl' ])
+  | `Op (Expr.Op.Cons, [ hd'; tl' ]), `List (hd :: tl) ->
+      let u = unify_exn hd hd' in
+      let u' = unify_exn (`List tl) tl' in
+      compose u u'
+  | `Num x1, `Num x2 -> if x1 = x2 then empty else raise Non_unifiable
+  | `Bool x1, `Bool x2 -> if x1 = x2 then empty else raise Non_unifiable
+  | `Id v, e | e, `Id v ->
+      if occurs e ~id:v then raise Non_unifiable else Map.singleton (module Name) v e
+  | es -> failwiths "Unexpected exprs." es [%sexp_of: ExprValue.t * ExprValue.t]
 
-let unify : ExprValue.t -> ExprValue.t -> ExprValue.t String.Map.t Option.t =
- fun e1 e2 ->
+let unify e1 e2 =
   try Some (run_with_time "unify" (fun () -> unify_exn e1 e2))
   with Non_unifiable -> None
 
-let unify_example : example -> example -> example Option.t =
-  let module Let_syntax = Option.Let_syntax.Let_syntax in
-  fun ex1 ex2 ->
-    let args1, ret1 = ex1 in
-    let args2, ret2 = ex2 in
-    try
-      let%bind args =
-        match List.zip args1 args2 with Ok x -> Some x | Unequal_lengths -> None
-      in
-      let%bind args_u =
-        List.fold args ~init:(Some String.Map.empty) ~f:(fun u (a1, a2) ->
-            let%bind u = u in
-            let%map u' = unify a1 a2 in
-            compose u' u)
-      in
-      let%map ret_u = unify ret1 ret2 in
-      let u = compose ret_u args_u in
-      (List.map args1 ~f:(apply_unifier u), apply_unifier u ret1)
-    with exn ->
-      Error.tag_arg (Error.of_exn exn) "Failure in unify_example." (ex1, ex2)
-        [%sexp_of: example * example]
-      |> Error.raise
+let unify_example ex1 ex2 =
+  let open Option.Let_syntax in
+  let args1, ret1 = ex1 in
+  let args2, ret2 = ex2 in
+  try
+    let%bind args =
+      match List.zip args1 args2 with Ok x -> Some x | Unequal_lengths -> None
+    in
+    let%bind args_u =
+      List.fold args
+        ~init:(Some (Map.empty (module Name)))
+        ~f:(fun u (a1, a2) ->
+          let%bind u = u in
+          let%map u' = unify a1 a2 in
+          compose u' u)
+    in
+    let%map ret_u = unify ret1 ret2 in
+    let u = compose ret_u args_u in
+    (List.map args1 ~f:(apply_unifier u), apply_unifier u ret1)
+  with exn ->
+    Error.tag_arg (Error.of_exn exn) "Failure in unify_example." (ex1, ex2)
+      [%sexp_of: example * example]
+    |> Error.raise
 
 let infer_example ~op ~specs ~ctx ex =
   let module Let_syntax = Option.Let_syntax.Let_syntax in
@@ -140,19 +133,19 @@ let infer_example ~op ~specs ~ctx ex =
     | _ -> List.repeat arity Sp.top
   with exn ->
     Error.tag_arg (Error.of_exn exn) "Failure in infer_example." (op, ex)
-      [%sexp_of: string * example]
+      [%sexp_of: Name.t * example]
     |> Error.raise
 
 let infer_examples ~specs ~op ~args exs =
   try
     let arity = List.length args in
-    match String.Map.find specs op with
+    match Map.find specs op with
     | Some op_specs ->
         let arg_specs =
           List.map exs ~f:(fun (ctx, ret) ->
               try
                 let expr_ctx = Map.map ctx ~f:Expr.of_value in
-                let fresh_name = Util.Fresh.mk_fresh_name_fun () in
+                let fresh_name = Fresh.mk_fresh_name_fun () in
                 let hole_names = Int.Table.create () in
                 let arg_evals =
                   List.map args
@@ -203,7 +196,7 @@ let infer_examples ~specs ~op ~args exs =
     | None -> List.repeat arity Sp.top
   with exn ->
     Error.tag_arg (Error.of_exn exn) "Failure in infer_examples." (op, args, exs)
-      [%sexp_of: string * Sk.t list * Examples.example list]
+      [%sexp_of: Name.t * Sk.t list * Examples.example list]
     |> Error.raise
 
 let memoized_infer_examples =
@@ -212,9 +205,7 @@ let memoized_infer_examples =
   in
   fun ~specs ~op ~args exs -> memoized (specs, op, args, exs)
 
-let push_specs_exn' :
-    specs:(ExprValue.t list * ExprValue.t) list String.Map.t -> Sk.t -> Sk.t =
- fun ~specs sk ->
+let push_specs_exn' ~specs sk =
   let rec push_specs_exn sk =
     let spec = Sk.spec sk in
     if Sp.equal spec Sp.bottom then raise Bottom;
@@ -228,7 +219,7 @@ let push_specs_exn' :
     | Sk.Op { op; args } -> (
         match Sp.data spec with
         | Examples.Examples exs ->
-            let name = Expr.Op.to_string op in
+            let name = Expr.Op.to_name op in
             let arg_specs, _ =
               Util.with_runtime (fun () ->
                   memoized_infer_examples ~specs ~op:name ~args
@@ -263,7 +254,7 @@ let push_specs_exn' :
 
 let spec_dir = "/Users/jack/Documents/l2/repo/component-specs"
 
-let specs : (ExprValue.t list * ExprValue.t) list String.Map.t Lazy.t =
+let specs =
   if Sys.is_directory spec_dir = `Yes then
     let spec_files =
       Sys.ls_dir spec_dir |> List.map ~f:(fun f -> spec_dir ^ "/" ^ f)
@@ -273,13 +264,13 @@ let specs : (ExprValue.t list * ExprValue.t) list String.Map.t Lazy.t =
             let exs = examples_of_file sf in
             let name =
               Filename.chop_suffix (Filename.basename sf) "-examples.sexp"
+              |> Name.of_string
             in
             (name, exs))
-      |> String.Map.of_alist_exn )
-  else lazy String.Map.empty
+      |> Map.of_alist_exn (module Name) )
+  else lazy (Map.empty (module Name))
 
-let push_specs : Sk.t -> Sk.t Option.t =
- fun sk ->
+let push_specs sk =
   try
     let specs = Lazy.force specs in
     let sk' = push_specs_exn' ~specs sk in

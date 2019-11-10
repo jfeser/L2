@@ -1,4 +1,5 @@
-open Core
+open! Core
+open Ast
 open Collections
 open Hypothesis
 open Infer
@@ -146,9 +147,9 @@ module Abstract_expr = struct
     | `Bool of bool
     | `List of t list
     | `Tree of t Tree.t
-    | `Id of string
-    | `Let of string * t * t
-    | `Lambda of string list * t
+    | `Id of id
+    | `Let of id * t * t
+    | `Lambda of id list * t
     | `Apply of t * t list
     | `Op of Expr.Op.t * t list ]
   [@@deriving compare, sexp]
@@ -484,7 +485,7 @@ module Abstract_value = struct
         match (t, v) with
         | T.Const_t T.Num_t, `Num x -> `AbsInt (Abstract_int.lift0 d.int x)
         | T.Const_t T.Bool_t, `Bool x -> `Bool x
-        | T.App_t ("list", [ elem_t ]), `List x ->
+        | T.App_t (n, [ elem_t ]), `List x when Type.is_list n ->
             let x' = List.map ~f:(lift d elem_t) x in
             `AbsList (Abstract_list.lift d.list x')
         | T.Var_t _, v -> (
@@ -673,14 +674,7 @@ module Function_spec = struct
         (List.repeat (List.length ins) `Bottom, out)
 end
 
-let infer_examples :
-    library:Library.t ->
-    specs:Function_spec.t String.Map.t ->
-    op:[ `Builtin of Expr.Op.t | `Func of string ] ->
-    args:Sk.t list ->
-    Examples.t ->
-    Sp.t list =
- fun ~library ~specs ~op ~args exs ->
+let infer_examples ~library ~specs ~op ~args exs =
   let arity = List.length args in
   let op_type =
     match op with
@@ -688,7 +682,9 @@ let infer_examples :
     | `Func op -> Map.find_exn library.Library.type_ctx op
   in
   let op_str =
-    match op with `Builtin op -> Expr.Op.to_string op | `Func op -> op
+    match op with
+    | `Builtin op -> Expr.Op.to_string op
+    | `Func op -> Name.to_string op
   in
   match Map.find specs op_str with
   | Some op_specs ->
@@ -734,9 +730,7 @@ let infer_examples :
       arg_examples
   | None -> List.repeat arity Sp.top
 
-let push_specs_exn' :
-    specs:Function_spec.t String.Map.t -> library:Library.t -> Sk.t -> Sk.t =
- fun ~specs ~library sk ->
+let push_specs_exn' ~specs ~library sk =
   let rec push sk =
     let spec = Sk.spec sk in
     match Sk.ast sk with

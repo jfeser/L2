@@ -17,7 +17,7 @@ module Type : sig
     | Arrow_t of typ list * typ
     | Var_t of var_typ ref
 
-  and var = var_typ = Free of int * level | Link of typ | Quant of string
+  and var = var_typ = Free of int * level | Link of typ | Quant of id
 
   include Sexpable.S with type t := t
 
@@ -39,7 +39,7 @@ module Type : sig
 
   val to_string : t -> string
 
-  val of_expr : ?ctx:t String.Map.t -> Expr.t -> t * t Int.Map.t
+  val of_expr : ?ctx:t Map.M(Name).t -> Expr.t -> t * t Int.Map.t
 
   val num : t
 
@@ -56,6 +56,10 @@ module Type : sig
   val arrow1 : t -> t -> t
 
   val arrow2 : t -> t -> t -> t
+
+  val is_tree : id -> bool
+
+  val is_list : id -> bool
 end
 
 module Unifier : sig
@@ -89,7 +93,7 @@ module ImmutableType : sig
     | Const_i of const_typ
     | App_i of id * t list
     | Arrow_i of t list * t
-    | Quant_i of string
+    | Quant_i of id
     | Free_i of int * level
 
   include Sexpable.S with type t := t
@@ -158,6 +162,6 @@ val infer : Type.t Ctx.t -> Expr.t -> TypedExpr.t Or_error.t
 
 val typed_expr_of_string : string -> TypedExpr.t
 
-val stdlib_names : String.Set.t
+val stdlib_names : Set.M(Name).t
 
-val free : ?bound:String.Set.t -> TypedExpr.t -> (string * Type.t) list
+val free : ?bound:Set.M(Name).t -> TypedExpr.t -> (id * Type.t) list

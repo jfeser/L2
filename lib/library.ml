@@ -3,21 +3,23 @@ open Infer
 module SMap = String.Map
 
 type t = {
-  exprs : (string * Expr.t) list;
-  expr_ctx : Expr.t SMap.t;
-  value_ctx : Ast.evalue SMap.t;
-  exprvalue_ctx : ExprValue.t SMap.t;
-  type_ctx : Type.t SMap.t;
+  exprs : (Ast.id * Expr.t) list;
+  expr_ctx : Expr.t Map.M(Name).t;
+  value_ctx : Ast.evalue Map.M(Name).t;
+  exprvalue_ctx : ExprValue.t Map.M(Name).t;
+  type_ctx : Type.t Map.M(Name).t;
   builtins : Expr.Op.t list;
 }
+
+let m_empty = Map.empty (module Name)
 
 let empty =
   {
     exprs = [];
-    expr_ctx = SMap.empty;
-    value_ctx = SMap.empty;
-    exprvalue_ctx = SMap.empty;
-    type_ctx = SMap.empty;
+    expr_ctx = m_empty;
+    value_ctx = m_empty;
+    exprvalue_ctx = m_empty;
+    type_ctx = m_empty;
     builtins = [];
   }
 
@@ -44,33 +46,32 @@ let from_channel_exn : file:string -> In_channel.t -> t =
   in
   let builtins = List.concat builtins in
   let expr_ctx =
-    List.fold_left exprs ~init:SMap.empty ~f:(fun m (n, e) ->
-        SMap.set m ~key:n ~data:e)
+    List.fold_left exprs ~init:m_empty ~f:(fun m (n, e) -> Map.set m ~key:n ~data:e)
   in
   let value_ctx =
-    List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
+    List.fold_left exprs ~init:m_empty ~f:(fun ctx (name, expr) ->
         let ctx_ref = ref ctx in
         let value = Eval.eval ctx_ref (`Let (name, expr, `Id name)) in
-        SMap.set !ctx_ref ~key:name ~data:value)
+        Map.set !ctx_ref ~key:name ~data:value)
   in
   let exprvalue_ctx =
-    List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
+    List.fold_left exprs ~init:m_empty ~f:(fun ctx (name, expr) ->
         let ctx_ref = ref ctx in
         let value =
           Eval.partial_eval ~ctx:ctx_ref
             (`Let (name, ExprValue.of_expr expr, `Id name))
         in
-        SMap.set !ctx_ref ~key:name ~data:value)
+        Map.set !ctx_ref ~key:name ~data:value)
   in
   let type_ctx =
-    List.fold_left exprs ~init:SMap.empty ~f:(fun ctx (name, expr) ->
+    List.fold_left exprs ~init:m_empty ~f:(fun ctx (name, expr) ->
         let type_ =
           try
             let t, _ = Type.of_expr ~ctx (`Let (name, expr, `Id name)) in
             generalize (-1) t |> normalize
           with TypeError err -> Error.raise err
         in
-        SMap.set ctx ~key:name ~data:type_)
+        Map.set ctx ~key:name ~data:type_)
   in
   { exprs; expr_ctx; value_ctx; exprvalue_ctx; type_ctx; builtins }
 
@@ -83,8 +84,7 @@ let from_file_exn : string -> t =
 let from_file : string -> t Or_error.t =
  fun fn -> Or_error.try_with (fun () -> from_file_exn fn)
 
-let filter_keys : t -> f:(string -> bool) -> t =
- fun t ~f ->
+let filter_keys t ~f =
   {
     t with
     exprs = List.filter ~f:(fun (name, _) -> f name) t.exprs;

@@ -101,7 +101,7 @@ op:
  | IF             { If }
 
 expr:
- | x = ID                                          { `Id x }
+ | x = id                                          { `Id x }
  | x = sexp(let_body)                              { x }
  | x = sexp(lambda_body)                           { x }
  | x = sexp(call_body)                             { x }
@@ -115,17 +115,17 @@ tree:
  | LCBRACKET; x = expr; y = list(tree); RCBRACKET; { Tree.Node (x, y) }
 
 let_body:
- | LET; i = ID; b = expr; e = expr;                { `Let (i, b, e) }
+ | LET; i = id; b = expr; e = expr;                { `Let (i, b, e) }
 
 lambda_body:
- | LAMBDA; args = sexp(list(ID)); body = expr;     { `Lambda (args, body) }
+ | LAMBDA; args = sexp(list(id)); body = expr;     { `Lambda (args, body) }
 
 call_body:
  | op = op; args = list(expr);                     { `Op (op, args) }
  | f = expr; args = list(expr);                    { `Apply (f, args) }
 
 constr:
- | LPAREN; FORALL; vars = sexp(list(ID)); body = expr; RPAREN { (body, vars) }
+ | LPAREN; FORALL; vars = sexp(list(id)); body = expr; RPAREN { (body, vars) }
 
 example:
  | lhs = expr; ARROW; rhs = expr { (lhs, rhs) }
@@ -137,14 +137,14 @@ typ:
  | inputs = sexp(typ_list); ARROW; output = typ;    { Arrow_t (inputs, output) }
 
 simple_typ:
- | x = ID                                           { match x with
+ | x = id                                           { match Name.to_string x with
                                                       | "num" -> Const_t Num_t
                                                       | "bool" -> Const_t Bool_t
                                                       | _ -> Var_t (ref (Quant x)) }
  | x = sexp(typ);                                   { x }
- | constr = ID; LBRACKET; arg = typ; RBRACKET       { App_t (constr, [arg]) }
- | TREE; LBRACKET; arg = typ; RBRACKET              { App_t ("tree", [arg]) }
- | constr = ID; LBRACKET; args = typ_list; RBRACKET { App_t (constr, args) }
+ | constr = id; LBRACKET; arg = typ; RBRACKET       { App_t (constr, [arg]) }
+ | TREE; LBRACKET; arg = typ; RBRACKET              { App_t (Name.of_string "tree", [arg]) }
+ | constr = id; LBRACKET; args = typ_list; RBRACKET { App_t (constr, args) }
 
 typ_list:
  | x = typ; COMMA; y = typ                          { [x; y] }
@@ -152,3 +152,5 @@ typ_list:
 
 sexp(X):
  | LPAREN; x = X; RPAREN; { x }
+
+id: x=ID { Name.of_string x }

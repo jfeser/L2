@@ -2,7 +2,7 @@ open Core
 open Collections
 
 type case =
-  | Examples of Example.t list * ((string * Expr.t) list)
+  | Examples of Example.t list * ((Name.t * Expr.t) list)
 
 type t = {
   name : string;
@@ -15,7 +15,7 @@ type t = {
 
       This is simpler than providing a separate function library
       per-testcase. *)
-  blacklist : string list;
+  blacklist : Name.t list;
 }
 
 val of_json : Json.t -> t Or_error.t

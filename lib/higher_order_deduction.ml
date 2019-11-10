@@ -22,7 +22,7 @@ let lookup_err name id =
     [%sexp_of: Ast.id * SD.t]
 
 module type Deduce_2_intf = sig
-  val name : string
+  val name : Ast.id
 
   val examples_of_io :
     Value.t -> Value.t -> ((Value.t * Value.t) list, unit) Result.t
@@ -66,12 +66,14 @@ module Make_deduce_2 (M : Deduce_2_intf) = struct
 end
 
 module type Deduce_fold_intf = sig
-  val name : string
+  val name : Ast.id
 
   val is_base_case : Value.t -> bool
 end
 
 module Make_deduce_fold (M : Deduce_fold_intf) = struct
+  let base_name = Name.of_string @@ Name.to_string M.name ^ "-base-case"
+
   let base_spec collection_id parent_spec =
     match Sp.data parent_spec with
     | Examples.Examples exs -> (
@@ -80,7 +82,7 @@ module Make_deduce_fold (M : Deduce_fold_intf) = struct
           List.filter exs ~f:(fun (ctx, _) ->
               match Map.find ctx collection_id with
               | Some v -> M.is_base_case v
-              | None -> lookup_err (M.name ^ "-base-case") collection_id)
+              | None -> lookup_err base_name collection_id)
           |> Examples.of_list
         in
         match m_base_exs with
@@ -88,7 +90,7 @@ module Make_deduce_fold (M : Deduce_fold_intf) = struct
         | Error _ -> Sp.bottom )
     | Sp.Top -> Sp.top
     | Sp.Bottom -> Sp.bottom
-    | _ -> spec_err (M.name ^ "-base-case") parent_spec
+    | _ -> spec_err base_name parent_spec
 
   let deduce spec args =
     match args with
@@ -105,7 +107,7 @@ module Make_deduce_fold (M : Deduce_fold_intf) = struct
 end
 
 module Deduce_map = Make_deduce_2 (struct
-  let name = "map"
+  let name = Name.of_string "map"
 
   let examples_of_io in_v out_v =
     let out = match out_v with `List out -> out | _ -> ret_err name out_v in
@@ -114,7 +116,7 @@ module Deduce_map = Make_deduce_2 (struct
 end)
 
 module Deduce_mapt = Make_deduce_2 (struct
-  let name = "mapt"
+  let name = Name.of_string "mapt"
 
   let examples_of_io in_v out_v =
     let out = match out_v with `Tree out -> out | _ -> ret_err name out_v in
@@ -124,7 +126,7 @@ module Deduce_mapt = Make_deduce_2 (struct
 end)
 
 module Deduce_filter = Make_deduce_2 (struct
-  let name = "filter"
+  let name = Name.of_string "filter"
 
   let rec f = function
     (* If there are no inputs and no outputs, then there are no
@@ -148,19 +150,19 @@ module Deduce_filter = Make_deduce_2 (struct
 end)
 
 module Deduce_foldl = Make_deduce_fold (struct
-  let name = "foldl"
+  let name = Name.of_string "foldl"
 
   let is_base_case v = v = `List []
 end)
 
 module Deduce_foldr = Make_deduce_fold (struct
-  let name = "foldr"
+  let name = Name.of_string "foldr"
 
   let is_base_case v = v = `List []
 end)
 
 module Deduce_foldt = Make_deduce_fold (struct
-  let name = "foldt"
+  let name = Name.of_string "foldt"
 
   let is_base_case v = v = `Tree Tree.Empty
 end)
@@ -190,7 +192,7 @@ let deduce_lambda lambda spec =
       | Sp.Bottom -> Sp.bottom
       | Sp.Top -> Sp.top
       | Inputs.Inputs _ -> Sp.top
-      | _ -> spec_err "<lambda>" spec
+      | _ -> spec_err (Name.of_string "<lambda>") spec
     in
     Some (Sk.replace_spec body child_spec)
   else None
@@ -229,12 +231,17 @@ let push_specs skel =
     | Sk.Apply { func; args } -> (
         let pushed_args =
           match Sk.ast func with
-          | Sk.Id (Sk.Id.Name "map") -> Deduce_map.deduce spec args
-          | Sk.Id (Sk.Id.Name "mapt") -> Deduce_mapt.deduce spec args
-          | Sk.Id (Sk.Id.Name "filter") -> Deduce_filter.deduce spec args
-          | Sk.Id (Sk.Id.Name "foldl") -> Deduce_foldl.deduce spec args
-          | Sk.Id (Sk.Id.Name "foldr") -> Deduce_foldr.deduce spec args
-          | Sk.Id (Sk.Id.Name "foldt") -> Deduce_foldt.deduce spec args
+          | Sk.Id (Name n) ->
+              if Name.(O.(n = of_string "map")) then Deduce_map.deduce spec args
+              else if Name.(O.(n = of_string "mapt")) then
+                Deduce_mapt.deduce spec args
+              else if Name.(O.(n = of_string "filter")) then
+                Deduce_filter.deduce spec args
+              else if Name.(O.(n = of_string "foldl")) then
+                Deduce_foldl.deduce spec args
+              else if Name.(O.(n = of_string "foldt")) then
+                Deduce_foldt.deduce spec args
+              else None
           | _ -> None
         in
         match pushed_args with

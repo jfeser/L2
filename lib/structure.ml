@@ -1,8 +1,7 @@
 open Core
 open Ast
 open Collections
-open Infer
-open Util
+open Infer.Type
 
 type hole = {
   examples : (example * expr Ctx.t) list;
@@ -42,7 +41,7 @@ module Spec = struct
     let (hole_bodies : expr Ctx.t) =
       Ctx.mapi spec.holes ~f:(fun ~key:name ~data:_ -> `Id name)
     in
-    spec.target hole_bodies (`Id "_") |> Expr.to_string
+    spec.target hole_bodies (`Id (Name.of_string "_")) |> Expr.to_string
 
   (* Map is an appropriate implementation when one of the inputs is a
      list and the output is a list of the same length. *)
@@ -65,8 +64,8 @@ module Spec = struct
     in
     let fill name hole =
       match hole.signature with
-      | Arrow_t (arg_typs, App_t ("tree", [ res_elem_typ ]))
-      | Arrow_t (arg_typs, App_t ("list", [ res_elem_typ ])) ->
+      | Arrow_t (arg_typs, App_t (n, [ res_elem_typ ])) when is_tree n || is_list n
+        ->
           let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
           let tctx =
             ctx_merge hole.tctx (List.zip_exn arg_names arg_typs |> Ctx.of_alist_exn)
@@ -78,7 +77,7 @@ module Spec = struct
           let tree_args =
             Ctx.filter_mapi tctx ~f:(fun ~key:name ~data:typ ->
                 match typ |> normalize with
-                | App_t ("tree", [ elem_typ ]) ->
+                | App_t (n, [ elem_typ ]) when is_tree n ->
                     if
                       List.for_all examples ~f:(fun ((_, result), vctx) ->
                           match (Ctx.lookup_exn vctx name, result) with
@@ -94,7 +93,7 @@ module Spec = struct
           let list_args =
             Ctx.filter_mapi tctx ~f:(fun ~key:name ~data:typ ->
                 match typ |> normalize with
-                | App_t ("list", [ elem_typ ]) ->
+                | App_t (n, [ elem_typ ]) when is_list n ->
                     if
                       List.for_all examples ~f:(fun ((_, result), vctx) ->
                           match (Ctx.lookup_exn vctx name, result) with
@@ -137,8 +136,8 @@ module Spec = struct
                       }
                 | None -> None)
           in
-          map_specs tree_args "mapt" cost.Cost.mapt
-          @ map_specs list_args "map" cost.Cost.map
+          map_specs tree_args (Name.of_string "mapt") cost.Cost.mapt
+          @ map_specs list_args (Name.of_string "map") cost.Cost.map
       | _ -> []
     in
     Ctx.to_alist spec.holes
@@ -181,7 +180,7 @@ module Spec = struct
     let fill name hole =
       let cost = cost.Cost.filter in
       match hole.signature with
-      | Arrow_t (arg_typs, App_t ("list", [ res_elem_typ ])) ->
+      | Arrow_t (arg_typs, App_t (n, [ res_elem_typ ])) when is_list n ->
           let arg_names = List.map arg_typs ~f:(fun _ -> Fresh.name "x") in
           let tctx =
             ctx_merge hole.tctx (List.zip_exn arg_names arg_typs |> Ctx.of_alist_exn)
@@ -196,7 +195,8 @@ module Spec = struct
           tctx
           |> Ctx.filter_mapi ~f:(fun ~key:name ~data:typ ->
                  match typ |> normalize with
-                 | App_t ("list", [ elem_typ ]) when elem_typ = res_elem_typ ->
+                 | App_t (n, [ elem_typ ]) when is_list n && elem_typ = res_elem_typ
+                   ->
                      if
                        List.for_all examples ~f:(fun ((_, result), vctx) ->
                            match (Ctx.lookup_exn vctx name, result) with
@@ -223,7 +223,9 @@ module Spec = struct
                        let expr =
                          `Lambda
                            ( arg_names,
-                             `Apply (`Id "filter", [ `Id input_name; body ]) )
+                             `Apply
+                               ( `Id (Name.of_string "filter"),
+                                 [ `Id input_name; body ] ) )
                        in
                        let ctx' = Ctx.bind ctx name expr in
                        spec.target ctx'
@@ -327,7 +329,7 @@ module Spec = struct
             Ctx.to_alist tctx
             |> List.filter_map ~f:(fun (name, typ) ->
                    match typ |> normalize with
-                   | App_t ("list", [ elem_typ ]) -> Some (name, elem_typ)
+                   | App_t (n, [ elem_typ ]) when is_list n -> Some (name, elem_typ)
                    | _ -> None)
           in
           List.concat_map lists ~f:(fun (input_name, input_elem_typ) ->
@@ -352,7 +354,9 @@ module Spec = struct
                     let expr =
                       `Lambda
                         ( arg_names,
-                          `Apply (`Id fold_name, [ `Id input_name; body; init ]) )
+                          `Apply
+                            ( `Id (Name.of_string fold_name),
+                              [ `Id input_name; body; init ] ) )
                     in
                     let ctx' = Ctx.bind ctx name expr in
                     spec.target ctx'
@@ -384,8 +388,9 @@ module Spec = struct
                           let expr =
                             `Lambda
                               ( arg_names,
-                                `Apply (`Id fold_name, [ `Id input_name; body; base ])
-                              )
+                                `Apply
+                                  ( `Id (Name.of_string fold_name),
+                                    [ `Id input_name; body; base ] ) )
                           in
                           let ctx' = Ctx.bind ctx name expr in
                           spec.target ctx'
@@ -453,7 +458,7 @@ module Spec = struct
             tctx
             |> Ctx.filter_mapi ~f:(fun ~key:_ ~data:typ ->
                    match typ |> normalize with
-                   | App_t ("tree", [ elem_typ ]) -> Some elem_typ
+                   | App_t (n, [ elem_typ ]) when is_tree n -> Some elem_typ
                    | _ -> None)
             |> Ctx.to_alist
           in
@@ -468,9 +473,7 @@ module Spec = struct
                     {
                       tctx;
                       examples = [];
-                      signature =
-                        Arrow_t
-                          ([ App_t ("list", [ res_typ ]); input_elem_typ ], res_typ);
+                      signature = Arrow_t ([ list res_typ; input_elem_typ ], res_typ);
                     }
                   in
                   let init_hole =
@@ -482,7 +485,9 @@ module Spec = struct
                     let expr =
                       `Lambda
                         ( arg_names,
-                          `Apply (`Id "foldt", [ `Id input_name; body; init ]) )
+                          `Apply
+                            ( `Id (Name.of_string "foldt"),
+                              [ `Id input_name; body; init ] ) )
                     in
                     let ctx' = Ctx.bind ctx name expr in
                     spec.target ctx'
@@ -507,8 +512,9 @@ module Spec = struct
                           let expr =
                             `Lambda
                               ( arg_names,
-                                `Apply (`Id "foldt", [ `Id input_name; body; base ])
-                              )
+                                `Apply
+                                  ( `Id (Name.of_string "foldt"),
+                                    [ `Id input_name; body; base ] ) )
                           in
                           let ctx' = Ctx.bind ctx name expr in
                           spec.target ctx'
@@ -564,7 +570,7 @@ module Spec = struct
             tctx
             |> Ctx.filter_mapi ~f:(fun ~key:_ ~data:typ ->
                    match typ |> normalize with
-                   | App_t ("list", [ elem_typ ]) -> Some elem_typ
+                   | App_t (n, [ elem_typ ]) when is_list n -> Some elem_typ
                    | _ -> None)
             |> Ctx.to_alist
           in
@@ -584,9 +590,7 @@ module Spec = struct
                     {
                       examples = recurs_exs;
                       signature =
-                        Arrow_t
-                          ( [ input_elem_typ; App_t ("list", [ input_elem_typ ]) ],
-                            res_typ );
+                        Arrow_t ([ input_elem_typ; list input_elem_typ ], res_typ);
                       tctx = Ctx.bind tctx recurs_name hole.signature;
                     }
                   in

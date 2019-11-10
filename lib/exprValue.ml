@@ -14,7 +14,7 @@ module T = struct
     | `Lambda of Expr.id list * t
     | `Apply of t * t list
     | `Op of Expr.Op.t * t list ]
-  [@@deriving compare, sexp, bin_io]
+  [@@deriving compare, sexp]
 end
 
 include T
@@ -25,14 +25,17 @@ let rec to_string (e : t) : string =
   | `Num x -> Int.to_string x
   | `Bool true -> "#t"
   | `Bool false -> "#f"
-  | `Id x -> x
+  | `Id x -> Name.to_string x
   | `List x -> sprintf "[%s]" (list_to_string x)
   | `Tree x -> Tree.to_string x ~str:to_string
   | `Op (op, args) -> sprintf "(%s %s)" (Expr.Op.to_string op) (list_to_string args)
-  | `Let (x, y, z) -> sprintf "(let %s %s %s)" x (to_string y) (to_string z)
+  | `Let (x, y, z) ->
+      sprintf "(let %s %s %s)" (Name.to_string x) (to_string y) (to_string z)
   | `Apply (x, y) -> sprintf "(%s %s)" (to_string x) (list_to_string y)
   | `Lambda (args, body) ->
-      sprintf "(lambda (%s) %s)" (String.concat ~sep:" " args) (to_string body)
+      sprintf "(lambda (%s) %s)"
+        (String.concat ~sep:" " (List.map ~f:Name.to_string args))
+        (to_string body)
   | `Closure _ -> "*closure*"
   | `Unit -> "unit"
 

@@ -153,7 +153,7 @@ module Memoizer = struct
 
       let normalize_free ctx t =
         let open Type in
-        let fresh_int = Util.Fresh.mk_fresh_int_fun () in
+        let fresh_int = Fresh.mk_fresh_int_fun () in
         let rec norm t =
           match t with
           | Var_t { contents = Quant _ } | Const_t _ -> t

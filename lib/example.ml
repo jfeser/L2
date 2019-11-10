@@ -14,8 +14,8 @@ let of_string_exn (s : string) : t =
   | Parsing.Parse_error -> raise (Ast.ParseError s)
 
 let of_string (s : string) : t Or_error.t =
-  try Ok (of_string_exn s) with Ast.ParseError s ->
-    error "Parsing Example.t failed." s [%sexp_of: string]
+  try Ok (of_string_exn s)
+  with Ast.ParseError s -> error "Parsing Example.t failed." s [%sexp_of: string]
 
 (** Convert an example to a string. *)
 let to_string (ex : t) : string =
@@ -31,32 +31,32 @@ let name (exs : t list) : Ast.id =
   let names =
     List.map exs ~f:(fun ex ->
         let name, _, _ = to_triple ex in
-        name )
-    |> List.dedup_and_sort ~compare:String.compare
+        name)
+    |> List.dedup_and_sort ~compare:Name.compare
   in
   match names with
   | [] -> failwith "Example list is empty."
-  | [name] -> name
+  | [ name ] -> name
   | _ :: _ -> failwith "Multiple target names in example list."
 
 (** Split a list of examples into a list of lists of examples, each of
     which represents a distinct function. *)
-let split (exs : t list) : (string * t list) list =
+let split (exs : t list) =
   List.map exs ~f:(fun ex ->
       let name, _, _ = to_triple ex in
-      (name, ex) )
+      (name, ex))
   |> List.group ~break:(fun (n1, _) (n2, _) -> n1 <> n2)
   |> List.map ~f:(fun exs ->
          match exs with
          | (name, _) :: _ -> (name, List.map exs ~f:Tuple.T2.get2)
-         | _ -> failwith "Expected a non-empty list." )
+         | _ -> failwith "Expected a non-empty list.")
 
 (** Infer a function signature from input/output examples. *)
 let signature ?(ctx = Ctx.empty ()) (examples : t list) : Type.t =
   let _, inputs, results = List.map examples ~f:to_triple |> unzip3 in
   let res_typ =
     match TypedExpr.to_type (infer_exn ctx (`List results)) with
-    | Type.App_t ("list", [t]) -> t
+    | Type.App_t (x, [ t ]) when x = Name.of_string "list" -> t
     | t -> failwith (sprintf "Unexpected result type: %s" (Type.to_string t))
   in
   let typ =
@@ -64,18 +64,18 @@ let signature ?(ctx = Ctx.empty ()) (examples : t list) : Type.t =
     | args :: _ ->
         let num_args = List.length args in
         Type.Arrow_t
-          ( List.range 0 num_args |> List.map ~f:(fun _ -> Infer.fresh_free 0)
-          , res_typ )
+          ( List.range 0 num_args |> List.map ~f:(fun _ -> Infer.fresh_free 0),
+            res_typ )
     | [] -> failwith "Example list is empty."
   in
   let ctx = Ctx.bind ctx (name examples) typ in
   let name' = name examples in
   List.iter inputs ~f:(fun input ->
       let _ = Infer.infer ctx (`Apply (`Id name', input)) in
-      () ) ;
+      ());
   typ
 
-let to_vctx (example : t) (arg_names : string list) : Expr.t Ctx.t =
+let to_vctx (example : t) arg_names : Expr.t Ctx.t =
   let _, inputs, _ = to_triple example in
   List.zip_exn arg_names inputs |> Ctx.of_alist_exn
 
@@ -85,4 +85,4 @@ let check (examples : (t * Expr.t Ctx.t) list) : bool =
   not
     (List.exists examples ~f:(fun ((lhs, rhs), vctx) ->
          List.exists examples ~f:(fun ((lhs', rhs'), vctx') ->
-             Ctx.equal Expr.equal vctx vctx' && lhs = lhs' && rhs <> rhs' ) ))
+             Ctx.equal Expr.equal vctx vctx' && lhs = lhs' && rhs <> rhs')))

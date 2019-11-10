@@ -14,8 +14,6 @@ type t =
   | `Tree of t Tree.t
   | `Unit ]
 
-include Binable.S with type t := t
-
 include Sexpable.S with type t := t
 
 include Comparable.S with type t := t

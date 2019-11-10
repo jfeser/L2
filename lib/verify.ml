@@ -122,7 +122,8 @@ let verify_example ?(ctx = Ctx.empty ()) ?(limit = 100) (target : expr -> expr)
       (* printf "Runtime error \"%s\" in %s\n" msg (expr_to_string (target input)); *)
       false
   | Ctx.UnboundError name ->
-      printf "Unbound %s in %s\n" name (Expr.to_string (target input)) ;
+      printf "Unbound %s in %s\n" (Name.to_string name)
+        (Expr.to_string (target input));
       false
 
 let verify_examples ?(ctx = Ctx.empty ()) ?(limit = 100) target examples =

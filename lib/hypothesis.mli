@@ -87,7 +87,7 @@ end
     {!Specification}s. *)
 module Skeleton : sig
   module Id : sig
-    type t = StaticDistance of StaticDistance.t | Name of string
+    type t = StaticDistance of StaticDistance.t | Name of Name.t
 
     include Sexpable.S with type t := t
 
@@ -189,7 +189,7 @@ module Skeleton : sig
 
   val to_expr :
     ?ctx:Expr.t Map.M(StaticDistance).t ->
-    ?fresh_name:(unit -> string) ->
+    ?fresh_name:(unit -> Name.t) ->
     ?of_hole:(Hole.t -> Expr.t) ->
     t ->
     Expr.t
@@ -200,7 +200,7 @@ module Skeleton : sig
 
   val to_expr_exn :
     ?ctx:Expr.t Map.M(StaticDistance).t ->
-    ?fresh_name:(unit -> string) ->
+    ?fresh_name:(unit -> Name.t) ->
     t ->
     Expr.t
   (** Convert a skeleton to an {!Expr.t}. Throws an exception if a {!Hole.t} is encountered.
@@ -383,7 +383,7 @@ module Hypothesis : sig
 
   val id_sd : CostModel.t -> StaticDistance.t -> Specification.t -> t
 
-  val id_name : CostModel.t -> string -> Specification.t -> t
+  val id_name : CostModel.t -> Name.t -> Specification.t -> t
 
   val hole : CostModel.t -> Hole.t -> Specification.t -> t
 

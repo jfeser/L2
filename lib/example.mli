@@ -1,5 +1,6 @@
 open Core
 open Collections
+open Ast
 
 type t = Expr.t * Expr.t
 
@@ -17,10 +18,10 @@ val to_triple : t -> Ast.id * Ast.expr list * Expr.t
 
 val name : t list -> Ast.id
 
-val split : t list -> (string * t list) list
+val split : t list -> (id * t list) list
 
 val signature : ?ctx:Infer.Type.t Ctx.t -> t list -> Infer.Type.t
 
-val to_vctx : t -> string list -> Expr.t Ctx.t
+val to_vctx : t -> id list -> Expr.t Ctx.t
 
 val check : (t * Expr.t Ctx.t) list -> bool

@@ -20,6 +20,8 @@ let argn_error expr sexp =
 let divide_by_zero_error () =
   raise (RuntimeError (Error.of_string "Divide by zero."))
 
+let inf = Name.of_string "inf"
+
 (** Evaluate an expression in the provided context. *)
 let eval ?recursion_limit ctx expr =
   let rec eval limit ctx expr =
@@ -48,7 +50,7 @@ let eval ?recursion_limit ctx expr =
               @@ RuntimeError
                    (Error.create "Unbound lookup."
                       (id, Ctx.keys ctx)
-                      [%sexp_of: Expr.id * string list]) )
+                      [%sexp_of: Expr.id * Name.t list]) )
       | `Let (name, bound, body) ->
           let ctx = Ctx.bind ctx name `Unit in
           Ctx.update ctx name (eval limit ctx bound);
@@ -273,25 +275,25 @@ let partial_eval ?recursion_limit:(limit = -1) ?(ctx = Ctx.empty ()) expr =
             | Lt -> (
                 match Lazy.force args with
                 | [ `Num x; `Num y ] -> `Bool (x < y)
-                | [ `Id "inf"; _ ] -> `Bool false
+                | [ `Id x; _ ] when Name.O.(x = inf) -> `Bool false
                 | [ x; y ] when x = y -> `Bool false
                 | _ -> `Op (op, Lazy.force args) )
             | Gt -> (
                 match Lazy.force args with
                 | [ `Num x; `Num y ] -> `Bool (x > y)
-                | [ _; `Id "inf" ] -> `Bool false
+                | [ _; `Id x ] when Name.O.(x = inf) -> `Bool false
                 | [ x; y ] when x = y -> `Bool false
                 | _ -> `Op (op, Lazy.force args) )
             | Leq -> (
                 match Lazy.force args with
                 | [ `Num x; `Num y ] -> `Bool (x <= y)
-                | [ _; `Id "inf" ] -> `Bool true
+                | [ _; `Id x ] when Name.O.(x = inf) -> `Bool true
                 | [ x; y ] when x = y -> `Bool true
                 | _ -> `Op (op, Lazy.force args) )
             | Geq -> (
                 match Lazy.force args with
                 | [ `Num x; `Num y ] -> `Bool (x >= y)
-                | [ `Id "inf"; _ ] -> `Bool true
+                | [ `Id x; _ ] when Name.O.(x = inf) -> `Bool true
                 | [ x; y ] when x = y -> `Bool true
                 | _ -> `Op (op, Lazy.force args) )
             | And -> (

@@ -4,7 +4,6 @@ open Ast
 open Collections
 open Infer
 open Structure
-open Util
 
 module TypMemoizer = Sstream.Memoizer (Type) (TypedExpr)
 
@@ -373,7 +372,7 @@ let solve_single
   let solver_of_spec (spec: Spec.t) : (expr -> expr) option Sstream.matrix =
     let choose
         (check: TypedExpr.t -> bool)
-        (name: string)
+        name
         (hole: hole)
         (ctx: expr Ctx.t) : (expr Ctx.t) Sstream.matrix =
       Sstream.map_matrix (matrix_of_hole check hole) ~f:(Ctx.bind ctx name)
@@ -388,14 +387,14 @@ let solve_single
         Ctx.mapi ~f:(fun ~key ~data:_ -> `Id key) spec.Spec.holes
       in
           
-      let check' (name: string) (e: TypedExpr.t) : bool =
+      let check' (name) (e: TypedExpr.t) : bool =
         (* let nesting_depth_cap = 2 in *)
         (* let tctx = Ctx.merge_right init_tctx (free e |> Ctx.of_alist_exn) in *)
         (* let max_depth = max (Ctx.data tctx |> List.map ~f:type_nesting_depth) in *)
         (* if max_depth > nesting_depth_cap then false else *)
 
         let ctx = Ctx.bind init_ctx name (TypedExpr.to_expr e) in
-        let target = (spec.Spec.target ctx) (`Id "_") in
+        let target = (spec.Spec.target ctx) (`Id (Name.of_string "_")) in
 
         match target with
         | `Let _ ->
@@ -438,7 +437,7 @@ let solve_single
         | _ -> failwith "Bad result from solve_single."
       in
 
-      let check (name: string) (e: TypedExpr.t) : bool =
+      let check (name) (e: TypedExpr.t) : bool =
         let open Float in
         Counter.incr counter "num_checks";
         run_with_probability ~default:true ~f:(fun () ->
@@ -534,10 +533,10 @@ let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
             |> List.map ~f:(fun (name, typ) -> TypedExpr.Id (name, typ)))
   in
 
-  let verify ?(limit=100) target examples =
+  let verify ?(limit=100) (target: _ -> Expr.t) examples =
     Counter.incr counter "verify";
     try
-      match target (`Id "_") with
+      match target (`Id (Name.of_string "_")) with
       | `Let (name, body, _) ->
         let _ = infer_exn (Ctx.bind tctx name (fresh_free 0)) body in
         Verify.verify_examples ~limit ~ctx:vctx target examples
@@ -548,4 +547,4 @@ let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
   in
 
   Ctx.bind (Ctx.empty ()) (Example.name examples)
-      ((solve_single ~init ~verify ~config examples) (`Id "_"))
+      ((solve_single ~init ~verify ~config examples) (`Id (Name.of_string "_")))

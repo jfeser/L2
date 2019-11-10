@@ -1,4 +1,4 @@
-open Core
+open! Core
 open Collections
 open Infer
 
@@ -13,8 +13,8 @@ val timer : Timer.t
 val counter : Counter.t
 
 val solve :
-     ?config:Config.t
-  -> ?bk:(String.t * Expr.t) List.t
-  -> ?init:TypedExpr.t List.t
-  -> Example.t List.t
-  -> Expr.t Ctx.t
+  ?config:Config.t ->
+  ?bk:(Name.t * Expr.t) List.t ->
+  ?init:TypedExpr.t List.t ->
+  Example.t List.t ->
+  Expr.t Ctx.t

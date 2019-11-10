@@ -1,11 +1,12 @@
-open Core
+open! Core
+open Ast
 
 type t = {
-  exprs : (string * Expr.t) list;
-  expr_ctx : Expr.t String.Map.t;
-  value_ctx : Ast.evalue String.Map.t;
-  exprvalue_ctx : ExprValue.t String.Map.t;
-  type_ctx : Infer.Type.t String.Map.t;
+  exprs : (id * Expr.t) list;
+  expr_ctx : Expr.t Map.M(Name).t;
+  value_ctx : Ast.evalue Map.M(Name).t;
+  exprvalue_ctx : ExprValue.t Map.M(Name).t;
+  type_ctx : Infer.Type.t Map.M(Name).t;
   builtins : Expr.Op.t list;
 }
 
@@ -19,4 +20,4 @@ val from_file_exn : string -> t
 
 val from_file : string -> t Or_error.t
 
-val filter_keys : t -> f:(string -> bool) -> t
+val filter_keys : t -> f:(id -> bool) -> t

@@ -21,7 +21,7 @@ let default_cost_model : CostModel.t =
     C.id =
       (function
       | Sk.Id.Name name -> (
-          match name with
+          match Name.to_string name with
           | "foldr" | "foldl" | "foldt" | "zipWith" -> 3
           | "map" | "mapt" | "filter" -> 2
           | _ -> 1 )
@@ -93,7 +93,7 @@ module L2_Generalizer = struct
                 H.num cost_model Int.max_value spec;
               ] );
             (Type.bool, [ H.bool cost_model true spec; H.bool cost_model false spec ]);
-            ( Type.list (Type.quant "a") |> instantiate 0,
+            ( Type.list (Type.quant (Name.of_string "a")) |> instantiate 0,
               [ H.list cost_model [] spec ] );
           ]
         in
@@ -131,7 +131,7 @@ module L2_Generalizer = struct
                       (H.op cost_model op arg_holes spec, u))
               | _ -> None)
         in
-        let functions = params.G.library.Library.type_ctx |> String.Map.to_alist in
+        let functions = params.G.library.Library.type_ctx |> Map.to_alist in
         let apply_exprs =
           List.filter_map functions ~f:(fun (func, func_t) ->
               let func_t = instantiate 0 func_t in
