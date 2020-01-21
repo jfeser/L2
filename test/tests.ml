@@ -2,7 +2,6 @@ open Core
 open OUnit2
 open L2
 open Tests_common
-open Collections
 
 let m_expr_to_string = function Some e -> Expr.to_string e | None -> "None"
 

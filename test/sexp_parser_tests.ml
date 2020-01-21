@@ -1,4 +1,4 @@
-open Core
+open! Core
 open OUnit2
 open L2
 open Tests_common
