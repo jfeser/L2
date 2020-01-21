@@ -3,16 +3,15 @@ open L2
 open Unify
 
 let test_unify_apply =
-  "test-unify-apply"
-  >:: fun _ ->
-  let ev = `Apply (`Id "sum", [`Id "x"]) in
+  "test-unify-apply" >:: fun _ ->
+  let ev = `Apply (`Id (Name.of_string "sum"), [ `Id (Name.of_string "x") ]) in
   let st2 = K "1" in
   match sterm_of_expr_value ev with
   | Some st1 ->
       let t1, t2 = (translate st1, translate st2) in
       assert_equal ~printer:sub_to_string
-        [("(sum x)", Term ("1", []))]
+        [ (Name.of_string "(sum x)", Term (Name.of_string "1", [])) ]
         (unify_one t1 t2)
   | None -> assert_failure "Creating term failed."
 
-let tests = "unify-tests" >::: [test_unify_apply]
+let tests = "unify-tests" >::: [ test_unify_apply ]
