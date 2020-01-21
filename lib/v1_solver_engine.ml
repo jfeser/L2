@@ -133,7 +133,7 @@ let rec enumerate
          when instantiating the argument types for equals: (a, a) ->
          bool, both a's should map to the same free type. *)
       let arg_typs' =
-        let ctx = Ctx.empty () in
+        let ctx = Mutctx.empty () in
         List.map arg_typs ~f:(instantiate ~ctx:ctx 0)
       in
       
@@ -152,7 +152,7 @@ let rec enumerate
          in any type variables in the current type that have already been
          bound. *)
       let prev_selected_typs =
-        let ctx = Ctx.empty () in
+        let ctx = Mutctx.empty () in
         List.map prev_args ~f:(fun arg -> instantiate ~ctx:ctx 0 (TypedExpr.to_type arg))
       in
       List.iter2_exn prev_arg_typs prev_selected_typs ~f:unify_exn;
@@ -539,7 +539,7 @@ let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
       match target (`Id (Name.of_string "_")) with
       | `Let (name, body, _) ->
         let _ = infer_exn (Ctx.bind tctx name (fresh_free 0)) body in
-        Verify.verify_examples ~limit ~ctx:vctx target examples
+        Verify.verify_examples ~limit ~ctx:(vctx) target examples
       | _ -> failwith "Bad result from solve_single."
     with
     | TypeError _ -> false

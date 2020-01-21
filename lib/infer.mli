@@ -143,7 +143,7 @@ val occurs : int -> int -> Type.t -> unit
 
 val generalize : int -> Type.t -> Type.t
 
-val instantiate : ?ctx:Type.t Ctx.t -> int -> Type.t -> Type.t
+val instantiate : ?ctx:Type.t Mutctx.t -> int -> Type.t -> Type.t
 
 val unify_exn : Type.t -> Type.t -> unit
 

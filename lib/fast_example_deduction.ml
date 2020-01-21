@@ -266,15 +266,8 @@ module Abstract_value = struct
     | `Tree x -> `Tree (Tree.map ~f:to_expr x)
     | v -> failwiths "Unsupported value." v [%sexp_of: t]
 
-  let eval :
-      ?recursion_limit:[ `Unlimited | `Limited of int ] ->
-      ?ctx:t Ctx.t ->
-      int_domain:Abstract_int.domain ->
-      list_domain:Abstract_list.domain ->
-      Abstract_expr.t ->
-      t =
-   fun ?recursion_limit:(limit = `Unlimited) ?(ctx = Ctx.empty ()) ~int_domain
-       ~list_domain expr ->
+  let eval ?recursion_limit:(limit = `Unlimited) ?(ctx = Mutctx.empty ()) ~int_domain
+      ~list_domain expr =
     let rec ev ctx count expr =
       let continue =
         match limit with `Unlimited -> true | `Limited lim -> count < lim
@@ -295,10 +288,11 @@ module Abstract_value = struct
         | `List x -> `List (List.map x ~f:(ev ctx count))
         | `Tree x -> `Tree (Tree.map x ~f:(ev ctx count))
         | `Lambda _ as lambda -> `Closure (lambda, ctx)
-        | `Id id -> ( match Ctx.lookup ctx id with Some v -> v | None -> `Bottom )
+        | `Id id -> (
+            match Mutctx.lookup ctx id with Some v -> v | None -> `Bottom )
         | `Let (name, bound, body) ->
-            let ctx' = ref (Ctx.to_string_map ctx) in
-            Ctx.update ctx' name (ev ctx' count bound);
+            let ctx' = ref (Mutctx.to_string_map ctx) in
+            Mutctx.update ctx' name (ev ctx' count bound);
             ev ctx' count body
         | `Apply (func, raw_args) -> (
             let args = List.map ~f:(ev ctx count) raw_args in
@@ -309,7 +303,7 @@ module Abstract_value = struct
                     let ctx' =
                       List.fold_left bindings ~init:enclosed_ctx
                         ~f:(fun ctx' (arg_name, value) ->
-                          Ctx.bind ctx' arg_name value)
+                          Mutctx.bind ctx' arg_name value)
                     in
                     ev ctx' count body
                 | Unequal_lengths -> `Bottom )
@@ -594,7 +588,7 @@ module Abstract_example = struct
       match Hashtbl.find table expr with
       | Some v -> v
       | None ->
-          let v = Eval.eval ~recursion_limit:100 (ref ctx) expr in
+          let v = Eval.eval ~recursion_limit:100 ctx expr in
           Hashtbl.set table ~key:expr ~data:v;
           v
 

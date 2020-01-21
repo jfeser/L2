@@ -22,6 +22,13 @@ let divide_by_zero_error () =
 
 let inf = Name.of_string "inf"
 
+let rec to_mut = function
+  | `Num x -> `Num x
+  | `Bool x -> `Bool x
+  | `Tree xs -> `Tree (Tree.map xs ~f:to_mut)
+  | `List xs -> `List (List.map xs ~f:to_mut)
+  | `Closure (e, m) -> `Closure (e, Map.map ~f:to_mut m)
+
 (** Evaluate an expression in the provided context. *)
 let eval ?recursion_limit ctx expr =
   let rec eval limit ctx expr =
@@ -52,13 +59,14 @@ let eval ?recursion_limit ctx expr =
                       (id, Ctx.keys ctx)
                       [%sexp_of: Expr.id * Name.t list]) )
       | `Let (name, bound, body) ->
-          let ctx = Ctx.bind ctx name `Unit in
-          Ctx.update ctx name (eval limit ctx bound);
-          eval limit ctx body
+          let rec val_ () =
+            eval limit (Ctx.bind ctx name (`Susp (lazy (val_ ())))) bound
+          in
+          eval limit (Ctx.bind ctx name (val_ ())) body
       | `Lambda _ as lambda -> `Closure (lambda, ctx)
       | `Apply (func, args) -> (
           match eval limit ctx func with
-          | `Closure (`Lambda (arg_names, body), enclosed_ctx) -> (
+          | `Susp (lazy (`Closure (`Lambda (arg_names, body), enclosed_ctx))) -> (
               match List.zip arg_names (eval_all args) with
               | Ok bindings ->
                   let ctx =
@@ -71,7 +79,7 @@ let eval ?recursion_limit ctx expr =
               raise
               @@ RuntimeError
                    (Error.create "Tried to apply a non-function." expr
-                      Expr.sexp_of_t) )
+                      [%sexp_of: Expr.t]) )
       | `Op (op, args) -> (
           let open Expr.Op in
           match op with
@@ -177,11 +185,12 @@ let eval ?recursion_limit ctx expr =
                   | _ -> arg_error expr )
               | _ -> arg_error expr ) )
   in
+  let ctx = Map.map ctx ~f:to_mut in
   match recursion_limit with
   | Some limit -> eval limit ctx expr
   | None -> eval (-1) ctx expr
 
-let partial_eval ?recursion_limit:(limit = -1) ?(ctx = Ctx.empty ()) expr =
+let partial_eval ?recursion_limit:(limit = -1) ?(ctx = Mutctx.empty ()) expr =
   let rec ev ctx lim expr =
     let ev_all = List.map ~f:(ev ctx lim) in
     if lim = 0 then raise HitRecursionLimit
@@ -191,10 +200,10 @@ let partial_eval ?recursion_limit:(limit = -1) ?(ctx = Ctx.empty ()) expr =
       | `List x -> `List (List.map x ~f:(ev ctx lim))
       | `Tree x -> `Tree (Tree.map x ~f:(ev ctx lim))
       | `Lambda _ as lambda -> `Closure (lambda, ctx)
-      | `Id id -> ( match Ctx.lookup ctx id with Some e -> e | None -> expr )
+      | `Id id -> ( match Mutctx.lookup ctx id with Some e -> e | None -> expr )
       | `Let (name, bound, body) ->
-          let ctx' = Ctx.bind ctx name `Unit in
-          Ctx.update ctx' name (ev ctx' lim bound);
+          let ctx' = Mutctx.bind ctx name `Unit in
+          Mutctx.update ctx' name (ev ctx' lim bound);
           ev ctx' lim body
       | `Apply (func, raw_args) -> (
           let args = ev_all raw_args in
@@ -204,7 +213,8 @@ let partial_eval ?recursion_limit:(limit = -1) ?(ctx = Ctx.empty ()) expr =
               | Ok bindings ->
                   let ctx' =
                     List.fold bindings ~init:enclosed_ctx
-                      ~f:(fun ctx' (arg_name, value) -> Ctx.bind ctx' arg_name value)
+                      ~f:(fun ctx' (arg_name, value) ->
+                        Mutctx.bind ctx' arg_name value)
                   in
                   ev ctx' (lim - 1) body
               | Unequal_lengths -> argn_error expr [%sexp_of: ExprValue.t] )

@@ -67,5 +67,4 @@ type 'a value =
 
 type ivalue = ivalue value [@@deriving compare, hash, sexp]
 
-type evalue = [ evalue value | `Unit | `Closure of expr * evalue Ctx.t ]
-[@@deriving sexp]
+type evalue = [ evalue value | `Closure of expr * evalue Ctx.t ] [@@deriving sexp]

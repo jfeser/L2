@@ -39,12 +39,17 @@ let default_init =
   [ "0"; "1"; "inf"; "[]"; "#f" ]
   |> List.map ~f:(fun str -> Expr.of_string_exn str |> infer_exn (Ctx.empty ()))
 
-let eval_ctx_of_alist =
-  List.fold_left ~init:(Ctx.empty ()) ~f:(fun ctx (name, lambda) ->
-      let ctx' = Ctx.bind ctx name `Unit in
+let rec of_mut = function
+  | `Closure (l, c) -> `Closure (l, Map.map !c ~f:of_mut)
+  | `Unit -> failwith "Unexpected unit."
+
+let eval_ctx_of_alist l =
+  List.fold_left l ~init:(Mutctx.empty ()) ~f:(fun ctx (name, lambda) ->
+      let ctx' = Mutctx.bind ctx name `Unit in
       let value = `Closure (lambda, ctx') in
-      Ctx.update ctx' name value;
-      Ctx.bind ctx name value)
+      Mutctx.update ctx' name value;
+      Mutctx.bind ctx name value)
+  |> Mutctx.to_ctx |> Ctx.map ~f:of_mut
 
 let default_stdlib =
   [ (Name.of_string "inf", `Num Int.max_value) ]
@@ -226,7 +231,7 @@ let rec enumerate ?(ops = default_ops) ?(memo = TypMemoizer.empty ()) config ini
          when instantiating the argument types for equals: (a, a) ->
          bool, both a's should map to the same free type. *)
       let arg_typs' =
-        let ctx = Ctx.empty () in
+        let ctx = Mutctx.empty () in
         List.map arg_typs ~f:(instantiate ~ctx 0)
       in
       (* Split the argument type list into the types of the arguments
@@ -245,7 +250,7 @@ let rec enumerate ?(ops = default_ops) ?(memo = TypMemoizer.empty ()) config ini
          in any type variables in the current type that have already been
          bound. *)
       let prev_selected_typs =
-        let ctx = Ctx.empty () in
+        let ctx = Mutctx.empty () in
         List.map prev_args ~f:(fun arg -> instantiate ~ctx 0 (TypedExpr.to_type arg))
       in
       List.iter2_exn prev_arg_typs prev_selected_typs ~f:unify_exn;
@@ -498,7 +503,7 @@ let solve ?(config = default_config) ?(bk = []) ?(init = default_init) examples 
       | _ -> failwith "Bad result from solve_single."
     with
     | TypeError _ -> false
-    | Ctx.UnboundError _ -> false
+    | Mutctx.UnboundError _ -> false
   in
   Ctx.bind (Ctx.empty ()) (Example.name examples)
     ((solve_single ~init ~verify ~config examples) (`Id (Name.of_string "_")))

@@ -3,7 +3,7 @@ open! Core
 type t =
   [ `Apply of t * t list
   | `Bool of bool
-  | `Closure of t * t Ctx.t
+  | `Closure of t * t Mutctx.t
   | `Id of Expr.id
   | `Lambda of Expr.id list * t
   | `Let of Expr.id * t * t

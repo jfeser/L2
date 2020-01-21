@@ -50,9 +50,8 @@ let from_channel_exn : file:string -> In_channel.t -> t =
   in
   let value_ctx =
     List.fold_left exprs ~init:m_empty ~f:(fun ctx (name, expr) ->
-        let ctx_ref = ref ctx in
-        let value = Eval.eval ctx_ref (`Let (name, expr, `Id name)) in
-        Map.set !ctx_ref ~key:name ~data:value)
+        let value = Eval.eval ctx (`Let (name, expr, `Id name)) in
+        Map.set ctx ~key:name ~data:value)
   in
   let exprvalue_ctx =
     List.fold_left exprs ~init:m_empty ~f:(fun ctx (name, expr) ->

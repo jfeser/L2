@@ -58,16 +58,16 @@ module Type0 = struct
       | Const_t _ | Var_t { contents = Free _ } -> typ
       | Var_t { contents = Link typ' } -> norm ctx typ'
       | Var_t { contents = Quant name } -> (
-          match Ctx.lookup ctx name with
+          match Mutctx.lookup ctx name with
           | Some name' -> Var_t (ref (Quant name'))
           | None ->
               let name' = fresh_name () in
-              Ctx.update ctx name name';
+              Mutctx.update ctx name name';
               Var_t (ref (Quant name')) )
       | App_t (const, args) -> App_t (const, List.map args ~f:(norm ctx))
       | Arrow_t (args, ret) -> Arrow_t (List.map args ~f:(norm ctx), norm ctx ret)
     in
-    norm (Ctx.empty ()) t
+    norm (Mutctx.empty ()) t
 
   let num = Const_t Num_t
 
@@ -356,16 +356,16 @@ let rec generalize level typ =
 
 (** Instantiating a type replaces all quantified type variables with
 fresh free type variables. *)
-let instantiate ?(ctx = Ctx.empty ()) level typ =
+let instantiate ?(ctx = Mutctx.empty ()) level typ =
   let rec inst ctx typ =
     match typ with
     | Const_t _ | Var_t { contents = Free _ } -> typ
     | Var_t { contents = Quant name } -> (
-        match Ctx.lookup ctx name with
+        match Mutctx.lookup ctx name with
         | Some typ' -> typ'
         | None ->
             let typ' = fresh_free level in
-            Ctx.update ctx name typ';
+            Mutctx.update ctx name typ';
             typ' )
     | Var_t { contents = Link typ' } -> inst ctx typ'
     | Arrow_t (args, ret) -> Arrow_t (List.map ~f:(inst ctx) args, inst ctx ret)

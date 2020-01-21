@@ -326,7 +326,7 @@ let eval_command =
             Ok ()
           with Infer.TypeError msg -> Error msg
       in
-      try Ok (Eval.eval (ref library.Library.value_ctx) expr)
+      try Ok (Eval.eval library.Library.value_ctx expr)
       with Eval.RuntimeError err -> Error err
     in
     match output with

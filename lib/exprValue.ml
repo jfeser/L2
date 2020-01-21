@@ -8,7 +8,7 @@ module T = struct
     | `Bool of bool
     | `List of t list
     | `Tree of t Tree.t
-    | `Closure of t * t Ctx.t
+    | `Closure of t * t Mutctx.t
     | `Id of Expr.id
     | `Let of Expr.id * t * t
     | `Lambda of Expr.id list * t

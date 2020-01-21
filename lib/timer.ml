@@ -2,18 +2,18 @@ open! Core
 
 type timing_info = { time : Time.Span.t; desc : string }
 
-type t = timing_info Ctx.t
+type t = timing_info Mutctx.t
 
-let empty = Ctx.empty
+let empty = Mutctx.empty
 
 let add_zero t name desc =
-  Ctx.update t (Name.of_string name) { time = Time.Span.zero; desc }
+  Mutctx.update t (Name.of_string name) { time = Time.Span.zero; desc }
 
 let add t name time =
-  let time' = Ctx.lookup_exn t name in
-  Ctx.update t name { time' with time = Time.Span.( + ) time time'.time }
+  let time' = Mutctx.lookup_exn t name in
+  Mutctx.update t name { time' with time = Time.Span.( + ) time time'.time }
 
-let find_exn t name = (Ctx.lookup_exn t (Name.of_string name)).time
+let find_exn t name = (Mutctx.lookup_exn t (Name.of_string name)).time
 
 let run_with_time t name (thunk : unit -> 'a) : 'a =
   let start_t = Time.now () in
@@ -23,14 +23,14 @@ let run_with_time t name (thunk : unit -> 'a) : 'a =
   x
 
 let to_strings (t : t) : string list =
-  List.map (Ctx.data t) ~f:(fun { desc = d; time = t } ->
+  List.map (Mutctx.data t) ~f:(fun { desc = d; time = t } ->
       sprintf "%s: %s" d (Time.Span.to_short_string t))
 
 (** Serialize a timer to JSON. This creates an object of the form \{
       name: time, ...\}. Times are stored in seconds. *)
 let to_json (t : t) =
   `Assoc
-    ( Ctx.to_alist t
+    ( Mutctx.to_alist t
     |> List.map ~f:(fun (k, v) ->
            ( Name.to_string k,
              `Assoc
