@@ -7,4 +7,3 @@ env:
   - OCAML_VERSION=4.09 PACKAGE="l2"
 os:
   - linux
-  - osx
