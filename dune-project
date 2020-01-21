@@ -1,6 +1,8 @@
 (lang dune 2.0)
 (name l2)
+(version 2.1)
 (source (github jfeser/l2))
+(documentation http://jfeser.github.io/L2/)
 (license Apache2.0)
 (authors "Jack Feser <feser@mit.edu>")
 (maintainers "Jack Feser <feser@mit.edu>")
@@ -8,6 +10,7 @@
 (package
   (name l2)
   (synopsis "Enumerative program synthesizer")
+  (description "λ² is a tool for synthesizing functional programs from input-output examples.")
   (depends
     (ocaml (>= 4.08))
     (dune (>= 2))
