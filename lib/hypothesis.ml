@@ -1059,7 +1059,14 @@ module Hypothesis = struct
   type kind = Abstract | Concrete [@@deriving sexp]
 
   type t = { skeleton : Sk.t; cost : int; kind : kind; holes : (Hole.t * Sp.t) list }
-  [@@deriving fields]
+
+  let skeleton h = h.skeleton
+
+  let cost h = h.cost
+
+  let kind h = h.kind
+
+  let holes h = h.holes
 
   let spec h = Sk.spec h.skeleton
 

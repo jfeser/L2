@@ -1,7 +1,7 @@
 open! Core
 open Collections
 
-type 'a t = Empty | Node of 'a * 'a t list [@@deriving compare, hash, sexp, bin_io]
+type 'a t = Empty | Node of 'a * 'a t list [@@deriving compare, hash, sexp]
 
 let rec hash : ?hash_elem:('a -> int) -> 'a t -> int =
  fun ?(hash_elem = Hashtbl.hash) -> function
