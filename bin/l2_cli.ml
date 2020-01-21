@@ -282,7 +282,7 @@ let synth_command =
           Out_channel.with_file file ~f:(fun ch ->
               get_json testcase
                 (Time.Span.to_sec solve_time)
-                m_solution !Config.config Sys.argv
+                m_solution !Config.config (Sys.get_argv ())
               |> Json.pretty_to_channel ~std:true ch)
       | None -> () );
       Ok ()

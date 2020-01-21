@@ -843,7 +843,7 @@ module Examples = struct
         | Some ret' when ret' = ret -> Ok m
         | Some _ -> error_string "Different return value for same input."
         | None -> Ok (I.Map.set m ~key:ctx ~data:ret))
-    |> ignore
+    |> ignore_m
     >>| fun () -> List.dedup_and_sort ~compare:compare_example exs
 
   let of_list_exn exs = of_list exs |> Or_error.ok_exn
@@ -919,7 +919,7 @@ module FunctionExamples = struct
         | Some ret' when ret' = ret -> Ok m
         | Some _ -> error_string "Different return value for same input."
         | None -> Ok (Map.set m ~key ~data:ret))
-    |> ignore
+    |> ignore_m
     >>| fun () -> List.dedup_and_sort ~compare:compare_example exs
 
   let of_list_exn exs = of_list exs |> Or_error.ok_exn

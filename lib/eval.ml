@@ -50,13 +50,6 @@ let non_function_error expr =
 
 let inf = Name.of_string "inf"
 
-let rec to_mut = function
-  | `Num x -> `Num x
-  | `Bool x -> `Bool x
-  | `Tree xs -> `Tree (Tree.map xs ~f:to_mut)
-  | `List xs -> `List (List.map xs ~f:to_mut)
-  | `Closure (e, m) -> `Closure (e, Map.map ~f:to_mut m)
-
 let to_mut_ctx = Map.map ~f:(fun v -> ref (Some v))
 
 let rec eval decr_limit ctx expr : closure Ast.evalue =
@@ -212,7 +205,7 @@ let eval ?recursion_limit ctx expr =
     match recursion_limit with
     | Some max ->
         let limit = ref max in
-        fun iters ->
+        fun () ->
           decr limit;
           if !limit <= 0 then
             let err =
@@ -220,7 +213,7 @@ let eval ?recursion_limit ctx expr =
                 [%sexp_of: int * Expr.t]
             in
             raise (RuntimeError err)
-    | None -> fun _ -> ()
+    | None -> fun () -> ()
   in
   eval decr_limit (to_mut_ctx ctx) expr
 
