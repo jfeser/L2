@@ -26,7 +26,8 @@ let is_base (base_terms : expr list) (expr : expr) : expr option =
   let rec is_base_r (expr : expr) : bool =
     match expr with
     | `Id _ -> true
-    | `Num _ | `Bool _ | `List _ | `Tree _ -> List.mem ~equal:( = ) base_terms expr
+    | `Num _ | `Bool _ | `List _ | `Tree _ ->
+        List.mem ~equal:Poly.( = ) base_terms expr
     | `Let (_, v, e) -> is_base_r v && is_base_r e
     | `Lambda (_, e) -> is_base_r e
     | `Apply (f, a) -> is_base_r f && List.for_all a ~f:is_base_r

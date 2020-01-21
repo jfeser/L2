@@ -1,4 +1,5 @@
 open Core
+open Poly
 open Printf
 open Ast
 open Collections
@@ -39,18 +40,6 @@ let default_init =
   [ "0"; "1"; "inf"; "[]"; "#f" ]
   |> List.map ~f:(fun str -> Expr.of_string_exn str |> infer_exn (Ctx.empty ()))
 
-let rec of_mut = function
-  | `Closure (l, c) -> `Closure (l, Map.map !c ~f:of_mut)
-  | `Unit -> failwith "Unexpected unit."
-
-let eval_ctx_of_alist l =
-  List.fold_left l ~init:(Mutctx.empty ()) ~f:(fun ctx (name, lambda) ->
-      let ctx' = Mutctx.bind ctx name `Unit in
-      let value = `Closure (lambda, ctx') in
-      Mutctx.update ctx' name value;
-      Mutctx.bind ctx name value)
-  |> Mutctx.to_ctx |> Ctx.map ~f:of_mut
-
 let default_stdlib =
   [ (Name.of_string "inf", `Num Int.max_value) ]
   @ ( [
@@ -75,7 +64,7 @@ let default_stdlib =
       ]
     |> List.map ~f:(fun (name, str) -> (Name.of_string name, Expr.of_string_exn str))
     )
-  |> eval_ctx_of_alist
+  |> Eval.ctx_of_alist
 
 let _stdlib =
   [ (Name.of_string "inf", `Num Int.max_value) ]
@@ -486,10 +475,7 @@ let solve ?(config = default_config) ?(bk = []) ?(init = default_init) examples 
     List.fold_left bk ~init:(Ctx.empty ()) ~f:(fun ctx (name, impl) ->
         Ctx.bind ctx name (TypedExpr.to_type (infer_exn ctx impl)))
   in
-  let vctx =
-    List.fold_left bk ~init:default_stdlib ~f:(fun ctx (name, impl) ->
-        Ctx.bind ctx name (`Closure (impl, ctx)))
-  in
+  let vctx = default_stdlib in
   let init =
     init
     @ (Ctx.to_alist tctx |> List.map ~f:(fun (name, typ) -> TypedExpr.Id (name, typ)))

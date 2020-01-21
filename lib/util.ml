@@ -1,4 +1,5 @@
 open Core
+open Poly
 
 let rec all_equal (l : 'a list) ~eq =
   match l with

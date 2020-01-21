@@ -28,12 +28,19 @@ let rec to_string : t -> string = function
 
 include Comparable.Make (T)
 
+let rec of_evalue = function
+  | `Num x -> `Num x
+  | `Bool x -> `Bool x
+  | `List x -> `List (List.map ~f:of_evalue x)
+  | `Tree x -> `Tree (Tree.map ~f:of_evalue x)
+  | `Closure _ -> assert false
+
 let rec of_evalue_exn = function
   | `Num x -> `Num x
   | `Bool x -> `Bool x
   | `List x -> `List (List.map ~f:of_evalue_exn x)
   | `Tree x -> `Tree (Tree.map ~f:of_evalue_exn x)
-  | `Closure _ | `Unit -> failwith "Not an ivalue."
+  | `Closure _ -> failwith "Not an ivalue."
 
 let rec to_evalue = function
   | `Num x -> `Num x

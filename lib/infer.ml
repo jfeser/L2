@@ -256,7 +256,7 @@ module Unifier = struct
       | App_t (_, args) -> List.exists args ~f:(occurs id)
       | Arrow_t (args, ret) -> List.exists args ~f:(occurs id) || occurs id ret
     in
-    if t1 = t2 then Int.Map.empty
+    if [%compare.equal: typ] t1 t2 then Int.Map.empty
     else
       match (t1, t2) with
       | Var_t { contents = Link x }, y | x, Var_t { contents = Link y } ->
@@ -280,7 +280,8 @@ module Unifier = struct
           let s1 = of_many_types_exn args1 args2 in
           let s2 = of_types_exn ret1 ret2 in
           compose ~outer:s1 ~inner:s2
-      | App_t (const1, args1), App_t (const2, args2) when const1 = const2 ->
+      | App_t (const1, args1), App_t (const2, args2)
+        when [%compare.equal: id] const1 const2 ->
           of_many_types_exn args1 args2
       | _ -> unify_error t1 t2
 
@@ -374,10 +375,10 @@ let instantiate ?(ctx = Mutctx.empty ()) level typ =
   inst ctx typ
 
 let rec unify_exn t1 t2 =
-  if t1 = t2 then ()
+  if [%compare.equal: typ] t1 t2 then ()
   else
     match (t1, t2) with
-    | Const_t t1', Const_t t2' when t1' = t2' -> ()
+    | Const_t t1', Const_t t2' when [%compare.equal: const_typ] t1' t2' -> ()
     | Var_t { contents = Link t1' }, t2' | t1', Var_t { contents = Link t2' } ->
         unify_exn t1' t2'
     | Var_t { contents = Free (id1, _) }, Var_t { contents = Free (id2, _) }
@@ -392,7 +393,8 @@ let rec unify_exn t1 t2 =
         | Ok args -> List.iter args ~f:(fun (a1, a2) -> unify_exn a1 a2)
         | Unequal_lengths -> unify_error t1 t2 );
         unify_exn ret1 ret2
-    | App_t (const1, args1), App_t (const2, args2) when const1 = const2 -> (
+    | App_t (const1, args1), App_t (const2, args2)
+      when [%compare.equal: id] const1 const2 -> (
         match List.zip args1 args2 with
         | Ok args -> List.iter args ~f:(fun (a1, a2) -> unify_exn a1 a2)
         | Unequal_lengths -> unify_error t1 t2 )

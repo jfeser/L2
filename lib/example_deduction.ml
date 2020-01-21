@@ -3,6 +3,7 @@ open Hypothesis
 open Collections
 module Sk = Skeleton
 module Sp = Specification
+open Poly
 
 exception Bottom
 

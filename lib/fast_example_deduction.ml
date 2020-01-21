@@ -5,6 +5,7 @@ open Hypothesis
 open Infer
 module Sp = Specification
 module Sk = Skeleton
+open Poly
 
 let timer =
   let t = Timer.empty () in

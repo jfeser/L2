@@ -1,6 +1,7 @@
 open Core
 open Collections
 open Infer
+open Poly
 
 module StaticDistance = struct
   module T = struct
@@ -237,8 +238,8 @@ module Skeleton = struct
       let equal_ast h1 h2 =
         match (h1, h2) with
         | Num x, Num y -> x = y
-        | Bool x, Bool y -> x = y
-        | Id x, Id y -> x = y
+        | Bool x, Bool y -> Bool.(x = y)
+        | Id x, Id y -> Id.(x = y)
         | Hole x, Hole y -> Hole.equal_id x y
         | List x, List y -> List.equal equal_t x y
         | Tree x, Tree y -> Tree.equal ~equal:equal_t x y

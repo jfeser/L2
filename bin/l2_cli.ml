@@ -3,6 +3,7 @@ open Printf
 open L2
 open Synthesis_common
 open Collections
+open Poly
 
 let deduction_timer =
   let t = Timer.empty () in
@@ -330,7 +331,7 @@ let eval_command =
       with Eval.RuntimeError err -> Error err
     in
     match output with
-    | Ok v -> [%sexp_of: Ast.evalue] v |> print_s
+    | Ok v -> [%sexp_of: Eval.closure Ast.evalue] v |> print_s
     | Error err -> print_string ("Error: " ^ Error.to_string_hum err ^ "\n")
   in
   Command.basic_spec ~summary:"Run L2 source code." spec run

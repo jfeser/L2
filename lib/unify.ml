@@ -91,12 +91,14 @@ let sterm_of_value v =
 
 (* the occurs check *)
 let rec occurs (x : id) (t : term) : bool =
-  match t with Var y -> x = y | Term (_, s) -> List.exists ~f:(occurs x) s
+  match t with
+  | Var y -> [%compare.equal: id] x y
+  | Term (_, s) -> List.exists ~f:(occurs x) s
 
 (* substitute term s for all occurrences of variable x in term t *)
 let rec subst (s : term) (x : id) (t : term) : term =
   match t with
-  | Var y -> if x = y then s else t
+  | Var y -> if [%compare.equal: id] x y then s else t
   | Term (f, u) -> Term (f, List.map ~f:(subst s x) u)
 
 (* apply a substitution right to left *)
@@ -106,9 +108,10 @@ let apply (s : substitution) (t : term) : term =
 (* unify one pair *)
 let rec unify_one (s : term) (t : term) : substitution =
   match (s, t) with
-  | Var x, Var y -> if x = y then [] else [ (x, t) ]
+  | Var x, Var y -> if [%compare.equal: id] x y then [] else [ (x, t) ]
   | Term (f, sc), Term (g, tc) ->
-      if f = g && List.length sc = List.length tc then unify (List.zip_exn sc tc)
+      if [%compare.equal: id] f g && List.length sc = List.length tc then
+        unify (List.zip_exn sc tc)
       else raise Non_unifiable
   | Var x, (Term (_, _) as t) | (Term (_, _) as t), Var x ->
       if occurs x t then raise Non_unifiable else [ (x, t) ]

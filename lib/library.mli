@@ -4,7 +4,7 @@ open Ast
 type t = {
   exprs : (id * Expr.t) list;
   expr_ctx : Expr.t Map.M(Name).t;
-  value_ctx : Ast.evalue Map.M(Name).t;
+  value_ctx : Eval.closure Ast.evalue Map.M(Name).t;
   exprvalue_ctx : ExprValue.t Map.M(Name).t;
   type_ctx : Infer.Type.t Map.M(Name).t;
   builtins : Expr.Op.t list;

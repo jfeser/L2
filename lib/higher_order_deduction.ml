@@ -4,6 +4,7 @@ open Hypothesis
 module Sp = Specification
 module Sk = Skeleton
 module SD = StaticDistance
+open Poly
 
 let spec_err name spec =
   failwiths "Unexpected spec for return value of function." (name, spec)

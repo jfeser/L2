@@ -1,4 +1,5 @@
 open Core
+open Poly
 
 open Ast
 open Collections
@@ -522,11 +523,6 @@ let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
     List.fold_left bk ~init:(Ctx.empty ()) ~f:(fun ctx (name, impl) ->
         Ctx.bind ctx name (TypedExpr.to_type (infer_exn ctx impl)))
   in
-  let vctx =
-    List.fold_left bk ~init:(failwith "TODO: Replace with library.")
-      ~f:(fun ctx (name, impl) ->
-          Ctx.bind ctx name (`Closure (impl, ctx)))
-  in
 
   let init =
     init @ (Ctx.to_alist tctx
@@ -538,8 +534,8 @@ let solve ?(config=Config.default) ?(bk=[]) ?(init=default_init) examples =
     try
       match target (`Id (Name.of_string "_")) with
       | `Let (name, body, _) ->
-        let _ = infer_exn (Ctx.bind tctx name (fresh_free 0)) body in
-        Verify.verify_examples ~limit ~ctx:(vctx) target examples
+        (infer_exn (Ctx.bind tctx name (fresh_free 0)) body |> ignore;
+        Verify.verify_examples ~limit target examples)
       | _ -> failwith "Bad result from solve_single."
     with
     | TypeError _ -> false

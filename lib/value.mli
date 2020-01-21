@@ -4,9 +4,11 @@ type t = Ast.ivalue
 
 val to_string : t -> string
 
-val of_evalue_exn : Ast.evalue -> Ast.ivalue
+val of_evalue : Nothing.t Ast.evalue -> Ast.ivalue
 
-val to_evalue : Ast.ivalue -> Ast.evalue
+val of_evalue_exn : _ Ast.evalue -> Ast.ivalue
+
+val to_evalue : Ast.ivalue -> _ Ast.evalue
 
 include Comparable.S with type t := t
 

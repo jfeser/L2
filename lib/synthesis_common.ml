@@ -21,7 +21,7 @@ module Generalizer = struct
       |> List.map ~f:(fun (hole, spec) ->
              generalize hole.Hole.ctx hole.Hole.type_ hole.Hole.symbol spec
              |> List.filter ~f:(fun (c, _) ->
-                    kind c = Abstract
+                    Poly.(kind c = Abstract)
                     || Specification.verify ~library:params.library spec (skeleton c))
              |> List.map ~f:(fun (c, u) ->
                     let h = fill_hole params.cost_model hole ~parent:hypo ~child:c in
@@ -38,7 +38,7 @@ module Generalizer = struct
           List.filter
             (generalize hole.Hole.ctx hole.Hole.type_ hole.Hole.symbol spec)
             ~f:(fun (c, _) ->
-              kind c = Abstract
+              Poly.(kind c = Abstract)
               || Specification.verify ~library:params.library spec (skeleton c))
         in
         List.map hypos ~f:(fun p ->

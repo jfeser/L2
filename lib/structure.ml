@@ -2,6 +2,7 @@ open Core
 open Ast
 open Collections
 open Infer.Type
+open Poly
 
 type hole = {
   examples : (example * expr Ctx.t) list;
@@ -58,7 +59,7 @@ module Spec = struct
             | `Tree x, `Tree y -> List.zip_exn (Tree.flatten x) (Tree.flatten y)
             | _ -> [] )
             |> List.map ~f:(fun (i, o) -> (map_example lambda_name i o, vctx)))
-        |> List.dedup_and_sort ~compare:Poly.compare
+        |> List.dedup_and_sort ~compare
       in
       if Example.check ex then if deduce_examples then Some ex else Some [] else None
     in
@@ -173,7 +174,7 @@ module Spec = struct
                 in
                 f x y |> List.map ~f:(fun ex -> (ex, vctx))
             | _ -> [])
-        |> List.dedup_and_sort ~compare:Poly.compare
+        |> List.dedup_and_sort ~compare
       in
       if Example.check ex then if deduce_examples then Some ex else Some [] else None
     in
@@ -250,7 +251,7 @@ module Spec = struct
              match Ctx.lookup_exn vctx input_name with
              | `List [] | `Tree Tree.Empty -> Some result
              | _ -> None)
-      |> List.dedup_and_sort ~compare:Poly.compare
+      |> List.dedup_and_sort ~compare
     in
     match base_cases with [] -> None | [ base ] -> Some base | _ :: _ :: _ -> None
 

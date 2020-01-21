@@ -1,6 +1,7 @@
 open Core
 open Ast
 open Collections
+open Poly
 
 type status = Invalid | Valid | Error
 

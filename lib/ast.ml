@@ -45,11 +45,16 @@ type op =
   | Children
 [@@deriving compare, hash, sexp]
 
+type 'a value =
+  [ `Num of int | `Bool of bool | `List of 'a list | `Tree of 'a Tree.t ]
+[@@deriving compare, hash, sexp]
+
+type ivalue = ivalue value [@@deriving compare, hash, sexp]
+
+type 'a evalue = [ 'a evalue value | `Closure of 'a ] [@@deriving sexp]
+
 type expr =
-  [ `Num of int
-  | `Bool of bool
-  | `List of expr list
-  | `Tree of expr Tree.t
+  [ expr value
   | `Id of id
   | `Let of id * expr * expr
   | `Lambda of id list * expr
@@ -60,11 +65,3 @@ type expr =
 type example = expr * expr [@@deriving compare, sexp]
 
 type constr = expr * id list [@@deriving compare, sexp]
-
-type 'a value =
-  [ `Num of int | `Bool of bool | `List of 'a list | `Tree of 'a Tree.t ]
-[@@deriving compare, hash, sexp]
-
-type ivalue = ivalue value [@@deriving compare, hash, sexp]
-
-type evalue = [ evalue value | `Closure of expr * evalue Ctx.t ] [@@deriving sexp]

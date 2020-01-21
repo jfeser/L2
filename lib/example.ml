@@ -2,6 +2,7 @@ open Core
 open Collections
 open Infer
 open Util
+open Poly
 
 type t = Expr.t * Expr.t [@@deriving sexp, compare]
 
