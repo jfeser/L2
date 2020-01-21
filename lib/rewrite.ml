@@ -72,7 +72,7 @@ let fold_constants (expr : expr) : expr option =
         let new_op = `Op (op, folded_args) in
         if List.for_all ~f:is_constant folded_args then
           try
-            let value = Eval.eval (Ctx.empty ()) new_op |> Value.of_evalue_exn in
+            let value = Eval.eval Ctx.empty new_op |> Value.of_evalue_exn in
             match value_to_const value with Some const -> const | None -> new_op
           with Eval.RuntimeError _ -> raise BadExpression
         else new_op

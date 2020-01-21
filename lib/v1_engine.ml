@@ -38,7 +38,7 @@ let default_ops = Expr.Op.all |> List.filter ~f:(fun op -> op <> RCons)
 
 let default_init =
   [ "0"; "1"; "inf"; "[]"; "#f" ]
-  |> List.map ~f:(fun str -> Expr.of_string_exn str |> infer_exn (Ctx.empty ()))
+  |> List.map ~f:(fun str -> Expr.of_string_exn str |> infer_exn Ctx.empty)
 
 let default_stdlib =
   [ (Name.of_string "inf", `Num Int.max_value) ]
@@ -327,12 +327,12 @@ let rec enumerate ?(ops = default_ops) ?(memo = TypMemoizer.empty ()) config ini
 
 type hypothesis = { skel : Spec.t; max_exh_cost : int; generalized : bool }
 
-let solve_single ?(init = []) ?(verify = Verify.verify_examples ~ctx:(Ctx.empty ()))
+let solve_single ?(init = []) ?(verify = Verify.verify_examples ~ctx:Ctx.empty)
     ~config (examples : example list) =
   let initial_spec =
     let target_name = Example.name examples in
     let target ctx expr =
-      let body = Ctx.lookup_exn ctx target_name in
+      let body = Map.find_exn ctx target_name in
       `Let (target_name, body, expr)
     in
     {
@@ -342,9 +342,9 @@ let solve_single ?(init = []) ?(verify = Verify.verify_examples ~ctx:(Ctx.empty 
           [
             ( target_name,
               {
-                examples = List.map examples ~f:(fun ex -> (ex, Ctx.empty ()));
+                examples = List.map examples ~f:(fun ex -> (ex, Ctx.empty));
                 signature = Example.signature examples;
-                tctx = Ctx.empty ();
+                tctx = Ctx.empty;
               } );
           ];
       Spec.cost = 0;
@@ -363,7 +363,7 @@ let solve_single ?(init = []) ?(verify = Verify.verify_examples ~ctx:(Ctx.empty 
   in
   let matrix_of_hole hole =
     let init' =
-      ( Ctx.to_alist hole.tctx
+      ( Map.to_alist hole.tctx
       |> List.map ~f:(fun (name, typ) -> TypedExpr.Id (name, typ)) )
       @ init
     in
@@ -386,7 +386,8 @@ let solve_single ?(init = []) ?(verify = Verify.verify_examples ~ctx:(Ctx.empty 
         else enumerate config init' typ |> Sstream.map_matrix ~f:TypedExpr.to_expr
   in
   let choose name hole ctx : expr Ctx.t Sstream.matrix =
-    Sstream.map_matrix (matrix_of_hole hole) ~f:(Ctx.bind ctx name)
+    Sstream.map_matrix (matrix_of_hole hole) ~f:(fun x ->
+        Map.set ctx ~key:name ~data:x)
   in
   let total_cost =
     if config.flat_cost then fun hypo_cost enum_cost -> hypo_cost + enum_cost
@@ -395,13 +396,13 @@ let solve_single ?(init = []) ?(verify = Verify.verify_examples ~ctx:(Ctx.empty 
   in
   let solver_of_spec spec =
     let matrix =
-      match Ctx.to_alist spec.Spec.holes with
+      match Map.to_alist spec.Spec.holes with
       | [] -> failwith "Specification has no holes."
       | (name, hole) :: hs ->
           (List.fold_left hs ~init:(choose name hole)
              ~f:(fun matrix (name', hole') ->
                Sstream.compose matrix (choose name' hole')))
-            (Ctx.empty ())
+            Ctx.empty
     in
     Sstream.map_matrix matrix ~f:(fun ctx ->
         let target = spec.Spec.target ctx in
@@ -469,27 +470,27 @@ let solve_single ?(init = []) ?(verify = Verify.verify_examples ~ctx:(Ctx.empty 
 
 let solve ?(config = default_config) ?(bk = []) ?(init = default_init) examples =
   (* Check examples. *)
-  if not (List.map examples ~f:(fun ex -> (ex, Ctx.empty ())) |> Example.check) then
+  if not (List.map examples ~f:(fun ex -> (ex, Ctx.empty)) |> Example.check) then
     failwith "Examples do not represent a function.";
   let tctx =
-    List.fold_left bk ~init:(Ctx.empty ()) ~f:(fun ctx (name, impl) ->
-        Ctx.bind ctx name (TypedExpr.to_type (infer_exn ctx impl)))
+    List.fold_left bk ~init:Ctx.empty ~f:(fun ctx (name, impl) ->
+        Map.set ctx ~key:name ~data:(TypedExpr.to_type (infer_exn ctx impl)))
   in
   let vctx = default_stdlib in
   let init =
     init
-    @ (Ctx.to_alist tctx |> List.map ~f:(fun (name, typ) -> TypedExpr.Id (name, typ)))
+    @ (Map.to_alist tctx |> List.map ~f:(fun (name, typ) -> TypedExpr.Id (name, typ)))
   in
   let verify ?(limit = 100) target examples =
     try
       match target (`Id (Name.of_string "_")) with
       | `Let (name, body, _) ->
-          let _ = infer (Ctx.bind tctx name (fresh_free 0)) body in
+          let _ = infer (Map.set tctx ~key:name ~data:(fresh_free 0)) body in
           Verify.verify_examples ~limit ~ctx:vctx target examples
       | _ -> failwith "Bad result from solve_single."
     with
     | TypeError _ -> false
     | Mutctx.UnboundError _ -> false
   in
-  Ctx.bind (Ctx.empty ()) (Example.name examples)
-    ((solve_single ~init ~verify ~config examples) (`Id (Name.of_string "_")))
+  Map.set Ctx.empty ~key:(Example.name examples)
+    ~data:((solve_single ~init ~verify ~config examples) (`Id (Name.of_string "_")))

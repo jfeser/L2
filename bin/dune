@@ -1,9 +1,6 @@
 (executable
+ (public_name l2)
  (name l2_cli)
- (libraries l2 core yojson hashcons)
+ (libraries l2 core yojson)
  (modules l2_cli)
  (preprocess (pps ppx_let ppx_sexp_conv)))
-
-(install
- (section bin)
- (files (l2_cli.exe as l2)))

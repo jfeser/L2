@@ -53,7 +53,7 @@ let split (exs : t list) =
          | _ -> failwith "Expected a non-empty list.")
 
 (** Infer a function signature from input/output examples. *)
-let signature ?(ctx = Ctx.empty ()) (examples : t list) : Type.t =
+let signature ?(ctx = Ctx.empty) (examples : t list) : Type.t =
   let _, inputs, results = List.map examples ~f:to_triple |> unzip3 in
   let res_typ =
     match TypedExpr.to_type (infer_exn ctx (`List results)) with
@@ -69,7 +69,7 @@ let signature ?(ctx = Ctx.empty ()) (examples : t list) : Type.t =
             res_typ )
     | [] -> failwith "Example list is empty."
   in
-  let ctx = Ctx.bind ctx (name examples) typ in
+  let ctx = Map.set ctx ~key:(name examples) ~data:typ in
   let name' = name examples in
   List.iter inputs ~f:(fun input ->
       let _ = Infer.infer ctx (`Apply (`Id name', input)) in
@@ -86,4 +86,4 @@ let check (examples : (t * Expr.t Ctx.t) list) : bool =
   not
     (List.exists examples ~f:(fun ((lhs, rhs), vctx) ->
          List.exists examples ~f:(fun ((lhs', rhs'), vctx') ->
-             Ctx.equal Expr.equal vctx vctx' && lhs = lhs' && rhs <> rhs')))
+             Map.equal Expr.equal vctx vctx' && lhs = lhs' && rhs <> rhs')))

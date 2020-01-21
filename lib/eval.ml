@@ -33,14 +33,14 @@ let unbound_error id ctx =
   raise
   @@ RuntimeError
        (Error.create "Unbound lookup."
-          (id, Ctx.keys ctx)
+          (id, Map.keys ctx)
           [%sexp_of: Expr.id * Name.t list])
 
 let unbound_rec_error id ctx =
   raise
   @@ RuntimeError
        (Error.create "BUG: Unbound recursive let."
-          (id, Ctx.keys ctx)
+          (id, Map.keys ctx)
           [%sexp_of: Expr.id * Name.t list])
 
 let non_function_error expr =
@@ -69,7 +69,7 @@ let rec eval decr_limit ctx expr : closure Ast.evalue =
       | None -> unbound_error id ctx )
   | `Let (name, bound, body) ->
       let bound_ref = ref None in
-      let bound_ctx = Ctx.bind ctx name bound_ref in
+      let bound_ctx = Map.set ctx ~key:name ~data:bound_ref in
       let bound_val = eval_ctx bound_ctx bound in
       bound_ref := Some bound_val;
       eval_ctx bound_ctx body
@@ -82,7 +82,7 @@ let rec eval decr_limit ctx expr : closure Ast.evalue =
               let ctx =
                 List.fold bindings ~init:enclosed_ctx
                   ~f:(fun ctx (arg_name, value) ->
-                    Ctx.bind ctx arg_name (ref (Some value)))
+                    Map.set ctx ~key:arg_name ~data:(ref (Some value)))
               in
               eval_ctx ctx body
           | Unequal_lengths -> argn_error expr )
@@ -190,9 +190,9 @@ let rec eval decr_limit ctx expr : closure Ast.evalue =
           | _ -> arg_error expr ) )
 
 let ctx_of_alist l =
-  List.fold_left l ~init:(Ctx.empty ()) ~f:(fun ctx (name, lambda) ->
+  List.fold_left l ~init:Ctx.empty ~f:(fun ctx (name, lambda) ->
       let bound_ref = ref None in
-      let bound_ctx = Ctx.bind ctx name bound_ref in
+      let bound_ctx = Map.set ctx ~key:name ~data:bound_ref in
       let bound_val = eval (fun _ -> ()) bound_ctx lambda in
       bound_ref := Some bound_val;
       bound_ctx)

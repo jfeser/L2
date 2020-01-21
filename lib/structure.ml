@@ -11,7 +11,7 @@ type hole = {
 }
 
 let ctx_merge outer_ctx inner_ctx =
-  Ctx.merge outer_ctx inner_ctx ~f:(fun ~key:_ value ->
+  Map.merge outer_ctx inner_ctx ~f:(fun ~key:_ value ->
       match value with
       | `Both (_, ictx_v) -> Some ictx_v
       | `Left octx_v -> Some octx_v
@@ -40,7 +40,7 @@ module Spec = struct
 
   let to_string (spec : t) : string =
     let (hole_bodies : expr Ctx.t) =
-      Ctx.mapi spec.holes ~f:(fun ~key:name ~data:_ -> `Id name)
+      Map.mapi spec.holes ~f:(fun ~key:name ~data:_ -> `Id name)
     in
     spec.target hole_bodies (`Id (Name.of_string "_")) |> Expr.to_string
 
@@ -54,7 +54,7 @@ module Spec = struct
     let map_examples examples lambda_name lambda_arg_name =
       let ex =
         List.concat_map examples ~f:(fun ((_, result), vctx) ->
-            ( match (Ctx.lookup_exn vctx lambda_arg_name, result) with
+            ( match (Map.find_exn vctx lambda_arg_name, result) with
             | `List x, `List y -> List.zip_exn x y
             | `Tree x, `Tree y -> List.zip_exn (Tree.flatten x) (Tree.flatten y)
             | _ -> [] )
@@ -76,12 +76,12 @@ module Spec = struct
                 (ex, ctx_merge ovctx (Example.to_vctx ex arg_names)))
           in
           let tree_args =
-            Ctx.filter_mapi tctx ~f:(fun ~key:name ~data:typ ->
+            Map.filter_mapi tctx ~f:(fun ~key:name ~data:typ ->
                 match typ |> normalize with
                 | App_t (n, [ elem_typ ]) when is_tree n ->
                     if
                       List.for_all examples ~f:(fun ((_, result), vctx) ->
-                          match (Ctx.lookup_exn vctx name, result) with
+                          match (Map.find_exn vctx name, result) with
                           | `Tree x, `Tree y ->
                               Tree.equal x y ~equal:(fun _ _ -> true)
                           | `Apply _, `Tree _ -> true
@@ -89,22 +89,22 @@ module Spec = struct
                     then Some elem_typ
                     else None
                 | _ -> None)
-            |> Ctx.to_alist
+            |> Map.to_alist
           in
           let list_args =
-            Ctx.filter_mapi tctx ~f:(fun ~key:name ~data:typ ->
+            Map.filter_mapi tctx ~f:(fun ~key:name ~data:typ ->
                 match typ |> normalize with
                 | App_t (n, [ elem_typ ]) when is_list n ->
                     if
                       List.for_all examples ~f:(fun ((_, result), vctx) ->
-                          match (Ctx.lookup_exn vctx name, result) with
+                          match (Map.find_exn vctx name, result) with
                           | `List x, `List y -> List.length x = List.length y
                           | `Apply _, `List _ -> true
                           | _ -> false)
                     then Some elem_typ
                     else None
                 | _ -> None)
-            |> Ctx.to_alist
+            |> Map.to_alist
           in
           let map_specs args map_name cost =
             List.filter_map args ~f:(fun (input_name, input_elem_typ) ->
@@ -119,12 +119,13 @@ module Spec = struct
                       }
                     in
                     let target ctx =
-                      let body = Ctx.lookup_exn ctx lambda_name in
+                      let body = Map.find_exn ctx lambda_name in
                       let ctx' =
-                        Ctx.bind ctx name
-                          (`Lambda
-                            ( arg_names,
-                              `Apply (`Id map_name, [ `Id input_name; body ]) ))
+                        Map.set ctx ~key:name
+                          ~data:
+                            (`Lambda
+                              ( arg_names,
+                                `Apply (`Id map_name, [ `Id input_name; body ]) ))
                       in
                       spec.target ctx'
                     in
@@ -132,7 +133,8 @@ module Spec = struct
                       {
                         target;
                         holes =
-                          Ctx.bind (Ctx.unbind spec.holes name) lambda_name hole';
+                          Map.set (Map.remove spec.holes name) ~key:lambda_name
+                            ~data:hole';
                         cost = spec.cost + cost;
                       }
                 | None -> None)
@@ -141,7 +143,7 @@ module Spec = struct
           @ map_specs list_args (Name.of_string "map") cost.Cost.map
       | _ -> []
     in
-    Ctx.to_alist spec.holes
+    Map.to_alist spec.holes
     |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
   let filter_bodies ?(deduce_examples = true) ?(cost = Cost.default) (spec : t) :
@@ -152,7 +154,7 @@ module Spec = struct
     let filter_examples examples lambda_name list_name =
       let ex =
         List.concat_map examples ~f:(fun ((_, result), vctx) ->
-            match (Ctx.lookup_exn vctx list_name, result) with
+            match (Map.find_exn vctx list_name, result) with
             | `List x, `List y ->
                 let rec f inputs outputs =
                   match (inputs, outputs) with
@@ -194,20 +196,20 @@ module Spec = struct
            for every example and a strict superset of the result for at
            least one example. *)
           tctx
-          |> Ctx.filter_mapi ~f:(fun ~key:name ~data:typ ->
+          |> Map.filter_mapi ~f:(fun ~key:name ~data:typ ->
                  match typ |> normalize with
                  | App_t (n, [ elem_typ ]) when is_list n && elem_typ = res_elem_typ
                    ->
                      if
                        List.for_all examples ~f:(fun ((_, result), vctx) ->
-                           match (Ctx.lookup_exn vctx name, result) with
+                           match (Map.find_exn vctx name, result) with
                            | `List x, `List y -> Util.superset x y
                            | `Apply _, `List _ -> true
                            | _ -> failwith "Examples do not have a consistent type.")
                      then Some elem_typ
                      else None
                  | _ -> None)
-          |> Ctx.to_alist
+          |> Map.to_alist
           |> List.filter_map ~f:(fun (input_name, input_elem_typ) ->
                  let lambda_name = Fresh.name "f" in
                  match filter_examples examples lambda_name input_name with
@@ -220,7 +222,7 @@ module Spec = struct
                        }
                      in
                      let target ctx =
-                       let body = Ctx.lookup_exn ctx lambda_name in
+                       let body = Map.find_exn ctx lambda_name in
                        let expr =
                          `Lambda
                            ( arg_names,
@@ -228,27 +230,28 @@ module Spec = struct
                                ( `Id (Name.of_string "filter"),
                                  [ `Id input_name; body ] ) )
                        in
-                       let ctx' = Ctx.bind ctx name expr in
+                       let ctx' = Map.set ctx ~key:name ~data:expr in
                        spec.target ctx'
                      in
                      Some
                        {
                          target;
                          holes =
-                           Ctx.bind (Ctx.unbind spec.holes name) lambda_name hole';
+                           Map.set (Map.remove spec.holes name) ~key:lambda_name
+                             ~data:hole';
                          cost = spec.cost + cost;
                        }
                  | None -> None)
       | _ -> []
     in
-    Ctx.to_alist spec.holes
+    Map.to_alist spec.holes
     |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
   let extract_base_case examples input_name : expr option =
     let base_cases =
       examples
       |> List.filter_map ~f:(fun ((_, result), vctx) ->
-             match Ctx.lookup_exn vctx input_name with
+             match Map.find_exn vctx input_name with
              | `List [] | `Tree Tree.Empty -> Some result
              | _ -> None)
       |> List.dedup_and_sort ~compare
@@ -264,7 +267,7 @@ module Spec = struct
     let init_examples examples init_name list_name =
       let ex =
         List.filter_map examples ~f:(fun ((_, result), vctx) ->
-            match Ctx.lookup_exn vctx list_name with
+            match Map.find_exn vctx list_name with
             | `List [] -> Some ((`Id init_name, result), vctx)
             | _ -> None)
       in
@@ -274,12 +277,12 @@ module Spec = struct
       let apply_lambda acc elem = `Apply (`Id lambda_name, [ acc; elem ]) in
       let ex =
         List.filter_map examples ~f:(fun ((_, result), vctx) ->
-            match Ctx.lookup_exn vctx list_name with
+            match Map.find_exn vctx list_name with
             | `List [ x ] -> Some ((apply_lambda init_expr x, result), vctx)
             | `List (x :: xs) ->
                 let acc_result_m =
                   List.find_map examples ~f:(fun ((_, result), vctx) ->
-                      match Ctx.lookup_exn vctx list_name with
+                      match Map.find_exn vctx list_name with
                       | `List xs' when xs = xs' -> Some result
                       | _ -> None)
                 in
@@ -293,14 +296,14 @@ module Spec = struct
       let apply_lambda acc elem = `Apply (`Id lambda_name, [ acc; elem ]) in
       let ex =
         List.filter_map examples ~f:(fun ((_, result), vctx) ->
-            match Ctx.lookup_exn vctx list_name with
+            match Map.find_exn vctx list_name with
             | `List [ x ] -> Some ((apply_lambda init_expr x, result), vctx)
             | `List (r :: rs) -> (
                 match List.rev (r :: rs) with
                 | x :: xs ->
                     let acc_result_m =
                       List.find_map examples ~f:(fun ((_, result), vctx) ->
-                          match Ctx.lookup_exn vctx list_name with
+                          match Map.find_exn vctx list_name with
                           | `List rs' when xs = List.rev rs' -> Some result
                           | _ -> None)
                     in
@@ -327,7 +330,7 @@ module Spec = struct
           (* Create a list of tuples (list name, list element type) from
            the type context. *)
           let lists =
-            Ctx.to_alist tctx
+            Map.to_alist tctx
             |> List.filter_map ~f:(fun (name, typ) ->
                    match typ |> normalize with
                    | App_t (n, [ elem_typ ]) when is_list n -> Some (name, elem_typ)
@@ -337,7 +340,7 @@ module Spec = struct
               let init_name = Fresh.name "i" in
               match init_examples examples init_name input_name with
               | Some init_exs ->
-                  let holes' = Ctx.unbind spec.holes name in
+                  let holes' = Map.remove spec.holes name in
                   let lambda_name = Fresh.name "f" in
                   let lambda_hole =
                     {
@@ -350,8 +353,8 @@ module Spec = struct
                     { tctx; examples = init_exs; signature = res_typ }
                   in
                   let baseless_target fold_name ctx =
-                    let body = Ctx.lookup_exn ctx lambda_name in
-                    let init = Ctx.lookup_exn ctx init_name in
+                    let body = Map.find_exn ctx lambda_name in
+                    let init = Map.find_exn ctx init_name in
                     let expr =
                       `Lambda
                         ( arg_names,
@@ -359,13 +362,13 @@ module Spec = struct
                             ( `Id (Name.of_string fold_name),
                               [ `Id input_name; body; init ] ) )
                     in
-                    let ctx' = Ctx.bind ctx name expr in
+                    let ctx' = Map.set ctx ~key:name ~data:expr in
                     spec.target ctx'
                   in
                   let baseless_holes =
-                    Ctx.bind
-                      (Ctx.bind holes' lambda_name lambda_hole)
-                      init_name init_hole
+                    Map.set
+                      (Map.set holes' ~key:lambda_name ~data:lambda_hole)
+                      ~key:init_name ~data:init_hole
                   in
                   let baseless_specs =
                     [
@@ -385,7 +388,7 @@ module Spec = struct
                     match extract_base_case examples input_name with
                     | Some base -> (
                         let target fold_name ctx =
-                          let body = Ctx.lookup_exn ctx lambda_name in
+                          let body = Map.find_exn ctx lambda_name in
                           let expr =
                             `Lambda
                               ( arg_names,
@@ -393,7 +396,7 @@ module Spec = struct
                                   ( `Id (Name.of_string fold_name),
                                     [ `Id input_name; body; base ] ) )
                           in
-                          let ctx' = Ctx.bind ctx name expr in
+                          let ctx' = Map.set ctx ~key:name ~data:expr in
                           spec.target ctx'
                         in
                         ( match
@@ -404,8 +407,8 @@ module Spec = struct
                               {
                                 target = target "foldl";
                                 holes =
-                                  Ctx.bind holes' lambda_name
-                                    { lambda_hole with examples };
+                                  Map.set holes' ~key:lambda_name
+                                    ~data:{ lambda_hole with examples };
                                 cost = spec.cost + foldl_cost - 1;
                               };
                             ]
@@ -419,8 +422,8 @@ module Spec = struct
                               {
                                 target = target "foldr";
                                 holes =
-                                  Ctx.bind holes' lambda_name
-                                    { lambda_hole with examples };
+                                  Map.set holes' ~key:lambda_name
+                                    ~data:{ lambda_hole with examples };
                                 cost = spec.cost + foldr_cost - 1;
                               };
                             ]
@@ -430,7 +433,7 @@ module Spec = struct
               | None -> [])
       | _ -> []
     in
-    Ctx.to_alist spec.holes
+    Map.to_alist spec.holes
     |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
   let foldt_bodies ?(deduce_examples = true) ?(infer_base = false)
@@ -438,7 +441,7 @@ module Spec = struct
     let init_examples examples init_name input_name =
       let ex =
         List.filter_map examples ~f:(fun ((_, result), vctx) ->
-            match Ctx.lookup_exn vctx input_name with
+            match Map.find_exn vctx input_name with
             | `Tree Tree.Empty -> Some ((`Id init_name, result), vctx)
             | _ -> None)
       in
@@ -457,18 +460,18 @@ module Spec = struct
           in
           let trees =
             tctx
-            |> Ctx.filter_mapi ~f:(fun ~key:_ ~data:typ ->
+            |> Map.filter_mapi ~f:(fun ~key:_ ~data:typ ->
                    match typ |> normalize with
                    | App_t (n, [ elem_typ ]) when is_tree n -> Some elem_typ
                    | _ -> None)
-            |> Ctx.to_alist
+            |> Map.to_alist
           in
           let cost = cost.Cost.foldt in
           List.concat_map trees ~f:(fun (input_name, input_elem_typ) ->
               let init_name = Fresh.name "i" in
               match init_examples examples init_name input_name with
               | Some init_exs ->
-                  let holes' = Ctx.unbind spec.holes name in
+                  let holes' = Map.remove spec.holes name in
                   let lambda_name = Fresh.name "f" in
                   let lambda_hole =
                     {
@@ -481,8 +484,8 @@ module Spec = struct
                     { tctx; examples = init_exs; signature = res_typ }
                   in
                   let baseless_target ctx =
-                    let body = Ctx.lookup_exn ctx lambda_name in
-                    let init = Ctx.lookup_exn ctx init_name in
+                    let body = Map.find_exn ctx lambda_name in
+                    let init = Map.find_exn ctx init_name in
                     let expr =
                       `Lambda
                         ( arg_names,
@@ -490,7 +493,7 @@ module Spec = struct
                             ( `Id (Name.of_string "foldt"),
                               [ `Id input_name; body; init ] ) )
                     in
-                    let ctx' = Ctx.bind ctx name expr in
+                    let ctx' = Map.set ctx ~key:name ~data:expr in
                     spec.target ctx'
                   in
                   let baseless_specs =
@@ -498,9 +501,9 @@ module Spec = struct
                       {
                         target = baseless_target;
                         holes =
-                          Ctx.bind
-                            (Ctx.bind holes' lambda_name lambda_hole)
-                            init_name init_hole;
+                          Map.set
+                            (Map.set holes' ~key:lambda_name ~data:lambda_hole)
+                            ~key:init_name ~data:init_hole;
                         cost = spec.cost + cost;
                       };
                     ]
@@ -509,7 +512,7 @@ module Spec = struct
                     match extract_base_case examples input_name with
                     | Some base ->
                         let target ctx =
-                          let body = Ctx.lookup_exn ctx lambda_name in
+                          let body = Map.find_exn ctx lambda_name in
                           let expr =
                             `Lambda
                               ( arg_names,
@@ -517,13 +520,13 @@ module Spec = struct
                                   ( `Id (Name.of_string "foldt"),
                                     [ `Id input_name; body; base ] ) )
                           in
-                          let ctx' = Ctx.bind ctx name expr in
+                          let ctx' = Map.set ctx ~key:name ~data:expr in
                           spec.target ctx'
                         in
                         [
                           {
                             target;
-                            holes = Ctx.bind holes' lambda_name lambda_hole;
+                            holes = Map.set holes' ~key:lambda_name ~data:lambda_hole;
                             cost = spec.cost + cost;
                           };
                         ]
@@ -532,7 +535,7 @@ module Spec = struct
               | None -> [])
       | _ -> []
     in
-    Ctx.to_alist spec.holes
+    Map.to_alist spec.holes
     |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 
   let recurs_bodies ?(deduce_examples = true) ?(cost = Cost.default) (spec : t) :
@@ -540,7 +543,7 @@ module Spec = struct
     let base_examples examples base_name input_name =
       let ex =
         List.filter_map examples ~f:(fun ((_, result), vctx) ->
-            match Ctx.lookup_exn vctx input_name with
+            match Map.find_exn vctx input_name with
             | `List [] -> Some ((`Id base_name, result), vctx)
             | _ -> None)
       in
@@ -549,7 +552,7 @@ module Spec = struct
     let recurs_examples examples recurs_name input_name =
       let ex =
         List.filter_map examples ~f:(fun ((_, result), vctx) ->
-            match Ctx.lookup_exn vctx input_name with
+            match Map.find_exn vctx input_name with
             | `List (x :: xs) ->
                 Some ((`Apply (`Id recurs_name, [ x; `List xs ]), result), vctx)
             | _ -> None)
@@ -569,11 +572,11 @@ module Spec = struct
           in
           let lists =
             tctx
-            |> Ctx.filter_mapi ~f:(fun ~key:_ ~data:typ ->
+            |> Map.filter_mapi ~f:(fun ~key:_ ~data:typ ->
                    match typ |> normalize with
                    | App_t (n, [ elem_typ ]) when is_list n -> Some elem_typ
                    | _ -> None)
-            |> Ctx.to_alist
+            |> Map.to_alist
           in
           let cost = cost.Cost.rec_ in
           List.filter_map lists ~f:(fun (input_name, input_elem_typ) ->
@@ -592,12 +595,12 @@ module Spec = struct
                       examples = recurs_exs;
                       signature =
                         Arrow_t ([ input_elem_typ; list input_elem_typ ], res_typ);
-                      tctx = Ctx.bind tctx recurs_name hole.signature;
+                      tctx = Map.set tctx ~key:recurs_name ~data:hole.signature;
                     }
                   in
                   let target ctx =
-                    let base = Ctx.lookup_exn ctx base_name in
-                    let recurs = Ctx.lookup_exn ctx recurs_name in
+                    let base = Map.find_exn ctx base_name in
+                    let recurs = Map.find_exn ctx recurs_name in
                     let expr =
                       `Lambda
                         ( arg_names,
@@ -619,22 +622,22 @@ module Spec = struct
                                       ] ) ),
                               `Apply (`Id recurs_name, [ `Id input_name ]) ) )
                     in
-                    let ctx' = Ctx.bind ctx name expr in
+                    let ctx' = Map.set ctx ~key:name ~data:expr in
                     spec.target ctx'
                   in
                   Some
                     {
                       target;
                       holes =
-                        Ctx.bind
-                          (Ctx.bind (Ctx.unbind spec.holes name) recurs_name
-                             recurs_hole)
-                          base_name base_hole;
+                        Map.set
+                          (Map.set (Map.remove spec.holes name) ~key:recurs_name
+                             ~data:recurs_hole)
+                          ~key:base_name ~data:base_hole;
                       cost = spec.cost + cost;
                     }
               | _ -> None)
       | _ -> []
     in
-    Ctx.to_alist spec.holes
+    Map.to_alist spec.holes
     |> List.concat_map ~f:(fun (name, hole) -> fill name hole)
 end

@@ -80,7 +80,7 @@ let synthesize ?spec_dir ?max_cost engine deduction cost_model library testcase 
                   exs)
           in
           let solution_str =
-            Ctx.to_alist solutions |> List.map ~f:Tuple.T2.get2
+            Map.to_alist solutions |> List.map ~f:Tuple.T2.get2
             |> List.map ~f:Expr.to_string |> String.concat ~sep:"\n"
           in
           (`Solution solution_str, runtime)
@@ -91,7 +91,7 @@ let synthesize ?spec_dir ?max_cost engine deduction cost_model library testcase 
                   ~bk:bg exs)
           in
           let solution_str =
-            Ctx.to_alist solutions |> List.map ~f:Tuple.T2.get2
+            Map.to_alist solutions |> List.map ~f:Tuple.T2.get2
             |> List.map ~f:Expr.to_string |> String.concat ~sep:"\n"
           in
           (`Solution solution_str, runtime)

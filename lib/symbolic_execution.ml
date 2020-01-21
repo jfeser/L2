@@ -200,8 +200,7 @@ let skeleton_of_result r =
     | Tree_r x -> S.Tree_h (Tree.map x ~f:skeleton_of_result, ())
     | Id_r x -> S.Id_h (x, ())
     | Apply_r (func, args) ->
-        S.Apply_h
-          ((skeleton_of_result func, List.map args ~f:skeleton_of_result), ())
+        S.Apply_h ((skeleton_of_result func, List.map args ~f:skeleton_of_result), ())
     | Op_r (op, args) -> S.Op_h ((op, List.map args ~f:skeleton_of_result), ())
     | Symbol_r _ -> S.Hole_h (hole, ())
     | Closure_r (_, _) -> raise ConversionError
@@ -217,13 +216,13 @@ module PathContext = struct
 
   let find map pc id =
     Option.bind (PathConditionMap.find map pc) (fun ctx ->
-        StaticDistance.Map.find ctx id )
+        StaticDistance.Map.find ctx id)
 
   let add map pc id data =
     PathConditionMap.change map pc (fun m_ctx ->
         match m_ctx with
         | Some ctx -> Some (StaticDistance.Map.add ctx ~key:id ~data)
-        | None -> Some (StaticDistance.Map.singleton id data) )
+        | None -> Some (StaticDistance.Map.singleton id data))
 
   let empty = PathConditionMap.empty
 end
@@ -468,7 +467,7 @@ let partially_evaluate ?recursion_limit ?(ctx = StaticDistance.Map.empty) skelet
           ctx :=
             StaticDistance.Map.add !ctx
               ~key:(StaticDistance.create ~index:1 ~distance:1)
-              ~data:(eval limit ctx bound) ;
+              ~data:(eval limit ctx bound);
           eval limit ctx body
       | S.Apply_h ((func, args), _) -> (
           let args = eval_all args in
@@ -485,238 +484,250 @@ let partially_evaluate ?recursion_limit ?(ctx = StaticDistance.Map.empty) skelet
             (*     | None -> raise (EvalError `WrongNumberOfArguments) *)
             (*   end *)
             | Id_r (S.Id.Name "intersperse") as f -> (
-              match args with
-              | [List_r []; _] -> List_r []
-              | [List_r [x]; _] -> List_r [x]
-              | [List_r [x; y]; a] -> List_r [x; a; y]
-              | [List_r [x; y; z]; a] -> List_r [x; a; y; a; z]
-              | [List_r [x; y; z; w]; a] -> List_r [x; a; y; a; z; a; w]
-              | _ -> Apply_r (f, args) )
+                match args with
+                | [ List_r []; _ ] -> List_r []
+                | [ List_r [ x ]; _ ] -> List_r [ x ]
+                | [ List_r [ x; y ]; a ] -> List_r [ x; a; y ]
+                | [ List_r [ x; y; z ]; a ] -> List_r [ x; a; y; a; z ]
+                | [ List_r [ x; y; z; w ]; a ] -> List_r [ x; a; y; a; z; a; w ]
+                | _ -> Apply_r (f, args) )
             | Id_r (S.Id.Name "sort") as f -> (
-              match args with
-              | [List_r []] -> List_r []
-              | [List_r [x]] -> List_r [x]
-              | _ -> Apply_r (f, args) )
+                match args with
+                | [ List_r [] ] -> List_r []
+                | [ List_r [ x ] ] -> List_r [ x ]
+                | _ -> Apply_r (f, args) )
             | Id_r (S.Id.Name "reverse") as f -> (
-              match args with
-              | [List_r []] -> List_r []
-              | [List_r [x]] -> List_r [x]
-              | [List_r [x; y]] -> List_r [y; x]
-              | [List_r [x; y; z]] -> List_r [z; y; x]
-              | [List_r [x; y; z; w]] -> List_r [w; z; y; x]
-              | _ -> Apply_r (f, args) )
+                match args with
+                | [ List_r [] ] -> List_r []
+                | [ List_r [ x ] ] -> List_r [ x ]
+                | [ List_r [ x; y ] ] -> List_r [ y; x ]
+                | [ List_r [ x; y; z ] ] -> List_r [ z; y; x ]
+                | [ List_r [ x; y; z; w ] ] -> List_r [ w; z; y; x ]
+                | _ -> Apply_r (f, args) )
             | Id_r (S.Id.Name "append") as f -> (
-              match args with
-              | [List_r []; x] | [x; List_r []] -> x
-              | [List_r [x]; y] -> Op_r (O.Cons, [x; y])
-              | [List_r [x; y]; z] -> Op_r (O.Cons, [x; Op_r (O.Cons, [y; z])])
-              | _ -> Apply_r (f, args) )
+                match args with
+                | [ List_r []; x ] | [ x; List_r [] ] -> x
+                | [ List_r [ x ]; y ] -> Op_r (O.Cons, [ x; y ])
+                | [ List_r [ x; y ]; z ] ->
+                    Op_r (O.Cons, [ x; Op_r (O.Cons, [ y; z ]) ])
+                | _ -> Apply_r (f, args) )
             | Id_r (S.Id.Name "merge") as f -> (
-              match args with
-              | [List_r []; x] | [x; List_r []] -> x
-              | _ -> Apply_r (f, args) )
+                match args with
+                | [ List_r []; x ] | [ x; List_r [] ] -> x
+                | _ -> Apply_r (f, args) )
             | Id_r (S.Id.Name "dedup") as f -> (
-              match args with
-              | [List_r []] -> List_r []
-              | [List_r [x]] -> List_r [x]
-              | [List_r [x; y]] -> if x = y then List_r [x] else List_r [x; y]
-              | _ -> Apply_r (f, args) )
+                match args with
+                | [ List_r [] ] -> List_r []
+                | [ List_r [ x ] ] -> List_r [ x ]
+                | [ List_r [ x; y ] ] ->
+                    if x = y then List_r [ x ] else List_r [ x; y ]
+                | _ -> Apply_r (f, args) )
             | Id_r (S.Id.Name "zip") as f -> (
-              match args with
-              | [_; List_r []] | [List_r []; _] -> List_r []
-              | [List_r [x]; List_r [y]] -> List_r [List_r [x; y]]
-              | [List_r [x; y]; List_r [z]] -> List_r [List_r [x; z]]
-              | [List_r [x; y; _]; List_r [z]] -> List_r [List_r [x; z]]
-              | _ -> Apply_r (f, args) )
+                match args with
+                | [ _; List_r [] ] | [ List_r []; _ ] -> List_r []
+                | [ List_r [ x ]; List_r [ y ] ] -> List_r [ List_r [ x; y ] ]
+                | [ List_r [ x; y ]; List_r [ z ] ] -> List_r [ List_r [ x; z ] ]
+                | [ List_r [ x; y; _ ]; List_r [ z ] ] -> List_r [ List_r [ x; z ] ]
+                | _ -> Apply_r (f, args) )
             | Id_r (S.Id.Name "take") as f -> (
-              match args with [List_r []; _] -> List_r [] | _ -> Apply_r (f, args) )
+                match args with
+                | [ List_r []; _ ] -> List_r []
+                | _ -> Apply_r (f, args) )
             | Id_r (S.Id.Name "drop") as f -> (
-              match args with [List_r []; _] -> List_r [] | _ -> Apply_r (f, args) )
+                match args with
+                | [ List_r []; _ ] -> List_r []
+                | _ -> Apply_r (f, args) )
             | Id_r (S.Id.Name "concat") as f -> (
-              match args with [List_r []] -> List_r [] | _ -> Apply_r (f, args) )
+                match args with [ List_r [] ] -> List_r [] | _ -> Apply_r (f, args) )
             | r -> Apply_r (r, args)
           with Invalid_argument _ -> Apply_r (func, args) )
       | S.Op_h ((O.If, args), _) -> (
-        match args with
-        | [cond; body1; body2] -> (
-          match eval limit ctx cond with
-          | Bool_r true -> eval limit ctx body1
-          | Bool_r false -> eval limit ctx body2
-          | cond -> raise (EvalError `UnhandledConditional) )
-        | _ -> raise (EvalError `WrongNumberOfArguments) )
+          match args with
+          | [ cond; body1; body2 ] -> (
+              match eval limit ctx cond with
+              | Bool_r true -> eval limit ctx body1
+              | Bool_r false -> eval limit ctx body2
+              | cond -> raise (EvalError `UnhandledConditional) )
+          | _ -> raise (EvalError `WrongNumberOfArguments) )
       | S.Op_h ((op, args), _) -> (
           let args = eval_all args in
           try
             match op with
             | O.If -> failwith "Handled in earlier case."
             | O.Plus -> (
-              match args with
-              | [Num_r x; Num_r y] -> Num_r (x + y)
-              | [Num_r 0; x] | [x; Num_r 0] -> x
-              | ([Op_r (O.Minus, [x; y]); z] | [z; Op_r (O.Minus, [x; y])])
-                when y = z ->
-                  x
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Num_r x; Num_r y ] -> Num_r (x + y)
+                | [ Num_r 0; x ] | [ x; Num_r 0 ] -> x
+                | ([ Op_r (O.Minus, [ x; y ]); z ] | [ z; Op_r (O.Minus, [ x; y ]) ])
+                  when y = z ->
+                    x
+                | _ -> Op_r (op, args) )
             | O.Minus -> (
-              match args with
-              | [Num_r x; Num_r y] -> Num_r (x - y)
-              | [x; Num_r 0] -> x
-              | [Op_r (O.Plus, [x; y]); z] when x = z -> y
-              | [Op_r (O.Plus, [x; y]); z] when y = z -> x
-              | [z; Op_r (O.Plus, [x; y])] when x = z -> Op_r (O.Minus, [Num_r 0; y])
-              | [z; Op_r (O.Plus, [x; y])] when y = z -> Op_r (O.Minus, [Num_r 0; x])
-              | [x; y] when x = y -> Num_r 0
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Num_r x; Num_r y ] -> Num_r (x - y)
+                | [ x; Num_r 0 ] -> x
+                | [ Op_r (O.Plus, [ x; y ]); z ] when x = z -> y
+                | [ Op_r (O.Plus, [ x; y ]); z ] when y = z -> x
+                | [ z; Op_r (O.Plus, [ x; y ]) ] when x = z ->
+                    Op_r (O.Minus, [ Num_r 0; y ])
+                | [ z; Op_r (O.Plus, [ x; y ]) ] when y = z ->
+                    Op_r (O.Minus, [ Num_r 0; x ])
+                | [ x; y ] when x = y -> Num_r 0
+                | _ -> Op_r (op, args) )
             | O.Mul -> (
-              match args with
-              | [Num_r x; Num_r y] -> Num_r (x * y)
-              | [Num_r 0; _] | [_; Num_r 0] -> Num_r 0
-              | [Num_r 1; x] | [x; Num_r 1] -> x
-              | ([x; Op_r (O.Div, [y; z])] | [Op_r (O.Div, [y; z]); x]) when x = z
-                ->
-                  y
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Num_r x; Num_r y ] -> Num_r (x * y)
+                | [ Num_r 0; _ ] | [ _; Num_r 0 ] -> Num_r 0
+                | [ Num_r 1; x ] | [ x; Num_r 1 ] -> x
+                | ([ x; Op_r (O.Div, [ y; z ]) ] | [ Op_r (O.Div, [ y; z ]); x ])
+                  when x = z ->
+                    y
+                | _ -> Op_r (op, args) )
             | O.Div -> (
-              match args with
-              | [_; Num_r 0] -> raise (EvalError `DivideByZero)
-              | [Num_r x; Num_r y] -> Num_r (x / y)
-              | [Num_r 0; _] -> Num_r 0
-              | [x; Num_r 1] -> x
-              | [x; y] when x = y -> Num_r 1
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ _; Num_r 0 ] -> raise (EvalError `DivideByZero)
+                | [ Num_r x; Num_r y ] -> Num_r (x / y)
+                | [ Num_r 0; _ ] -> Num_r 0
+                | [ x; Num_r 1 ] -> x
+                | [ x; y ] when x = y -> Num_r 1
+                | _ -> Op_r (op, args) )
             | O.Mod -> (
-              match args with
-              | [_; Num_r 0] -> raise (EvalError `DivideByZero)
-              | [Num_r x; Num_r y] -> Num_r (x mod y)
-              | [Num_r 0; _] | [_; Num_r 1] -> Num_r 0
-              | [x; y] when x = y -> Num_r 0
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ _; Num_r 0 ] -> raise (EvalError `DivideByZero)
+                | [ Num_r x; Num_r y ] -> Num_r (x mod y)
+                | [ Num_r 0; _ ] | [ _; Num_r 1 ] -> Num_r 0
+                | [ x; y ] when x = y -> Num_r 0
+                | _ -> Op_r (op, args) )
             | O.Eq -> (
-              match args with
-              | [Bool_r true; x] | [x; Bool_r true] -> x
-              | [Bool_r false; x] | [x; Bool_r false] -> Op_r (O.Not, [x])
-              | ([x; Op_r (O.Cdr, [y])] | [Op_r (O.Cdr, [y]); x]) when x = y ->
-                  Bool_r false
-              | [x; y] -> Bool_r (x = y)
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Bool_r true; x ] | [ x; Bool_r true ] -> x
+                | [ Bool_r false; x ] | [ x; Bool_r false ] -> Op_r (O.Not, [ x ])
+                | ([ x; Op_r (O.Cdr, [ y ]) ] | [ Op_r (O.Cdr, [ y ]); x ])
+                  when x = y ->
+                    Bool_r false
+                | [ x; y ] -> Bool_r (x = y)
+                | _ -> Op_r (op, args) )
             | O.Neq -> (
-              match args with
-              | [Bool_r true; x] | [x; Bool_r true] -> Op_r (O.Not, [x])
-              | [Bool_r false; x] | [x; Bool_r false] -> x
-              | ([x; Op_r (O.Cdr, [y])] | [Op_r (O.Cdr, [y]); x]) when x = y ->
-                  Bool_r true
-              | [x; y] -> Bool_r (x <> y)
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Bool_r true; x ] | [ x; Bool_r true ] -> Op_r (O.Not, [ x ])
+                | [ Bool_r false; x ] | [ x; Bool_r false ] -> x
+                | ([ x; Op_r (O.Cdr, [ y ]) ] | [ Op_r (O.Cdr, [ y ]); x ])
+                  when x = y ->
+                    Bool_r true
+                | [ x; y ] -> Bool_r (x <> y)
+                | _ -> Op_r (op, args) )
             | O.Lt -> (
-              match args with
-              | [Num_r x; Num_r y] -> Bool_r (x < y)
-              | [x; y] when x = y -> Bool_r false
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Num_r x; Num_r y ] -> Bool_r (x < y)
+                | [ x; y ] when x = y -> Bool_r false
+                | _ -> Op_r (op, args) )
             | O.Gt -> (
-              match args with
-              | [Num_r x; Num_r y] -> Bool_r (x > y)
-              | [x; y] when x = y -> Bool_r false
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Num_r x; Num_r y ] -> Bool_r (x > y)
+                | [ x; y ] when x = y -> Bool_r false
+                | _ -> Op_r (op, args) )
             | O.Leq -> (
-              match args with
-              | [Num_r x; Num_r y] -> Bool_r (x <= y)
-              | [x; y] when x = y -> Bool_r true
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Num_r x; Num_r y ] -> Bool_r (x <= y)
+                | [ x; y ] when x = y -> Bool_r true
+                | _ -> Op_r (op, args) )
             | O.Geq -> (
-              match args with
-              | [Num_r x; Num_r y] -> Bool_r (x >= y)
-              | [x; y] when x = y -> Bool_r true
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Num_r x; Num_r y ] -> Bool_r (x >= y)
+                | [ x; y ] when x = y -> Bool_r true
+                | _ -> Op_r (op, args) )
             | O.And -> (
-              match args with
-              | [Bool_r x; Bool_r y] -> Bool_r (x && y)
-              | [Bool_r true; x] | [x; Bool_r true] -> x
-              | [Bool_r false; _] | [_; Bool_r false] -> Bool_r false
-              | [x; Op_r (O.And, [y; z])] when x = y -> Op_r (O.And, [x; z])
-              | [x; Op_r (O.And, [y; z])] when x = z -> Op_r (O.And, [x; y])
-              | ([x; Op_r (O.Not, [y])] | [Op_r (O.Not, [y]); x]) when x = y ->
-                  Bool_r false
-              (* DeMorgan's law. *)
-              | [Op_r (O.Not, [x]); Op_r (O.Not, [y])] ->
-                  Op_r (O.Not, [Op_r (O.Or, [x; y])])
-              (* Distributivity. *)
-              | [Op_r (O.Or, [a; b]); Op_r (O.Or, [c; d])] when a = c ->
-                  Op_r (O.Or, [a; Op_r (O.And, [b; d])])
-              | [x; y] when x = y -> x
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Bool_r x; Bool_r y ] -> Bool_r (x && y)
+                | [ Bool_r true; x ] | [ x; Bool_r true ] -> x
+                | [ Bool_r false; _ ] | [ _; Bool_r false ] -> Bool_r false
+                | [ x; Op_r (O.And, [ y; z ]) ] when x = y -> Op_r (O.And, [ x; z ])
+                | [ x; Op_r (O.And, [ y; z ]) ] when x = z -> Op_r (O.And, [ x; y ])
+                | ([ x; Op_r (O.Not, [ y ]) ] | [ Op_r (O.Not, [ y ]); x ])
+                  when x = y ->
+                    Bool_r false
+                (* DeMorgan's law. *)
+                | [ Op_r (O.Not, [ x ]); Op_r (O.Not, [ y ]) ] ->
+                    Op_r (O.Not, [ Op_r (O.Or, [ x; y ]) ])
+                (* Distributivity. *)
+                | [ Op_r (O.Or, [ a; b ]); Op_r (O.Or, [ c; d ]) ] when a = c ->
+                    Op_r (O.Or, [ a; Op_r (O.And, [ b; d ]) ])
+                | [ x; y ] when x = y -> x
+                | _ -> Op_r (op, args) )
             | O.Or -> (
-              match args with
-              | [Bool_r x; Bool_r y] -> Bool_r (x || y)
-              | [Bool_r false; x] | [x; Bool_r false] -> x
-              | [Bool_r true; _] | [_; Bool_r true] -> Bool_r true
-              | [x; Op_r (O.Or, [y; z])] when x = y -> Op_r (O.Or, [x; z])
-              | [x; Op_r (O.Or, [y; z])] when x = z -> Op_r (O.Or, [x; y])
-              | ([x; Op_r (O.Not, [y])] | [Op_r (O.Not, [y]); x]) when x = y ->
-                  Bool_r true
-              (* DeMorgan's law. *)
-              | [Op_r (O.Not, [x]); Op_r (O.Not, [y])] ->
-                  Op_r (O.Not, [Op_r (O.And, [x; y])])
-              (* Distributivity. *)
-              | [Op_r (O.And, [a; b]); Op_r (O.And, [c; d])] when a = c ->
-                  Op_r (O.And, [a; Op_r (O.Or, [b; d])])
-              | [x; y] when x = y -> x
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Bool_r x; Bool_r y ] -> Bool_r (x || y)
+                | [ Bool_r false; x ] | [ x; Bool_r false ] -> x
+                | [ Bool_r true; _ ] | [ _; Bool_r true ] -> Bool_r true
+                | [ x; Op_r (O.Or, [ y; z ]) ] when x = y -> Op_r (O.Or, [ x; z ])
+                | [ x; Op_r (O.Or, [ y; z ]) ] when x = z -> Op_r (O.Or, [ x; y ])
+                | ([ x; Op_r (O.Not, [ y ]) ] | [ Op_r (O.Not, [ y ]); x ])
+                  when x = y ->
+                    Bool_r true
+                (* DeMorgan's law. *)
+                | [ Op_r (O.Not, [ x ]); Op_r (O.Not, [ y ]) ] ->
+                    Op_r (O.Not, [ Op_r (O.And, [ x; y ]) ])
+                (* Distributivity. *)
+                | [ Op_r (O.And, [ a; b ]); Op_r (O.And, [ c; d ]) ] when a = c ->
+                    Op_r (O.And, [ a; Op_r (O.Or, [ b; d ]) ])
+                | [ x; y ] when x = y -> x
+                | _ -> Op_r (op, args) )
             | O.Not -> (
-              match args with
-              | [Bool_r x] -> Bool_r (not x)
-              | [Op_r (O.Not, [x])] -> x
-              | [Op_r (O.Lt, [x; y])] -> Op_r (O.Geq, [x; y])
-              | [Op_r (O.Gt, [x; y])] -> Op_r (O.Leq, [x; y])
-              | [Op_r (O.Leq, [x; y])] -> Op_r (O.Gt, [x; y])
-              | [Op_r (O.Geq, [x; y])] -> Op_r (O.Lt, [x; y])
-              | [Op_r (O.Eq, [x; y])] -> Op_r (O.Neq, [x; y])
-              | [Op_r (O.Neq, [x; y])] -> Op_r (O.Eq, [x; y])
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Bool_r x ] -> Bool_r (not x)
+                | [ Op_r (O.Not, [ x ]) ] -> x
+                | [ Op_r (O.Lt, [ x; y ]) ] -> Op_r (O.Geq, [ x; y ])
+                | [ Op_r (O.Gt, [ x; y ]) ] -> Op_r (O.Leq, [ x; y ])
+                | [ Op_r (O.Leq, [ x; y ]) ] -> Op_r (O.Gt, [ x; y ])
+                | [ Op_r (O.Geq, [ x; y ]) ] -> Op_r (O.Lt, [ x; y ])
+                | [ Op_r (O.Eq, [ x; y ]) ] -> Op_r (O.Neq, [ x; y ])
+                | [ Op_r (O.Neq, [ x; y ]) ] -> Op_r (O.Eq, [ x; y ])
+                | _ -> Op_r (op, args) )
             | O.Cons -> (
-              match args with
-              | [x; List_r y] -> List_r (x :: y)
-              | [Op_r (O.Car, [x]); Op_r (O.Cdr, [y])] when x = y -> x
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ x; List_r y ] -> List_r (x :: y)
+                | [ Op_r (O.Car, [ x ]); Op_r (O.Cdr, [ y ]) ] when x = y -> x
+                | _ -> Op_r (op, args) )
             | O.RCons -> (
-              match args with
-              | [List_r y; x] -> List_r (x :: y)
-              | [Op_r (O.Cdr, [y]); Op_r (O.Car, [x])] when x = y -> x
-              | _ -> Op_r (O.RCons, args) )
+                match args with
+                | [ List_r y; x ] -> List_r (x :: y)
+                | [ Op_r (O.Cdr, [ y ]); Op_r (O.Car, [ x ]) ] when x = y -> x
+                | _ -> Op_r (O.RCons, args) )
             | O.Car -> (
-              match args with
-              | [List_r (x :: _)] -> x
-              | [List_r []] -> raise (EvalError `CarOfEmptyList)
-              | [Op_r (O.Cons, [x; _])] -> x
-              | [Op_r (O.RCons, [_; x])] -> x
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ List_r (x :: _) ] -> x
+                | [ List_r [] ] -> raise (EvalError `CarOfEmptyList)
+                | [ Op_r (O.Cons, [ x; _ ]) ] -> x
+                | [ Op_r (O.RCons, [ _; x ]) ] -> x
+                | _ -> Op_r (op, args) )
             | O.Cdr -> (
-              match args with
-              | [List_r (_ :: xs)] -> List_r xs
-              | [List_r []] -> raise (EvalError `CdrOfEmptyList)
-              | [Op_r (O.Cons, [_; x])] | [Op_r (O.RCons, [x; _])] -> x
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ List_r (_ :: xs) ] -> List_r xs
+                | [ List_r [] ] -> raise (EvalError `CdrOfEmptyList)
+                | [ Op_r (O.Cons, [ _; x ]) ] | [ Op_r (O.RCons, [ x; _ ]) ] -> x
+                | _ -> Op_r (op, args) )
             | O.Value -> (
-              match args with
-              | [Tree_r Tree.Empty] -> raise (EvalError `ValueOfEmptyTree)
-              | [Tree_r (Tree.Node (x, _))] -> x
-              | [Op_r (O.Tree, [x; _])] -> x
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Tree_r Tree.Empty ] -> raise (EvalError `ValueOfEmptyTree)
+                | [ Tree_r (Tree.Node (x, _)) ] -> x
+                | [ Op_r (O.Tree, [ x; _ ]) ] -> x
+                | _ -> Op_r (op, args) )
             | O.Children -> (
-              match args with
-              | [Tree_r Tree.Empty] -> List_r []
-              | [Tree_r (Tree.Node (_, x))] ->
-                  List_r (List.map x ~f:(fun e -> Tree_r e))
-              | [Op_r (O.Tree, [_; x])] -> x
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ Tree_r Tree.Empty ] -> List_r []
+                | [ Tree_r (Tree.Node (_, x)) ] ->
+                    List_r (List.map x ~f:(fun e -> Tree_r e))
+                | [ Op_r (O.Tree, [ _; x ]) ] -> x
+                | _ -> Op_r (op, args) )
             | O.Tree -> (
-              match args with
-              | [x; List_r y] ->
-                  let y' =
-                    List.map y ~f:(fun e ->
-                        match e with Tree_r t -> t | _ -> Tree.Node (e, []) )
-                  in
-                  Tree_r (Tree.Node (x, y'))
-              | _ -> Op_r (op, args) )
+                match args with
+                | [ x; List_r y ] ->
+                    let y' =
+                      List.map y ~f:(fun e ->
+                          match e with Tree_r t -> t | _ -> Tree.Node (e, []))
+                    in
+                    Tree_r (Tree.Node (x, y'))
+                | _ -> Op_r (op, args) )
             (* Invalid_argument is thrown when comparing functional values (closures). *)
           with Invalid_argument _ -> Op_r (op, args) )
   in

@@ -9,7 +9,7 @@ let test_eval =
   let open Eval in
   let open Tree in
   make_tests
-    ~in_f:(fun str -> str |> Expr.of_string_exn |> eval (Ctx.empty ()))
+    ~in_f:(fun str -> str |> Expr.of_string_exn |> eval Ctx.empty)
     ~out_f:Fun.id ~in_str:Fun.id
     ~out_str:(fun v -> Value.to_string @@ Value.of_evalue_exn v)
     ~res_str:(fun v -> Value.to_string @@ Value.of_evalue_exn v)

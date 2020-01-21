@@ -24,20 +24,20 @@ let rec push_specs parent_spec sk =
   | Sk.Num _ | Sk.Bool _ | Sk.Id _ | Sk.Hole _ -> Sk.replace_spec sk curr_spec
   | Sk.List l -> Sk.list (List.map l ~f:(push_specs child_spec)) curr_spec
   | Sk.Tree t -> Sk.tree (Tree.map t ~f:(push_specs child_spec)) curr_spec
-  | Sk.Let {bound; body} ->
+  | Sk.Let { bound; body } ->
       (* Let introduces a new scope, so we can't use the parent
        context. *)
       let bound' = push_specs Sp.top bound in
       let body' = push_specs Sp.top body in
       Sk.let_ bound' body' curr_spec
-  | Sk.Lambda {num_args; body} ->
+  | Sk.Lambda { num_args; body } ->
       (* Lambdas introduce a new scope, so we can't use the parent
        context. Also, we can't use Inputs specs on function typed
        skeletons. *)
       Sk.lambda num_args (push_specs Sp.top body) (Sk.spec sk)
-  | Sk.Op {op; args} ->
+  | Sk.Op { op; args } ->
       Sk.op op (List.map args ~f:(push_specs child_spec)) curr_spec
-  | Sk.Apply {func; args} ->
+  | Sk.Apply { func; args } ->
       let func' = push_specs child_spec func in
       let args' = List.map ~f:(push_specs child_spec) args in
       Sk.apply func' args' curr_spec

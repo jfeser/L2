@@ -1,9 +1,9 @@
 open Core
 open Printf
 open Ast
-open Collections
 open Expr
 open Util
+open Collections
 
 exception TypeError of Error.t
 
@@ -151,24 +151,24 @@ module TypedExpr = struct
       match e with
       | Num _ | Bool _ -> e
       | Id (x, t) -> (
-          match Ctx.lookup ctx x with Some x' -> Id (x', t) | None -> e )
+          match Map.find ctx x with Some x' -> Id (x', t) | None -> e )
       | List (x, t) -> List (norm_all x, t)
       | Tree (x, t) -> Tree (Tree.map x ~f:(norm ctx), t)
       | Op ((op, args), t) -> Op ((op, norm_all args), t)
       | Apply ((func, args), t) -> Apply ((norm ctx func, norm_all args), t)
       | Let ((name, x, y), t) ->
           let name' = fresh_name () in
-          let ctx' = Ctx.bind ctx name name' in
+          let ctx' = Map.set ctx ~key:name ~data:name' in
           Let ((name', norm ctx' x, norm ctx' y), t)
       | Lambda ((args, body), t) ->
           let ctx', args' =
             List.fold_right args ~init:(ctx, []) ~f:(fun arg (ctx', args') ->
                 let arg' = fresh_name () in
-                (Ctx.bind ctx' arg arg', arg' :: args'))
+                (Map.set ctx' ~key:arg ~data:arg', arg' :: args'))
           in
           Lambda ((args', norm ctx' body), t)
     in
-    norm (Ctx.empty ()) expr
+    norm Ctx.empty expr
 
   let rec map ~f (e : t) : t =
     match e with
@@ -409,15 +409,14 @@ let unify t1 t2 =
 
 let is_unifiable t1 t2 = Option.is_some (unify (instantiate 0 t1) (instantiate 0 t2))
 
-let typeof (ctx : typ Ctx.t) (level : level) (expr : expr) : TypedExpr.t =
-  let open TypedExpr in
+let typeof ctx level expr =
   let error msg =
     raise
     @@ TypeError
          (Error.of_thunk (fun () ->
               sprintf "In %s: %s" (Expr.to_string expr) (Info.to_string_hum msg)))
   in
-  let rec typeof' (ctx : _ Ctx.t) level expr =
+  let rec typeof' ctx level expr =
     let rec typeof_func num_args typ =
       match typ with
       | Arrow_t (args, ret) -> (args, ret)
@@ -431,7 +430,7 @@ let typeof (ctx : typ Ctx.t) (level : level) (expr : expr) : TypedExpr.t =
           (args, ret)
       | _ -> error (Info.of_string "Not a function.")
     in
-    let rec typeof_tree t : TypedExpr.t Tree.t * typ =
+    let rec typeof_tree t =
       match t with
       | Tree.Empty -> (Tree.Empty, App_t (tree_id, [ fresh_free level ]))
       | Tree.Node (x, y) ->
@@ -459,7 +458,7 @@ let typeof (ctx : typ Ctx.t) (level : level) (expr : expr) : TypedExpr.t =
                 List (List.append elems [ elem' ], App_t (list_id, [ typ ]))
             | _ -> assert false)
     | `Id name -> (
-        match Ctx.lookup ctx name with
+        match Map.find ctx (name : Name.t) with
         | Some t -> Id (name, instantiate level t)
         | None ->
             error
@@ -471,9 +470,9 @@ let typeof (ctx : typ Ctx.t) (level : level) (expr : expr) : TypedExpr.t =
          into the existing context. *)
         let ctx' =
           List.fold args ~init:ctx ~f:(fun ctx' arg ->
-              Ctx.bind ctx' arg (fresh_free level))
+              Map.set ctx' ~key:arg ~data:(fresh_free level))
         in
-        let arg_typs = List.map args ~f:(fun arg -> Ctx.lookup_exn ctx' arg) in
+        let arg_typs = List.map args ~f:(fun arg -> Map.find_exn ctx' arg) in
         let body' = typeof' ctx' level body in
         Lambda ((args, body'), Arrow_t (arg_typs, TypedExpr.to_type body'))
     | `Apply (func, args) ->
@@ -501,11 +500,11 @@ let typeof (ctx : typ Ctx.t) (level : level) (expr : expr) : TypedExpr.t =
         Op ((op, args'), ret_typ)
     | `Let (name, bound, body) ->
         (* Bind a fresh free type variable to the name. *)
-        let ctx = Ctx.bind ctx name (fresh_free level) in
+        let ctx = Map.set ctx ~key:name ~data:(fresh_free level) in
         let bound' = typeof' ctx (level + 1) bound in
         let body' =
           let bound_typ = generalize level (TypedExpr.to_type bound') in
-          typeof' (Ctx.bind ctx name bound_typ) level body
+          typeof' (Map.set ctx ~key:name ~data:bound_typ) level body
         in
         Let ((name, bound', body'), TypedExpr.to_type body')
   in
@@ -540,7 +539,7 @@ let infer_exn ctx (expr : expr) : TypedExpr.t =
   let x, runtime =
     with_runtime (fun () ->
         let ctx' =
-          Ctx.merge stdlib_tctx ctx ~f:(fun ~key:_ value ->
+          Map.merge stdlib_tctx ctx ~f:(fun ~key:_ value ->
               match value with `Both (_, v) | `Left v | `Right v -> Some v)
         in
         let expr' = typeof ctx' 0 expr in
@@ -554,7 +553,7 @@ let infer ctx expr = try Ok (infer_exn ctx expr) with TypeError err -> Error err
 (** Parse a string and return a typed expression. *)
 let typed_expr_of_string (s : string) : TypedExpr.t =
   let expr = Expr.of_string_exn s in
-  infer_exn (Ctx.empty ()) expr
+  infer_exn Ctx.empty expr
 
 (** Return a list of names that are free in the given expression,
     along with their types. *)
@@ -567,7 +566,7 @@ module IdType = struct
   include Comparator.Make (T)
 end
 
-let stdlib_names = Ctx.keys stdlib_tctx |> Set.of_list (module Name)
+let stdlib_names = Map.keys stdlib_tctx |> Set.of_list (module Name)
 
 let free ?(bound = stdlib_names) e =
   let rec f bound e =

@@ -868,7 +868,7 @@ module Examples = struct
               |> List.map ~f:(fun (k, v) ->
                      (Map.find_exn name_ctx k, Value.to_evalue v))
               |> Ctx.of_alist_exn
-              |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
+              |> Ctx.merge_right library.Library.value_ctx
             in
             Eval.eval ~recursion_limit:100 value_ctx expr
             |> Value.of_evalue_exn = out)
@@ -951,7 +951,7 @@ module FunctionExamples = struct
               |> List.map ~f:(fun (k, v) ->
                      (Map.find_exn name_ctx k, Value.to_evalue v))
               |> Ctx.of_alist_exn
-              |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
+              |> Ctx.merge_right library.Library.value_ctx
             in
             Eval.eval ~recursion_limit:100 value_ctx expr = Value.to_evalue out)
       with Eval.HitRecursionLimit | Eval.RuntimeError _ -> false
@@ -995,7 +995,7 @@ module Inputs = struct
             |> List.map ~f:(fun (k, v) ->
                    (Map.find_exn name_ctx k, Value.to_evalue v))
             |> Ctx.of_alist_exn
-            |> Ctx.merge_right (Ctx.of_string_map library.Library.value_ctx)
+            |> Ctx.merge_right library.Library.value_ctx
           in
           Eval.eval ~recursion_limit:100 value_ctx expr |> Value.of_evalue_exn)
       |> Option.some

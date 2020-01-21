@@ -12,7 +12,7 @@ type status = Invalid | Valid | Error
 (*   let body' = *)
 (*     let typ_ctx = List.map vars ~f:(fun var -> (var, fresh_free 0)) |> Ctx.of_alist_exn in *)
 (*     Infer.infer typ_ctx body in *)
-(*   let ctx = Ctx.empty () in *)
+(*   let ctx = Ctx.empty in *)
 (*   let rec find_vars texpr = match texpr with *)
 (*     | Num _ | Bool _ -> () *)
 (*     | List (x, _) -> List.iter x ~f:find_vars *)
@@ -24,7 +24,7 @@ type status = Invalid | Valid | Error
 (*   in *)
 (*   find_vars body'; *)
 (*   let vars' = List.map vars ~f:(fun var ->  *)
-(*                                 match Ctx.lookup ctx var with *)
+(*                                 match Map.find ctx var with *)
 (*                                 | Some typ -> var, typ *)
 (*                                 | None -> verify_error "Could not find type for constraint var.") in *)
 (*   body', vars' *)
@@ -33,11 +33,11 @@ type status = Invalid | Valid | Error
 (*   let exp e = expand ctx e in *)
 (*   let exp_all es = List.map ~f:exp es in *)
 (*   match expr with *)
-(*   | `Id name -> (match Ctx.lookup ctx name with Some expr' -> expr' | None -> expr) *)
+(*   | `Id name -> (match Map.find ctx name with Some expr' -> expr' | None -> expr) *)
 (*   | `List elems -> `List (exp_all elems) *)
-(*   | `Let (name, bound, body) -> expand (Ctx.bind ctx name (expand ctx bound)) body *)
+(*   | `Let (name, bound, body) -> expand (Map.set ctx ~key:name ~data:(expand ctx bound)) body *)
 (*   | `Lambda (args, body) -> *)
-(*      let ctx' = List.fold args ~init:ctx ~f:(fun ctx' arg -> Ctx.unbind ctx' arg) in *)
+(*      let ctx' = List.fold args ~init:ctx ~f:(fun ctx' arg -> Map.remove ctx' arg) in *)
 (*      `Lambda (args, expand ctx' body) *)
 (*   | `Apply (func, args) -> *)
 (*      let args' = exp_all args in *)
@@ -45,7 +45,7 @@ type status = Invalid | Valid | Error
 (*      (match func' with *)
 (*       | `Lambda (lambda_args, body) -> *)
 (*          let ctx' = List.fold2_exn lambda_args args' ~init:ctx *)
-(*                                    ~f:(fun ctx' arg_name arg_val -> Ctx.bind ctx' arg_name arg_val) in *)
+(*                                    ~f:(fun ctx' arg_name arg_val -> Map.set ctx'~key: arg_name ~data:arg_val) in *)
 (*          expand ctx' body *)
 (*       | _ -> verify_error (sprintf "Tried to apply a non-lambda expression: %s" *)
 (*                                    (expr_to_string expr))) *)
@@ -81,7 +81,7 @@ type status = Invalid | Valid | Error
 (*                      ~f:(fun elem acc -> *)
 (*                          let z3_elem = expr_to_z3 zctx z3ectx elem in *)
 (*                          Z3.FuncDecl.apply cons [z3_elem; acc]) *)
-(*   | Id (x, _) -> Ctx.lookup_exn z3ectx x *)
+(*   | Id (x, _) -> Map.find_exn z3ectx x *)
 (*   | Op ((op, args), _) -> *)
 (*      let open Op in *)
 (*      (match op, (List.map ~f:(expr_to_z3 zctx z3ectx) args) with *)
@@ -114,20 +114,16 @@ type status = Invalid | Valid | Error
 (*   | Let _ *)
 (*   | Apply _ -> verify_error "(lambda, let, apply) are not supported by Z3." *)
 
-let verify_example ?(ctx = Ctx.empty ()) ?(limit = 100) (target : expr -> expr)
+let verify_example ?(ctx = Ctx.empty) ?(limit = 100) (target : expr -> expr)
     (example : example) : bool =
   let input, result = example in
   let eval = Eval.eval ~recursion_limit:limit ctx in
-  try eval (target input) = eval result with
-  | Eval.RuntimeError _ ->
-      (* printf "Runtime error \"%s\" in %s\n" msg (expr_to_string (target input)); *)
-      false
-  | Ctx.UnboundError name ->
-      printf "Unbound %s in %s\n" (Name.to_string name)
-        (Expr.to_string (target input));
-      false
+  try eval (target input) = eval result
+  with Eval.RuntimeError _ ->
+    (* printf "Runtime error \"%s\" in %s\n" msg (expr_to_string (target input)); *)
+    false
 
-let verify_examples ?(ctx = Ctx.empty ()) ?(limit = 100) target examples =
+let verify_examples ?(ctx = Ctx.empty) ?(limit = 100) target examples =
   List.for_all examples ~f:(verify_example ~ctx ~limit target)
 
 (* let verify_constraint (zctx: Z3.context) (target: expr -> expr) (constr: constr) : bool = *)
@@ -138,7 +134,7 @@ let verify_examples ?(ctx = Ctx.empty ()) ?(limit = 100) target examples =
 (*   target function and then expand. *\) *)
 (*   let body, ids =  *)
 (*     let body', ids' = constr in *)
-(*     typed_constr ((expand (Ctx.empty ()) (target body')), ids') in *)
+(*     typed_constr ((expand (Ctx.empty) (target body')), ids') in *)
 
 (*   (\* Generate a correctly typed Z3 constant for each unbound id in the constraint. *\) *)
 (*   let z3_consts = List.map ids ~f:(typed_id_to_z3 zctx) in *)
@@ -146,8 +142,8 @@ let verify_examples ?(ctx = Ctx.empty ()) ?(limit = 100) target examples =
 (*   (\* Convert constraint body to a Z3 expression. *\) *)
 (*   let z3_constr_body =  *)
 (*     let ctx = List.fold2_exn ids z3_consts  *)
-(*                              ~init:(Ctx.empty ()) *)
-(*                              ~f:(fun acc (id, _) z3c -> Ctx.bind acc id z3c) in *)
+(*                              ~init:(Ctx.empty) *)
+(*                              ~f:(fun acc (id, _) z3c -> Map.set acc ~key:id ~data:z3c) in *)
 (*     expr_to_z3 zctx ctx body in *)
 
 (*   (\* let _ = Printf.printf "%s\n" (Z3.Expr.to_string z3_constr_body) in *\) *)

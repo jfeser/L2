@@ -306,7 +306,7 @@ let normalize ?(bound = Set.empty (module Name)) (expr : t) : expr =
     match e with
     | `Num _ | `Bool _ -> e
     | `Id x -> (
-        match Ctx.lookup ctx x with
+        match Map.find ctx x with
         | Some x' -> `Id x'
         | None -> if Set.mem bound x then `Id x else `Id (fresh_name ()) )
     | `List x -> `List (norm_all x)
@@ -315,17 +315,17 @@ let normalize ?(bound = Set.empty (module Name)) (expr : t) : expr =
     | `Apply (func, args) -> `Apply (norm ctx func, norm_all args)
     | `Let (name, x, y) ->
         let name' = fresh_name () in
-        let ctx' = Ctx.bind ctx name name' in
+        let ctx' = Map.set ctx ~key:name ~data:name' in
         `Let (name', norm ctx' x, norm ctx' y)
     | `Lambda (args, body) ->
         let ctx', args' =
           List.fold_right args ~init:(ctx, []) ~f:(fun arg (ctx', args') ->
               let arg' = fresh_name () in
-              (Ctx.bind ctx' arg arg', arg' :: args'))
+              (Map.set ctx' ~key:arg ~data:arg', arg' :: args'))
         in
         `Lambda (args', norm ctx' body)
   in
-  norm (Ctx.empty ()) expr
+  norm Ctx.empty expr
 
 let rec of_value = function
   | `Num x -> `Num x

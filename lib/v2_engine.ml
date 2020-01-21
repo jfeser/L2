@@ -272,10 +272,10 @@ module L2_Synthesizer = struct
             let ctx = Map.empty (module StaticDistance) in
             let args =
               List.map
-                ~f:(fun e -> Eval.eval (Ctx.empty ()) e |> Value.of_evalue_exn)
+                ~f:(fun e -> Eval.eval Ctx.empty e |> Value.of_evalue_exn)
                 args
             in
-            let ret = Eval.eval (Ctx.empty ()) out |> Value.of_evalue_exn in
+            let ret = Eval.eval Ctx.empty out |> Value.of_evalue_exn in
             ((ctx, args), ret)
         | ex -> failwiths "Unexpected example type." ex sexp_of_example)
       |> FunctionExamples.of_list_exn |> FunctionExamples.to_spec
