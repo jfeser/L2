@@ -13,10 +13,10 @@ There are two versions of λ²:
 git clone git@github.com:jfeser/L2.git; cd L2
 ```
 
-2. Check for missing dependencies. Install anything that is missing.
+2. Install dependencies.
 
 ``` shell
-jbuilder external-lib-deps --missing @install
+opam install --deps-only ./l2.opam.locked
 ```
 
 ### PLDI version
@@ -27,16 +27,10 @@ jbuilder external-lib-deps --missing @install
 git checkout pldi-modernize
 ```
 
-3. Build using JBuilder.
-
-```shell
-jbuilder build @install
-```
-
 4. Try λ² on a benchmark problem by running:
 
 ```shell
-_build/default/src/l2.exe benchmarks/concat.json
+dune exec src/l2.exe -- benchmarks/concat.json
 ```
 
 You should see output like:
@@ -48,16 +42,10 @@ Solved concat in 39ms. Solutions:
 
 ### Development version
 
-2. Build using JBuilder.
-
-``` shell
-jbuilder build @install
-```
-
 3. Try λ² on a benchmark problem by running:
 
 ```shell
-_build/default/src/l2-cli/l2_cli.exe synth -l components/stdlib.ml -dd higher_order,input_ctx specs/largest_n.json
+dune exec src/l2-cli/l2_cli.exe synth -l components/stdlib.ml -dd higher_order,input_ctx specs/largest_n.json
 ```
 
 You should see output like:
