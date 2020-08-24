@@ -45,7 +45,7 @@ Solved concat in 39ms. Solutions:
 3. Try λ² on a benchmark problem by running:
 
 ```shell
-dune exec src/l2-cli/l2_cli.exe synth -l components/stdlib.ml -dd higher_order,input_ctx specs/largest_n.json
+dune exec src/l2-cli/l2_cli.exe -- synth -l components/stdlib.ml -dd higher_order,input_ctx specs/largest_n.json
 ```
 
 You should see output like:
