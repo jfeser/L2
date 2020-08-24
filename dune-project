@@ -24,7 +24,7 @@
     (ppx_let (and (>= v0.13) (< v0.14)))
     (ppx_sexp_conv (and (>= v0.13) (< v0.14)))
 
-    (ounit (and :with-test (>= 2.2)))))
+    (ounit2 (and :with-test (>= 2.2)))))
 
 (generate_opam_files true)
 (using menhir 2.0)

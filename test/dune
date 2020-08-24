@@ -1,4 +1,4 @@
 (test
  (name tests)
- (libraries l2 oUnit core yojson hashcons)
+ (libraries l2 ounit2 core yojson hashcons)
  (preprocess (pps ppx_sexp_conv)))
