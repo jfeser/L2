@@ -54,7 +54,7 @@ let rec take = fun l x ->
 
 let rec zip = fun x y ->
   if x = [] && y = [] then [] else
-    [x; y] :: (zip (cdr x) (cdr y))
+    [(car x); (car y)] :: (zip (cdr x) (cdr y))
 
 let rec intersperse = fun l e ->
   if l = [] then [] else
